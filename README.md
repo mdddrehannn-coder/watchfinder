@@ -92,7 +92,7 @@ No new SQL schema is generated in this repo.
 
 1. Configure Supabase Auth.
 2. Enable Google OAuth or your preferred provider.
-3. Add these redirect URLs in Supabase Auth:
+3. Add these Supabase Auth redirect URLs:
 
 ```text
 http://localhost:3000/auth/callback
@@ -101,6 +101,8 @@ https://YOUR_VERCEL_DOMAIN/auth/callback
 
 4. Visit `/profile`.
 5. Login.
+
+The dedicated auth pages are `/login` and `/signup`. Both use Supabase Google OAuth and redirect through `/auth/callback`.
 
 ## Make Your User Admin
 

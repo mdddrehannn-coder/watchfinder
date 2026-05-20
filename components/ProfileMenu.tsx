@@ -2,29 +2,23 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Clock, Heart, LogIn, LogOut, MessageSquare, Moon, Share2, Settings } from "lucide-react";
+import { Clock, Heart, LogOut, MessageSquare, Moon, Share2, Settings } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
-export default function ProfileMenu() {
-  const [email, setEmail] = useState<string | null>(null);
+export default function ProfileMenu({ initialEmail }: { initialEmail: string }) {
+  const [email, setEmail] = useState(initialEmail);
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
-  }, []);
-
-  async function login() {
-    const supabase = createSupabaseBrowserClient();
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` }
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email) setEmail(data.user.email);
     });
-  }
+  }, []);
 
   async function logout() {
     const supabase = createSupabaseBrowserClient();
     await supabase.auth.signOut();
-    setEmail(null);
+    window.location.href = "/login";
   }
 
   async function share() {
@@ -37,17 +31,11 @@ export default function ProfileMenu() {
     <div className="form-grid">
       <div className="panel">
         <div className="platform-logo">WF</div>
-        <h2>{email ? "Your Account" : "Sign in"}</h2>
-        <p className="muted">{email || "Sign in to save favorites and watch history."}</p>
-        {email ? (
-          <button className="button" onClick={logout} type="button">
-            <LogOut size={18} /> Logout
-          </button>
-        ) : (
-          <button className="button primary" onClick={login} type="button">
-            <LogIn size={18} /> Login with Google
-          </button>
-        )}
+        <h2>Your Account</h2>
+        <p className="muted">{email}</p>
+        <button className="button" onClick={logout} type="button">
+          <LogOut size={18} /> Logout
+        </button>
       </div>
 
       <div className="grid">

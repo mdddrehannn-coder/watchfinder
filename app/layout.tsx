@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import "@/app/globals.css";
 import BottomNav from "@/components/BottomNav";
+import HeaderAuthButton from "@/components/HeaderAuthButton";
 
 export const metadata: Metadata = {
   title: {
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     {label}
                   </Link>
                 ))}
+                <HeaderAuthButton />
               </nav>
             </div>
           </header>

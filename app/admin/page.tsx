@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import AdminAdSlotForm from "@/components/AdminAdSlotForm";
 import AdminBlogForm from "@/components/AdminBlogForm";
 import AdminLayout from "@/components/AdminLayout";
@@ -27,7 +28,10 @@ export default async function AdminPage() {
       <main className="page-inner">
         <div className="panel">
           <h1>Admin Login Required</h1>
-          <p className="muted">Sign in from the profile page, then return here.</p>
+          <p className="muted">Login to continue to the WatchFinder admin dashboard.</p>
+          <Link className="button primary" href="/login?next=/admin">
+            Login
+          </Link>
         </div>
       </main>
     );
@@ -73,7 +77,7 @@ export default async function AdminPage() {
             {movies.slice(0, 12).map((movie) => (
               <div className="panel" key={movie.id}>
                 <strong>{movie.title}</strong>
-                <p className="muted">{movie.status} · {movie.type} · {movie.language || "No language"}</p>
+                <p className="muted">{movie.status} - {movie.type} - {movie.language || "No language"}</p>
               </div>
             ))}
           </div>
@@ -103,7 +107,7 @@ export default async function AdminPage() {
           <h2>Promotions</h2>
           <AdminPromotionForm />
           <div className="form-grid section">
-            {collections.promotions.map((item: any) => <div className="panel" key={item.id}><strong>{item.title}</strong><p className="muted">{item.placement} · {item.is_active ? "active" : "inactive"}</p></div>)}
+            {collections.promotions.map((item: any) => <div className="panel" key={item.id}><strong>{item.title}</strong><p className="muted">{item.placement} - {item.is_active ? "active" : "inactive"}</p></div>)}
           </div>
         </section>
 
@@ -111,7 +115,7 @@ export default async function AdminPage() {
           <h2>Ad Slots</h2>
           <AdminAdSlotForm />
           <div className="form-grid section">
-            {collections.adSlots.map((item: any) => <div className="panel" key={item.id}><strong>{item.slot_name}</strong><p className="muted">{item.placement} · {item.is_active ? "active" : "inactive"}</p></div>)}
+            {collections.adSlots.map((item: any) => <div className="panel" key={item.id}><strong>{item.slot_name}</strong><p className="muted">{item.placement} - {item.is_active ? "active" : "inactive"}</p></div>)}
           </div>
         </section>
 
@@ -119,7 +123,7 @@ export default async function AdminPage() {
           <h2>Blog Posts</h2>
           <AdminBlogForm />
           <div className="form-grid section">
-            {collections.blogPosts.map((item: any) => <div className="panel" key={item.id}><strong>{item.title}</strong><p className="muted">{item.status} · {item.category}</p></div>)}
+            {collections.blogPosts.map((item: any) => <div className="panel" key={item.id}><strong>{item.title}</strong><p className="muted">{item.status} - {item.category}</p></div>)}
           </div>
         </section>
 
