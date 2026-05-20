@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Star } from "lucide-react";
 import { firstPlatformLabel } from "@/lib/data";
 import { formatType } from "@/lib/format";
+import LanguageTags from "@/components/LanguageTags";
 import type { Movie } from "@/types/watchfinder";
 
 export default function MovieCard({ movie }: { movie: Movie }) {
@@ -20,9 +21,9 @@ export default function MovieCard({ movie }: { movie: Movie }) {
               <Star size={13} fill="currentColor" /> {movie.rating}
             </span>
           ) : null}
-          <span>{movie.language || "Multi"}</span>
           <span>{formatType(movie.type)}</span>
         </div>
+        <LanguageTags value={movie.language} compact />
         {platform ? <span className="platform-badge">{platform}</span> : null}
       </div>
     </Link>

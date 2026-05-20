@@ -1,4 +1,5 @@
 import type { Genre, Platform } from "@/types/watchfinder";
+import { WATCHFINDER_LANGUAGES } from "@/lib/languages";
 
 export default function SearchFilters({
   genres,
@@ -21,7 +22,14 @@ export default function SearchFilters({
       </div>
       <div className="field">
         <label htmlFor="language">Language</label>
-        <input id="language" name="language" placeholder="Hindi, English, Tamil" />
+        <select id="language" name="language">
+          <option value="">All languages</option>
+          {WATCHFINDER_LANGUAGES.map((language) => (
+            <option value={language} key={language}>
+              {language}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="field">
         <label htmlFor="genre">Genre</label>

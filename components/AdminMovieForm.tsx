@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { Eye, Save } from "lucide-react";
 import { slugify } from "@/lib/format";
+import { joinLanguages, WATCHFINDER_LANGUAGES } from "@/lib/languages";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { uploadBanner, uploadLicenseDocumentWithPath, uploadPoster } from "@/lib/storage";
 import type { CastMember, Genre, Platform } from "@/types/watchfinder";
@@ -53,6 +54,7 @@ export default function AdminMovieForm({
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [hasLicensedVideo, setHasLicensedVideo] = useState(false);
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [message, setMessage] = useState<Message | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedMovieSlug, setSavedMovieSlug] = useState<string | null>(null);
@@ -102,6 +104,14 @@ export default function AdminMovieForm({
     return null;
   }
 
+  function toggleLanguage(language: string) {
+    setSelectedLanguages((current) =>
+      current.includes(language)
+        ? current.filter((item) => item !== language)
+        : [...current, language]
+    );
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage({ type: "info", text: "Saving movie..." });
@@ -127,7 +137,7 @@ export default function AdminMovieForm({
         release_year: toNullableNumber(form.get("release_year")),
         duration_minutes: toNullableNumber(form.get("duration_minutes")),
         rating: toNullableNumber(form.get("rating")),
-        language: toNullableString(form.get("language")),
+        language: joinLanguages(selectedLanguages) || null,
         director: toNullableString(form.get("director")),
         trailer_url: toNullableString(form.get("trailer_url")),
         trailer_provider: toNullableString(form.get("trailer_provider")),
@@ -221,6 +231,7 @@ export default function AdminMovieForm({
       setTitle("");
       setSlug("");
       setHasLicensedVideo(false);
+      setSelectedLanguages([]);
       setPosterPreview(null);
       setBannerPreview(null);
     } catch (error) {
@@ -239,7 +250,6 @@ export default function AdminMovieForm({
           <div className="field"><label>Release Year</label><input name="release_year" inputMode="numeric" /></div>
           <div className="field"><label>Duration Minutes</label><input name="duration_minutes" inputMode="numeric" /></div>
           <div className="field"><label>Rating</label><input name="rating" inputMode="decimal" /></div>
-          <div className="field"><label>Language</label><input name="language" placeholder="Hindi, English, Tamil" /></div>
           <div className="field"><label>Director</label><input name="director" /></div>
           <div className="field"><label>Popularity Score</label><input name="popularity_score" inputMode="numeric" defaultValue="0" /></div>
         </div>
@@ -266,6 +276,27 @@ export default function AdminMovieForm({
           <label className="chip"><input name="is_featured" type="checkbox" /> Featured</label>
           <label className="chip"><input name="is_latest" type="checkbox" /> Latest</label>
         </div>
+      </FormSection>
+
+      <FormSection title="Languages" helper="Select all languages available for this movie or show.">
+        <div className="language-select-grid">
+          {WATCHFINDER_LANGUAGES.map((language) => (
+            <label className="language-select-chip" key={language}>
+              <input
+                checked={selectedLanguages.includes(language)}
+                onChange={() => toggleLanguage(language)}
+                type="checkbox"
+                value={language}
+              />
+              <span>{language}</span>
+            </label>
+          ))}
+        </div>
+        {selectedLanguages.length ? (
+          <button className="button ghost clear-languages-button" type="button" onClick={() => setSelectedLanguages([])}>
+            Clear selected languages
+          </button>
+        ) : null}
       </FormSection>
 
       <FormSection title="Images" helper="Upload strong artwork. Poster recommended 600x900. Banner recommended 1600x700.">

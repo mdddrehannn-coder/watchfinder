@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import AdSlot from "@/components/AdSlot";
 import FavoriteButton from "@/components/FavoriteButton";
 import LicensedVideoPlayer from "@/components/LicensedVideoPlayer";
+import LanguageTags from "@/components/LanguageTags";
 import MovieSlider from "@/components/MovieSlider";
 import PromotionBanner from "@/components/PromotionBanner";
 import ShareButton from "@/components/ShareButton";
@@ -71,11 +72,11 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
             <div className="meta-line">
               <span className="rating-badge">{formatType(movie.type)}</span>
               {movie.release_year ? <span>{movie.release_year}</span> : null}
-              {movie.language ? <span>{movie.language}</span> : null}
               {formatDuration(movie.duration_minutes) ? <span>{formatDuration(movie.duration_minutes)}</span> : null}
               {movie.rating ? <span>Rating {movie.rating}</span> : null}
             </div>
             <h1>{movie.title}</h1>
+            <LanguageTags value={movie.language} />
             <p className="muted">{movie.description}</p>
             <div className="chip-row">
               {movie.genres?.map((genre) => (
