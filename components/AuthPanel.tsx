@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { LogIn, UserPlus } from "lucide-react";
+import BrandLogo from "@/components/BrandLogo";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 function getSafeNext(value: string | null) {
@@ -98,9 +99,7 @@ export default function AuthPanel({
   return (
     <div className="auth-page">
       <section className="auth-card">
-        <Link className="brand auth-brand" href="/">
-          Watch<span>Finder</span>
-        </Link>
+        <BrandLogo variant="auth" />
         <div>
           <h1>{isLogin ? "Welcome back" : "Create your WatchFinder account"}</h1>
           <p className="muted">

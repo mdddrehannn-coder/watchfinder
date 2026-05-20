@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Clock, Heart, LogOut, MessageSquare, Moon, Share2, Settings } from "lucide-react";
+import BrandLogo from "@/components/BrandLogo";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 export default function ProfileMenu({ initialEmail }: { initialEmail: string }) {
@@ -30,7 +31,7 @@ export default function ProfileMenu({ initialEmail }: { initialEmail: string }) 
   return (
     <div className="form-grid">
       <div className="panel">
-        <div className="platform-logo">WF</div>
+        <BrandLogo href="" variant="profile" />
         <h2>Your Account</h2>
         <p className="muted">{email}</p>
         <button className="button" onClick={logout} type="button">

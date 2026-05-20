@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
 import ProfileMenu from "@/components/ProfileMenu";
 import { getCurrentUserAndProfile } from "@/lib/data";
 
@@ -15,7 +16,7 @@ export default async function ProfilePage() {
     return (
       <main className="page-inner">
         <section className="section panel profile-login-card">
-          <div className="platform-logo">WF</div>
+          <BrandLogo variant="profile" />
           <h1>Please login to access your profile</h1>
           <p className="muted">Login to save favorites and watch history.</p>
           <Link className="button primary" href="/login?next=/profile">
@@ -28,6 +29,7 @@ export default async function ProfilePage() {
 
   return (
     <main className="page-inner">
+      <BrandLogo variant="profile" />
       <h1>Profile</h1>
       <ProfileMenu initialEmail={user.email || "Signed in"} />
     </main>
