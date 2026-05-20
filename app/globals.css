@@ -555,6 +555,13 @@ img {
   justify-content: center;
 }
 
+.otp-input {
+  text-align: center;
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: 0.45rem;
+}
+
 .auth-switch a {
   color: var(--text);
   font-weight: 800;

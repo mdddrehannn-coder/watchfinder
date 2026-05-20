@@ -10,6 +10,18 @@ function getSafeNext(value: string | null) {
   return value?.startsWith("/") ? value : "/profile";
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function friendlyAuthError(message: string) {
+  const normalized = message.toLowerCase();
+  if (normalized.includes("email not confirmed") || normalized.includes("not confirmed")) {
+    return "Please verify your email before logging in";
+  }
+  return message;
+}
+
 export default function AuthPanel({
   mode
 }: {
@@ -40,22 +52,44 @@ export default function AuthPanel({
         return;
       }
 
+      if (!isValidEmail(email)) {
+        setError("Please enter a valid email address.");
+        return;
+      }
+
+      if (password.length < 6) {
+        setError("Password must be at least 6 characters.");
+        return;
+      }
+
       if (!isLogin && password !== confirmPassword) {
         setError("Passwords do not match.");
         return;
       }
 
-      const result = isLogin
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password });
+      if (isLogin) {
+        const result = await supabase.auth.signInWithPassword({ email, password });
 
-      if (result.error) {
-        setError(result.error.message);
+        if (result.error) {
+          setError(friendlyAuthError(result.error.message));
+          return;
+        }
+
+        setStatus("Login successful. Redirecting...");
+        window.location.href = next;
         return;
       }
 
-      setStatus(isLogin ? "Login successful. Redirecting..." : "Account created. Redirecting...");
-      window.location.href = next;
+      const result = await supabase.auth.signUp({ email, password });
+
+      if (result.error) {
+        setError(friendlyAuthError(result.error.message));
+        return;
+      }
+
+      await supabase.auth.signOut();
+      setStatus("Verification code sent. Redirecting...");
+      window.location.href = `/verify-email?email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`;
     } finally {
       setBusy(false);
     }
@@ -117,6 +151,11 @@ export default function AuthPanel({
             {isLogin ? "Create account" : "Login"}
           </Link>
         </p>
+        {isLogin ? (
+          <p className="muted auth-switch">
+            <Link href="/forgot-password">Forgot password?</Link>
+          </p>
+        ) : null}
       </section>
     </div>
   );

@@ -91,17 +91,13 @@ No new SQL schema is generated in this repo.
 ## Sign Up
 
 1. Configure Supabase Auth.
-2. Enable email/password signups in Supabase Auth.
-3. Visit `/signup` to create an account, or `/login` to sign in.
+2. Enable email/password signups and email confirmation in Supabase Auth.
+3. Visit `/signup` to create an account with email and password.
+4. After signup, WatchFinder redirects to `/verify-email?email=user@example.com`.
+5. Enter the 6 digit verification code from email to finish account verification.
+6. Visit `/login` to sign in with email and password.
 
-Email/password login works directly with Supabase Auth and does not require Google OAuth.
-
-Optional: if you enable an OAuth provider later, add these Supabase Auth redirect URLs:
-
-```text
-http://localhost:3000/auth/callback
-https://YOUR_VERCEL_DOMAIN/auth/callback
-```
+Email/password login works directly with Supabase Auth. The main auth flow uses password plus verification code only.
 
 ## Make Your User Admin
 
