@@ -236,14 +236,29 @@ export default function AdminMovieForm({
         <div className="form-grid two">
           <div className="field"><label>Title <span className="required">*</span></label><input required value={title} onChange={(e) => updateTitle(e.target.value)} /></div>
           <div className="field"><label>Slug <span className="required">*</span></label><input required value={slug} onChange={(e) => setSlug(slugify(e.target.value))} /></div>
-          <div className="field"><label>Type</label><select name="type"><option value="movie">Movie</option><option value="tv_show">TV Show</option><option value="anime">Anime</option><option value="short_film">Short Film</option></select></div>
-          <div className="field"><label>Status <span className="required">*</span></label><select name="status" required defaultValue="draft"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></div>
           <div className="field"><label>Release Year</label><input name="release_year" inputMode="numeric" /></div>
           <div className="field"><label>Duration Minutes</label><input name="duration_minutes" inputMode="numeric" /></div>
           <div className="field"><label>Rating</label><input name="rating" inputMode="decimal" /></div>
           <div className="field"><label>Language</label><input name="language" placeholder="Hindi, English, Tamil" /></div>
           <div className="field"><label>Director</label><input name="director" /></div>
           <div className="field"><label>Popularity Score</label><input name="popularity_score" inputMode="numeric" defaultValue="0" /></div>
+        </div>
+        <div className="field">
+          <label>Type</label>
+          <div className="option-group">
+            <label className="option-card"><input type="radio" name="type" value="movie" defaultChecked /> <span>Movie</span></label>
+            <label className="option-card"><input type="radio" name="type" value="tv_show" /> <span>TV Show</span></label>
+            <label className="option-card"><input type="radio" name="type" value="anime" /> <span>Anime</span></label>
+            <label className="option-card"><input type="radio" name="type" value="short_film" /> <span>Short Film</span></label>
+          </div>
+        </div>
+        <div className="field">
+          <label>Status <span className="required">*</span></label>
+          <div className="option-group status-options">
+            <label className="option-card"><input type="radio" name="status" value="draft" defaultChecked required /> <span>Draft</span><small>Hidden from public website</small></label>
+            <label className="option-card option-card-published"><input type="radio" name="status" value="published" required /> <span>Published</span><small>Visible on website</small></label>
+            <label className="option-card"><input type="radio" name="status" value="archived" required /> <span>Archived</span><small>Hidden/old listing</small></label>
+          </div>
         </div>
         <div className="field"><label>Description</label><textarea name="description" /></div>
         <div className="chip-row">
