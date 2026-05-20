@@ -30,10 +30,7 @@ export default function FavoriteButton({ movieId }: { movieId: string }) {
     setBusy(true);
     try {
       if (!userId) {
-        await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: { redirectTo: `${window.location.origin}/auth/callback` }
-        });
+        window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
         return;
       }
       if (favoriteId) {

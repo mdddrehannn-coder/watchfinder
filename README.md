@@ -91,18 +91,17 @@ No new SQL schema is generated in this repo.
 ## Sign Up
 
 1. Configure Supabase Auth.
-2. Enable Google OAuth or your preferred provider.
-3. Add these Supabase Auth redirect URLs:
+2. Enable email/password signups in Supabase Auth.
+3. Visit `/signup` to create an account, or `/login` to sign in.
+
+Email/password login works directly with Supabase Auth and does not require Google OAuth.
+
+Optional: if you enable an OAuth provider later, add these Supabase Auth redirect URLs:
 
 ```text
 http://localhost:3000/auth/callback
 https://YOUR_VERCEL_DOMAIN/auth/callback
 ```
-
-4. Visit `/profile`.
-5. Login.
-
-The dedicated auth pages are `/login` and `/signup`. Both use Supabase Google OAuth and redirect through `/auth/callback`.
 
 ## Make Your User Admin
 

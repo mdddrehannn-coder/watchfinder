@@ -550,7 +550,7 @@ img {
   line-height: 1;
 }
 
-.auth-google {
+.auth-submit {
   width: 100%;
   justify-content: center;
 }
@@ -558,6 +558,15 @@ img {
 .auth-switch a {
   color: var(--text);
   font-weight: 800;
+}
+
+.auth-error {
+  margin: 0;
+  color: #fecdd3;
+  background: rgba(244, 63, 94, 0.13);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  border-radius: 0.7rem;
+  padding: 0.75rem 0.85rem;
 }
 
 @keyframes pulse {
