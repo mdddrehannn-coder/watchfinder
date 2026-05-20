@@ -12,6 +12,11 @@ export const storageBuckets = {
 } as const;
 
 export async function uploadPublicFile(bucket: string, path: string, file: File) {
+  const uploaded = await uploadPublicFileWithPath(bucket, path, file);
+  return uploaded.publicUrl;
+}
+
+export async function uploadPublicFileWithPath(bucket: string, path: string, file: File) {
   const supabase = createSupabaseBrowserClient();
   const extension = file.name.split(".").pop();
   const cleanPath = `${path}/${slugify(file.name.replace(/\.[^.]+$/, ""))}-${Date.now()}${extension ? `.${extension}` : ""}`;
@@ -23,7 +28,11 @@ export async function uploadPublicFile(bucket: string, path: string, file: File)
   if (error) throw error;
 
   const { data } = supabase.storage.from(bucket).getPublicUrl(cleanPath);
-  return data.publicUrl;
+  return {
+    publicUrl: data.publicUrl,
+    path: cleanPath,
+    fileName: file.name
+  };
 }
 
 export const uploadPoster = (movieId: string, file: File) =>
@@ -40,6 +49,9 @@ export const uploadBlogImage = (blogId: string, file: File) =>
 
 export const uploadLicenseDocument = (movieId: string, file: File) =>
   uploadPublicFile(storageBuckets.licenses, `licenses/${movieId}`, file);
+
+export const uploadLicenseDocumentWithPath = (movieId: string, file: File) =>
+  uploadPublicFileWithPath(storageBuckets.licenses, `licenses/${movieId}`, file);
 
 export const uploadAvatar = (userId: string, file: File) =>
   uploadPublicFile(storageBuckets.avatars, `avatars/${userId}`, file);

@@ -433,6 +433,32 @@ img {
   gap: 0.9rem;
 }
 
+.admin-movie-form {
+  gap: 1.25rem;
+}
+
+.admin-form-section {
+  display: grid;
+  gap: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  padding: 1rem;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.admin-form-section legend {
+  padding: 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.form-helper {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .field {
   display: grid;
   gap: 0.4rem;
@@ -458,6 +484,52 @@ img {
 .field textarea {
   min-height: 8rem;
   resize: vertical;
+}
+
+.required {
+  color: #fb7185;
+}
+
+.form-message {
+  margin: 0;
+  border-radius: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+}
+
+.form-message.success {
+  color: #bbf7d0;
+  background: rgba(51, 209, 122, 0.13);
+  border-color: rgba(51, 209, 122, 0.35);
+}
+
+.form-message.error {
+  color: #fecdd3;
+  background: rgba(244, 63, 94, 0.13);
+  border-color: rgba(244, 63, 94, 0.35);
+}
+
+.form-message.info {
+  color: #cffafe;
+  background: rgba(34, 211, 238, 0.12);
+  border-color: rgba(34, 211, 238, 0.28);
+}
+
+.image-preview {
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--panel);
+  object-fit: cover;
+}
+
+.poster-preview {
+  width: min(11rem, 100%);
+  aspect-ratio: 2 / 3;
+}
+
+.banner-preview {
+  width: 100%;
+  aspect-ratio: 16 / 7;
 }
 
 .admin-shell {

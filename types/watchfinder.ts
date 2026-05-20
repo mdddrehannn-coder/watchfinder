@@ -84,8 +84,11 @@ export type MoviePlatformLink = {
   movie_id: string;
   platform_id: string;
   watch_url?: string | null;
-  label?: string | null;
+  availability_type?: string | null;
+  language?: string | null;
+  quality?: string | null;
   is_official?: boolean | null;
+  is_active?: boolean | null;
   platforms?: Platform | null;
 };
 
@@ -140,9 +143,12 @@ export type LicenseDocument = {
   id: string;
   movie_id?: string | null;
   file_url?: string | null;
-  document_url?: string | null;
-  document_type?: string | null;
+  file_path?: string | null;
+  file_name?: string | null;
+  license_type?: string | null;
+  owner_name?: string | null;
   notes?: string | null;
+  uploaded_by?: string | null;
   created_at?: string | null;
 };
 

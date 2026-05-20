@@ -19,7 +19,7 @@ export default function WatchLinks({ links = [] }: { links?: MoviePlatformLink[]
             rel="noreferrer"
             key={link.id}
           >
-            {link.platforms?.name || link.label || "Official link"} <ExternalLink size={16} />
+            {link.platforms?.name || "Official link"} <ExternalLink size={16} />
           </a>
         ))}
       </div>

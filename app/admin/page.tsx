@@ -138,7 +138,7 @@ export default async function AdminPage() {
           <h2>License Documents</h2>
           <AdminLicenseForm movies={movies} />
           <div className="form-grid section">
-            {collections.licenseDocuments.map((item: any) => <div className="panel" key={item.id}><strong>{item.document_type || "License"}</strong><p className="muted">{item.movie_id}</p></div>)}
+            {collections.licenseDocuments.map((item: any) => <div className="panel" key={item.id}><strong>{item.license_type || "License"}</strong><p className="muted">{item.movie_id}</p></div>)}
           </div>
         </section>
 

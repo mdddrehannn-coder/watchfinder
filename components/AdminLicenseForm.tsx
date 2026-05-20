@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
-import { uploadLicenseDocument } from "@/lib/storage";
+import { uploadLicenseDocumentWithPath } from "@/lib/storage";
 import type { Movie } from "@/types/watchfinder";
 
 export default function AdminLicenseForm({ movies }: { movies: Movie[] }) {
@@ -18,13 +18,17 @@ export default function AdminLicenseForm({ movies }: { movies: Movie[] }) {
       return;
     }
     const supabase = createSupabaseBrowserClient();
-    const documentUrl = await uploadLicenseDocument(movieId, file);
+    const { data: auth } = await supabase.auth.getUser();
+    const uploaded = await uploadLicenseDocumentWithPath(movieId, file);
     const { error } = await supabase.from("license_documents").insert({
       movie_id: movieId,
-      file_url: documentUrl,
-      document_url: documentUrl,
-      document_type: form.get("document_type"),
-      notes: form.get("notes")
+      file_url: uploaded.publicUrl,
+      file_path: uploaded.path,
+      file_name: uploaded.fileName,
+      license_type: form.get("license_type"),
+      owner_name: form.get("owner_name"),
+      notes: form.get("notes"),
+      uploaded_by: auth.user?.id ?? null
     });
     setStatus(error ? error.message : "License document saved.");
     if (!error) event.currentTarget.reset();
@@ -35,7 +39,8 @@ export default function AdminLicenseForm({ movies }: { movies: Movie[] }) {
       <p className="legal-badge">License proof is required before WatchFinder shows full licensed video playback.</p>
       <div className="form-grid two">
         <div className="field"><label>Movie</label><select name="movie_id" required><option value="">Select movie</option>{movies.map((movie) => <option value={movie.id} key={movie.id}>{movie.title}</option>)}</select></div>
-        <div className="field"><label>Document Type</label><input name="document_type" defaultValue="license" /></div>
+        <div className="field"><label>License Type</label><input name="license_type" defaultValue="license" /></div>
+        <div className="field"><label>Owner Name</label><input name="owner_name" /></div>
         <div className="field"><label>Document</label><input name="document" type="file" required /></div>
       </div>
       <div className="field"><label>Notes</label><textarea name="notes" /></div>
