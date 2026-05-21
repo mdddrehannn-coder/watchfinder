@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Clock, Heart, LogOut, MessageSquare, Moon, Share2, Settings } from "lucide-react";
+import { Clock, Heart, LogOut, MessageSquare, Share2, Settings, SunMoon } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import InstallAppButton from "@/components/InstallAppButton";
-import ThemeModeSelector from "@/components/ThemeModeSelector";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 export default function ProfileMenu({ initialEmail }: { initialEmail: string }) {
@@ -46,13 +45,8 @@ export default function ProfileMenu({ initialEmail }: { initialEmail: string }) 
         <Link className="panel" href="/history"><Clock size={22} /> <strong>Watch History</strong></Link>
         <Link className="panel" href="/feedback"><MessageSquare size={22} /> <strong>Feedback</strong></Link>
         <Link className="panel" href="/settings"><Settings size={22} /> <strong>Settings</strong></Link>
+        <Link className="panel" href="/settings/theme"><SunMoon size={22} /> <strong>Theme Settings</strong><p className="muted">Auto, Dark/Night, or Day/Light mode</p></Link>
         <button className="panel" onClick={share} type="button"><Share2 size={22} /> <strong>Share WatchFinder</strong></button>
-        <div className="panel"><Moon size={22} /> <strong>Dark mode</strong><p className="muted">Default fallback</p></div>
-      </div>
-
-      <div className="panel appearance-card">
-        <h2>Appearance</h2>
-        <ThemeModeSelector />
       </div>
 
       <div className="panel install-app-card">

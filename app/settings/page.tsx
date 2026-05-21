@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import ThemeModeSelector from "@/components/ThemeModeSelector";
+import Link from "next/link";
+import { SunMoon } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Settings",
@@ -12,8 +13,12 @@ export default function SettingsPage() {
       <h1>Settings</h1>
       <section className="section form-grid">
         <div className="panel">
-          <h2>Appearance</h2>
-          <ThemeModeSelector />
+          <SunMoon size={24} />
+          <h2>Theme Settings</h2>
+          <p className="muted">Auto, Dark/Night, or Day/Light mode.</p>
+          <Link className="button primary" href="/settings/theme">
+            Open Theme Settings
+          </Link>
         </div>
         <div className="panel">
           <h2>Language Preference</h2>

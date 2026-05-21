@@ -8,9 +8,11 @@
   --muted: #a7adbd;
   --line: rgba(255, 255, 255, 0.1);
   --brand: #f43f5e;
+  --brand-strong: #e11d48;
   --brand-2: #22d3ee;
   --good: #33d17a;
   --warn: #fbbf24;
+  --button-text: #ffffff;
   --shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
 }
 
@@ -23,10 +25,12 @@ html.theme-light {
   --text: #111827;
   --muted: #5f6675;
   --line: rgba(15, 23, 42, 0.12);
-  --brand: #f43f5e;
+  --brand: #e11d48;
+  --brand-strong: #be123c;
   --brand-2: #0e7490;
   --good: #15803d;
   --warn: #b45309;
+  --button-text: #ffffff;
   --shadow: 0 18px 40px rgba(15, 23, 42, 0.1);
 }
 
@@ -313,6 +317,10 @@ html.theme-light .hero-search {
 .tab,
 .button,
 .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.07);
   color: var(--text);
@@ -329,10 +337,21 @@ html.theme-light .icon-button {
 }
 
 .button.primary {
-  background: linear-gradient(135deg, var(--brand), #fb7185);
+  background: linear-gradient(135deg, var(--brand-strong), var(--brand));
   border-color: transparent;
-  color: #fff;
+  color: var(--button-text);
   font-weight: 800;
+  box-shadow: 0 12px 28px rgba(244, 63, 94, 0.22);
+}
+
+.button.primary:hover {
+  filter: brightness(0.96);
+}
+
+.button:disabled,
+.button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .button.ghost {
@@ -1593,10 +1612,30 @@ html.theme-light .profile-login-card {
   justify-content: center;
 }
 
+.install-help {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.install-help svg {
+  flex: 0 0 auto;
+  margin-top: 0.12rem;
+  color: var(--brand);
+}
+
 .appearance-card,
 .theme-selector {
   display: grid;
   gap: 0.85rem;
+}
+
+.theme-settings-panel {
+  display: grid;
+  gap: 1rem;
 }
 
 .theme-option-group {
@@ -1605,6 +1644,13 @@ html.theme-light .profile-login-card {
 
 .theme-option {
   text-align: left;
+}
+
+.theme-option-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .theme-option svg {
@@ -1619,6 +1665,126 @@ html.theme-light .profile-login-card {
 
 html.theme-light .theme-option.selected {
   background: rgba(244, 63, 94, 0.08);
+}
+
+.active-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+  border-radius: 999px;
+  padding: 0.18rem 0.45rem;
+  background: rgba(244, 63, 94, 0.16);
+  color: #fecdd3;
+  border: 1px solid rgba(244, 63, 94, 0.28);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+html.theme-light .active-badge {
+  background: rgba(225, 29, 72, 0.1);
+  color: #be123c;
+  border-color: rgba(225, 29, 72, 0.28);
+}
+
+html.theme-light .button:not(.primary):not(.hero-secondary-button) {
+  background: #ffffff;
+  color: #111827;
+  border-color: rgba(15, 23, 42, 0.15);
+}
+
+html.theme-light .button:not(.primary):not(.hero-secondary-button):hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+html.theme-light .button.primary {
+  background: linear-gradient(135deg, var(--brand-strong), var(--brand));
+  border-color: transparent;
+  color: #ffffff;
+  text-shadow: none;
+}
+
+html.theme-light .button.ghost:not(.hero-secondary-button) {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+}
+
+html.theme-light .chip,
+html.theme-light .tab,
+html.theme-light .icon-button {
+  color: #111827;
+  border-color: rgba(15, 23, 42, 0.14);
+}
+
+html.theme-light .chip:hover,
+html.theme-light .tab:hover,
+html.theme-light .icon-button:hover {
+  background: #f1f5f9;
+}
+
+html.theme-light .hero-secondary-button {
+  background: rgba(2, 4, 9, 0.62);
+  border-color: rgba(255, 255, 255, 0.48);
+  color: #ffffff;
+}
+
+html.theme-light input::placeholder,
+html.theme-light textarea::placeholder {
+  color: #7a8190;
+}
+
+html.theme-light .field input,
+html.theme-light .field select,
+html.theme-light .field textarea {
+  border-color: rgba(15, 23, 42, 0.16);
+}
+
+html.theme-light .language-select-chip:has(input:checked),
+html.theme-light .relation-chip.selected {
+  border-color: rgba(14, 116, 144, 0.55);
+  background: rgba(14, 116, 144, 0.12);
+  color: #0f172a;
+  box-shadow: 0 0 0 1px rgba(14, 116, 144, 0.14);
+}
+
+html.theme-light .option-card:has(input:checked) {
+  border-color: rgba(14, 116, 144, 0.58);
+  background: rgba(14, 116, 144, 0.1);
+  color: #0f172a;
+}
+
+html.theme-light .option-card-published:has(input:checked) {
+  border-color: rgba(21, 128, 61, 0.62);
+  background: rgba(21, 128, 61, 0.1);
+}
+
+html.theme-light .form-message.success {
+  color: #166534;
+  background: rgba(21, 128, 61, 0.08);
+  border-color: rgba(21, 128, 61, 0.22);
+}
+
+html.theme-light .form-message.error,
+html.theme-light .auth-error {
+  color: #be123c;
+  background: rgba(225, 29, 72, 0.08);
+  border-color: rgba(225, 29, 72, 0.22);
+}
+
+html.theme-light .form-message.info {
+  color: #0f596b;
+  background: rgba(14, 116, 144, 0.08);
+  border-color: rgba(14, 116, 144, 0.22);
+}
+
+html.theme-light .bottom-nav a {
+  color: #5f6675;
+}
+
+html.theme-light .bottom-nav a:hover {
+  color: #111827;
+  background: #f1f5f9;
 }
 
 .loading-screen {

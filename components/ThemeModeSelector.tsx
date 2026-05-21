@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MonitorSmartphone, Moon, Sun } from "lucide-react";
+import { Check, MonitorSmartphone, Moon, Sun } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { STORAGE_KEY, THEME_EVENT } from "@/components/ThemeManager";
 
@@ -15,20 +15,20 @@ const OPTIONS: Array<{
 }> = [
   {
     mode: "auto",
-    label: "Auto",
-    helper: "Day light, night dark",
+    label: "Auto Theme",
+    helper: "Uses Day theme from 6 AM to 6 PM and Night theme from 6 PM to 6 AM.",
     Icon: MonitorSmartphone
   },
   {
     mode: "dark",
-    label: "Dark",
-    helper: "Always use dark OTT mode",
+    label: "Night / Dark Theme",
+    helper: "Always use dark OTT theme.",
     Icon: Moon
   },
   {
     mode: "light",
-    label: "Light",
-    helper: "Always use daytime mode",
+    label: "Day / Light Theme",
+    helper: "Always use clean light theme.",
     Icon: Sun
   }
 ];
@@ -65,8 +65,11 @@ export default function ThemeModeSelector() {
             onClick={() => choose(optionMode)}
             type="button"
           >
-            <Icon size={20} />
-            <span>{label}</span>
+            <span className="theme-option-head">
+              <Icon size={20} />
+              <span>{label}</span>
+              {mode === optionMode ? <span className="active-badge"><Check size={14} /> Active</span> : null}
+            </span>
             <small>{helper}</small>
           </button>
         ))}

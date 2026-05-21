@@ -5,6 +5,7 @@ import "@/app/globals.css";
 import BrandLogo from "@/components/BrandLogo";
 import BottomNav from "@/components/BottomNav";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import ThemeManager from "@/components/ThemeManager";
 
 export const metadata: Metadata = {
@@ -72,6 +73,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <ThemeManager />
+        <ServiceWorkerRegister />
         <div className="app-shell">
           <header className="site-header">
             <div className="header-inner">
