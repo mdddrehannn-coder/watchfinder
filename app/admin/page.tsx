@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import AdminDashboard from "@/components/AdminDashboard";
 import {
+  getAdminAnalyticsData,
   getAdminCollections,
   getAllAdminMovies,
   getCastMembers,
@@ -43,12 +44,13 @@ export default async function AdminPage() {
     );
   }
 
-  const [movies, genres, platforms, castMembers, collections] = await Promise.all([
+  const [movies, genres, platforms, castMembers, collections, analytics] = await Promise.all([
     getAllAdminMovies(),
     getGenres(),
     getPlatforms(),
     getCastMembers(),
-    getAdminCollections()
+    getAdminCollections(),
+    getAdminAnalyticsData()
   ]);
 
   return (
@@ -61,6 +63,7 @@ export default async function AdminPage() {
         platforms={platforms}
         castMembers={castMembers}
         collections={collections}
+        analytics={analytics}
       />
     </main>
   );

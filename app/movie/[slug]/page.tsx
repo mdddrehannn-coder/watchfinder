@@ -4,6 +4,7 @@ import AdSlot from "@/components/AdSlot";
 import FavoriteButton from "@/components/FavoriteButton";
 import LicensedVideoPlayer from "@/components/LicensedVideoPlayer";
 import LanguageTags from "@/components/LanguageTags";
+import MovieAnalyticsTracker from "@/components/MovieAnalyticsTracker";
 import MovieSlider from "@/components/MovieSlider";
 import PromotionBanner from "@/components/PromotionBanner";
 import ShareButton from "@/components/ShareButton";
@@ -69,6 +70,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
 
   return (
     <main className="page-inner">
+      <MovieAnalyticsTracker movieId={movie.id} slug={movie.slug} />
       <WatchHistoryRecorder movieId={movie.id} />
       <PromotionBanner promotion={topPromos[0]} />
       <AdSlot slot={topAds[0]} />
@@ -139,8 +141,13 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
         </div>
       </section>
 
-      <WatchLinks links={movie.movie_platform_links} />
-      <TrailerPlayer trailerUrl={movie.trailer_url} />
+      <WatchLinks links={movie.movie_platform_links} movie={{ id: movie.id, slug: movie.slug }} />
+      <TrailerPlayer
+        trailerUrl={movie.trailer_url}
+        movieId={movie.id}
+        movieSlug={movie.slug}
+        provider={movie.trailer_provider || "youtube"}
+      />
       <PromotionBanner promotion={middlePromos[0]} />
       <AdSlot slot={middleAds[0]} />
       <LicensedVideoPlayer movie={movie} hasProof={hasProof} />

@@ -342,6 +342,44 @@ export async function getAdminCollections() {
   };
 }
 
+export async function getAdminAnalyticsData() {
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) {
+    return {
+      events: [],
+      sessions: []
+    };
+  }
+
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const [events, sessions] = await Promise.all([
+      supabase
+        .from("analytics_events")
+        .select("*")
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(5000),
+      supabase
+        .from("analytics_sessions")
+        .select("*")
+        .order("last_seen_at", { ascending: false })
+        .limit(500)
+    ]);
+
+    return {
+      events: events.data ?? [],
+      sessions: sessions.data ?? []
+    };
+  } catch {
+    return {
+      events: [],
+      sessions: []
+    };
+  }
+}
+
 export async function getSimilarMovies(movie: Movie) {
   const genre = movie.genres?.[0]?.slug;
   const candidates = await getMovies({ type: movie.type, genreSlug: genre, limit: 12 });

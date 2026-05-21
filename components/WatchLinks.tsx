@@ -1,4 +1,7 @@
+"use client";
+
 import { ExternalLink } from "lucide-react";
+import { trackWatchLinkClick } from "@/lib/analytics";
 import { splitLanguages } from "@/lib/languages";
 import type { MoviePlatformLink } from "@/types/watchfinder";
 
@@ -17,7 +20,13 @@ function splitCsv(value?: string | null) {
     .filter(Boolean);
 }
 
-export default function WatchLinks({ links = [] }: { links?: MoviePlatformLink[] }) {
+export default function WatchLinks({
+  links = [],
+  movie
+}: {
+  links?: MoviePlatformLink[];
+  movie?: { id: string; slug: string };
+}) {
   const official = links.filter((link) => link.watch_url && link.is_official !== false);
   if (!official.length) return null;
 
@@ -34,6 +43,9 @@ export default function WatchLinks({ links = [] }: { links?: MoviePlatformLink[]
             target="_blank"
             rel="noreferrer"
             key={link.id}
+            onClick={() => {
+              if (movie) trackWatchLinkClick(movie, link.platforms?.name || "Official link");
+            }}
           >
             <span className="watch-link-title">
               {link.platforms?.name || "Official link"} <ExternalLink size={16} />

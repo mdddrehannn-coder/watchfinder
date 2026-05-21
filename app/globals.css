@@ -1758,6 +1758,41 @@ html.theme-light .status-archived {
   color: #475569;
 }
 
+.admin-mini-table {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+}
+
+.admin-mini-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(4.5rem, auto));
+  gap: 0.55rem;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding: 0.55rem 0;
+  font-size: 0.86rem;
+}
+
+.admin-mini-row:last-child {
+  border-bottom: 0;
+}
+
+.admin-mini-row strong,
+.admin-mini-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-mini-row img {
+  width: 2rem;
+  height: 2.75rem;
+  border-radius: 0.35rem;
+  object-fit: cover;
+}
+
 .bottom-nav {
   position: fixed;
   left: 0.75rem;
@@ -2376,6 +2411,10 @@ html.theme-light .bottom-nav a:hover {
 }
 
 @media (max-width: 520px) {
+  .admin-mini-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
   .brand-logo-header .brand-wordmark-shell {
     display: none;
   }

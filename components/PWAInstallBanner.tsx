@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import { usePWAInstall } from "@/components/PWAInstallManager";
+import { trackEvent } from "@/lib/analytics";
 
 const DISMISSED_AT_KEY = "watchfinder-install-banner-dismissed-at";
 const LATER_KEY = "watchfinder-install-banner-later-session";
@@ -24,10 +25,12 @@ export default function PWAInstallBanner() {
     if (dismissedToday || laterThisSession) return;
 
     const showTimer = window.setTimeout(() => setVisible(true), 1000);
+    const analyticsTimer = window.setTimeout(() => trackEvent({ event_type: "app_install_prompt_shown" }), 1000);
     const hideTimer = window.setTimeout(() => setVisible(false), 9000);
 
     return () => {
       window.clearTimeout(showTimer);
+      window.clearTimeout(analyticsTimer);
       window.clearTimeout(hideTimer);
     };
   }, [installed, pathname]);

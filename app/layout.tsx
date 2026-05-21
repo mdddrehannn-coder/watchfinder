@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import "@/app/globals.css";
+import AnalyticsTracker from "@/components/AnalyticsTracker";
 import BrandLogo from "@/components/BrandLogo";
 import BottomNav from "@/components/BottomNav";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
@@ -77,6 +79,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeManager />
         <ServiceWorkerRegister />
         <PWAInstallManager>
+          <Suspense fallback={null}>
+            <AnalyticsTracker />
+          </Suspense>
           <div className="app-shell">
             <header className="site-header">
               <div className="header-inner">

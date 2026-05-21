@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import PWAInstallInstructions, { type InstallPlatform } from "@/components/PWAInstallInstructions";
+import { trackEvent } from "@/lib/analytics";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -63,6 +64,7 @@ export default function PWAInstallManager({ children }: { children: React.ReactN
       setPromptEvent(null);
       setInstructionsOpen(false);
       setStatus("WatchFinder is already installed.");
+      trackEvent({ event_type: "app_installed" });
     }
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
@@ -75,6 +77,7 @@ export default function PWAInstallManager({ children }: { children: React.ReactN
   }, []);
 
   const promptInstall = useCallback(async (): Promise<InstallResult> => {
+    trackEvent({ event_type: "app_install_clicked" });
     if (installed || isStandalone()) {
       setInstalled(true);
       setStatus("WatchFinder is already installed.");

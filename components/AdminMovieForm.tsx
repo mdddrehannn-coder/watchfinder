@@ -75,7 +75,8 @@ export default function AdminMovieForm({
   initialMovie = null,
   onAddNew,
   onBackToMovies,
-  onSaved
+  onSaved,
+  movieAnalytics
 }: {
   genres: Genre[];
   castMembers: CastMember[];
@@ -84,6 +85,14 @@ export default function AdminMovieForm({
   onAddNew?: () => void;
   onBackToMovies?: () => void;
   onSaved?: (movie: Movie) => void;
+  movieAnalytics?: {
+    views: number;
+    todayViews: number;
+    watchSeconds: number;
+    trailerPlays: number;
+    linkClicks: number;
+    lastViewedAt?: string | null;
+  };
 }) {
   const isEditMode = Boolean(initialMovie?.id);
   const firstPlatformLink = initialMovie?.movie_platform_links?.[0] ?? null;
@@ -474,6 +483,7 @@ export default function AdminMovieForm({
   const filteredCast = castMembers.filter((member) =>
     member.name.toLowerCase().includes(castSearch.toLowerCase())
   );
+  const watchMinutes = movieAnalytics ? Math.round(movieAnalytics.watchSeconds / 60) : 0;
 
   return (
     <form ref={formRef} className="form-grid panel admin-movie-form" onSubmit={submit}>
@@ -521,6 +531,19 @@ export default function AdminMovieForm({
           <p>To show this movie in homepage slider, set Status = Published and enable Featured, Latest, or Trending. Add a banner image for best hero display. To show in Trending Now: enable Trending. To show in Hindi Dubbed Picks: select Hindi or Hindi Dubbed language. To show in New OTT Releases: enable Latest. To show in Official YouTube Movies: choose YouTube platform and Official availability. To show in Free Legal Movies: only select Free Legal when the full video is legally available.</p>
         </div>
       </FormSection>
+
+      {isEditMode && movieAnalytics ? (
+        <FormSection title="Movie Analytics" helper="Quick performance snapshot for this listing. Full analytics are available in Admin > Analytics.">
+          <div className="grid">
+            <div className="admin-card"><strong>{movieAnalytics.views}</strong><p className="muted">Total views</p></div>
+            <div className="admin-card"><strong>{movieAnalytics.todayViews}</strong><p className="muted">Views today</p></div>
+            <div className="admin-card"><strong>{watchMinutes}m</strong><p className="muted">Watch time</p></div>
+            <div className="admin-card"><strong>{movieAnalytics.trailerPlays}</strong><p className="muted">Trailer plays</p></div>
+            <div className="admin-card"><strong>{movieAnalytics.linkClicks}</strong><p className="muted">Official link clicks</p></div>
+            <div className="admin-card"><strong>{movieAnalytics.lastViewedAt ? new Date(movieAnalytics.lastViewedAt).toLocaleDateString() : "None"}</strong><p className="muted">Last viewed</p></div>
+          </div>
+        </FormSection>
+      ) : null}
 
       <FormSection title="Basic Details" helper="Add the core title metadata. Keep status as draft until the listing is ready for the public site.">
         <div className="form-grid two">

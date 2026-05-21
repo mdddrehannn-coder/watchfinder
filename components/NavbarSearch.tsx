@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
+import { trackSearch } from "@/lib/analytics";
 import { splitLanguages } from "@/lib/languages";
 
 type Suggestion = {
@@ -71,6 +72,7 @@ export default function NavbarSearch() {
       return;
     }
     setOpen(false);
+    trackSearch(trimmed, { source: "navbar", result_count: results.length });
     router.push(`/search?q=${encodeURIComponent(trimmed)}`);
   }
 

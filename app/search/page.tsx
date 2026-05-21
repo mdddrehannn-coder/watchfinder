@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import SearchFilters from "@/components/SearchFilters";
 import SearchHistory from "@/components/SearchHistory";
 import MovieGrid from "@/components/MovieGrid";
+import SearchAnalyticsTracker from "@/components/SearchAnalyticsTracker";
 import { getGenres, getMovies, getPlatforms, getPopularSearches } from "@/lib/data";
 import {
   filterDiscoveryMovies,
@@ -46,6 +47,7 @@ export default async function SearchPage({
 
   return (
     <main className="page-inner">
+      <SearchAnalyticsTracker query={params.q} resultCount={results.length} />
       <section className="search-hero">
         <h1>Search WatchFinder</h1>
         <form className="simple-search-form" action="/search">
