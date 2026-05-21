@@ -24,8 +24,9 @@ export default function LicensedVideoPlayer({
   hasProof: boolean;
 }) {
   const src = sourceFor(movie);
+  const hasRequiredLicenseFields = Boolean(movie.license_type && movie.license_owner_name && movie.video_provider);
 
-  if (!movie.has_licensed_video || !src || !hasProof) return null;
+  if (!movie.has_licensed_video || !src || !hasProof || !hasRequiredLicenseFields) return null;
 
   return (
     <section className="section">

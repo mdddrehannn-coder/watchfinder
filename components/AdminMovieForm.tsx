@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, Dispatch, FormEvent, SetStateAction, useEffect, useState } from "react";
 import { Eye, Save } from "lucide-react";
 import { slugify } from "@/lib/format";
 import { joinLanguages, WATCHFINDER_LANGUAGES } from "@/lib/languages";
@@ -13,6 +13,25 @@ type Message = {
   type: "success" | "error" | "info";
   text: string;
 };
+
+const QUALITY_OPTIONS = [
+  "360p",
+  "480p",
+  "720p HD",
+  "1080p Full HD",
+  "1440p 2K",
+  "2160p 4K",
+  "HDR",
+  "Dolby Vision"
+];
+
+const AVAILABILITY_OPTIONS = [
+  { label: "Subscription", value: "subscription" },
+  { label: "Rent", value: "rent" },
+  { label: "Buy", value: "buy" },
+  { label: "Free", value: "free" },
+  { label: "Official", value: "official" }
+];
 
 function toNullableString(value: FormDataEntryValue | null) {
   const stringValue = String(value || "").trim();
@@ -55,6 +74,12 @@ export default function AdminMovieForm({
   const [slug, setSlug] = useState("");
   const [hasLicensedVideo, setHasLicensedVideo] = useState(false);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  const [selectedCast, setSelectedCast] = useState<string[]>([]);
+  const [genreSearch, setGenreSearch] = useState("");
+  const [castSearch, setCastSearch] = useState("");
+  const [selectedWatchLanguages, setSelectedWatchLanguages] = useState<string[]>([]);
+  const [selectedQualities, setSelectedQualities] = useState<string[]>([]);
   const [message, setMessage] = useState<Message | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedMovieSlug, setSavedMovieSlug] = useState<string | null>(null);
@@ -95,8 +120,13 @@ export default function AdminMovieForm({
     const watchUrl = toNullableString(form.get("watch_url"));
     const platformId = toNullableString(form.get("platform_id"));
     if (watchUrl && !platformId) return "Select an official platform before adding a watch link.";
+    if (platformId && !watchUrl) return "Official watch link is required when a platform is selected.";
 
     if (hasLicensedVideo) {
+      if (!toNullableString(form.get("video_provider"))) return "Video provider is required for licensed video.";
+      if (!toNullableString(form.get("video_embed_url")) && !toNullableString(form.get("video_id"))) {
+        return "Video embed URL or video ID is required for licensed video.";
+      }
       if (!toNullableString(form.get("license_type"))) return "License type is required for licensed video.";
       if (!toNullableString(form.get("license_owner_name"))) return "License owner name is required for licensed video.";
     }
@@ -110,6 +140,18 @@ export default function AdminMovieForm({
         ? current.filter((item) => item !== language)
         : [...current, language]
     );
+  }
+
+  function toggleItem(value: string, setter: Dispatch<SetStateAction<string[]>>) {
+    setter((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
+    );
+  }
+
+  function clearAddAnother() {
+    setMessage(null);
+    setSavedMovieSlug(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -150,15 +192,15 @@ export default function AdminMovieForm({
         seo_description: toNullableString(form.get("seo_description")),
         og_image_url: toNullableString(form.get("og_image_url")),
         has_licensed_video: hasLicensedVideo,
-        video_provider: toNullableString(form.get("video_provider")),
-        video_embed_url: toNullableString(form.get("video_embed_url")),
-        video_id: toNullableString(form.get("video_id")),
-        license_type: toNullableString(form.get("license_type")),
-        license_owner_name: toNullableString(form.get("license_owner_name")),
-        license_start_date: toNullableString(form.get("license_start_date")),
-        license_expiry_date: toNullableString(form.get("license_expiry_date")),
-        license_notes: toNullableString(form.get("license_notes")),
-        distribution_territory: toNullableString(form.get("distribution_territory"))
+        video_provider: hasLicensedVideo ? toNullableString(form.get("video_provider")) : null,
+        video_embed_url: hasLicensedVideo ? toNullableString(form.get("video_embed_url")) : null,
+        video_id: hasLicensedVideo ? toNullableString(form.get("video_id")) : null,
+        license_type: hasLicensedVideo ? toNullableString(form.get("license_type")) : null,
+        license_owner_name: hasLicensedVideo ? toNullableString(form.get("license_owner_name")) : null,
+        license_start_date: hasLicensedVideo ? toNullableString(form.get("license_start_date")) : null,
+        license_expiry_date: hasLicensedVideo ? toNullableString(form.get("license_expiry_date")) : null,
+        license_notes: hasLicensedVideo ? toNullableString(form.get("license_notes")) : null,
+        distribution_territory: hasLicensedVideo ? toNullableString(form.get("distribution_territory")) : null
       };
 
       const { data: movie, error } = await supabase.from("movies").insert(payload).select("id, slug").single();
@@ -177,7 +219,6 @@ export default function AdminMovieForm({
         if (imageError) throw imageError;
       }
 
-      const selectedGenres = form.getAll("genres").map(String);
       if (selectedGenres.length) {
         const { error: genreError } = await supabase
           .from("movie_genres")
@@ -185,7 +226,6 @@ export default function AdminMovieForm({
         if (genreError) throw genreError;
       }
 
-      const selectedCast = form.getAll("cast").map(String);
       if (selectedCast.length) {
         const { error: castError } = await supabase
           .from("movie_cast")
@@ -200,9 +240,9 @@ export default function AdminMovieForm({
           movie_id: movie.id,
           platform_id: platformId,
           watch_url: watchUrl,
-          availability_type: toNullableString(form.get("availability_type")),
-          language: toNullableString(form.get("watch_language")),
-          quality: toNullableString(form.get("quality")),
+          availability_type: toNullableString(form.get("availability_type")) || "subscription",
+          language: joinLanguages(selectedWatchLanguages) || null,
+          quality: selectedQualities.join(", ") || null,
           is_official: true,
           is_active: true
         });
@@ -232,6 +272,12 @@ export default function AdminMovieForm({
       setSlug("");
       setHasLicensedVideo(false);
       setSelectedLanguages([]);
+      setSelectedGenres([]);
+      setSelectedCast([]);
+      setGenreSearch("");
+      setCastSearch("");
+      setSelectedWatchLanguages([]);
+      setSelectedQualities([]);
       setPosterPreview(null);
       setBannerPreview(null);
     } catch (error) {
@@ -240,6 +286,13 @@ export default function AdminMovieForm({
       setSaving(false);
     }
   }
+
+  const filteredGenres = genres.filter((genre) =>
+    genre.name.toLowerCase().includes(genreSearch.toLowerCase())
+  );
+  const filteredCast = castMembers.filter((member) =>
+    member.name.toLowerCase().includes(castSearch.toLowerCase())
+  );
 
   return (
     <form className="form-grid panel admin-movie-form" onSubmit={submit}>
@@ -316,17 +369,47 @@ export default function AdminMovieForm({
         </div>
       </FormSection>
 
-      <FormSection title="Trailer" helper="Use official trailer URLs only. YouTube embeds are supported on the public movie page.">
+      <FormSection title="Trailer" helper="Use official YouTube trailer link. Do not download and upload copyrighted trailers.">
         <div className="form-grid two">
           <div className="field"><label>Trailer URL</label><input name="trailer_url" placeholder="Official YouTube URL" /></div>
           <div className="field"><label>Trailer Provider</label><input name="trailer_provider" defaultValue="youtube" /></div>
         </div>
       </FormSection>
 
-      <FormSection title="Genres and Cast" helper="Optional relationships. Hold Ctrl or Cmd to choose multiple items.">
+      <FormSection title="Genres and Cast" helper="Search and select multiple genres or cast members. Selected items are highlighted.">
         <div className="form-grid two">
-          <div className="field"><label>Genres</label><select name="genres" multiple>{genres.map((genre) => <option value={genre.id} key={genre.id}>{genre.name}</option>)}</select></div>
-          <div className="field"><label>Cast</label><select name="cast" multiple>{castMembers.map((member) => <option value={member.id} key={member.id}>{member.name}</option>)}</select></div>
+          <div className="field">
+            <label>Genres</label>
+            <input value={genreSearch} onChange={(event) => setGenreSearch(event.target.value)} placeholder="Search genres" />
+            <div className="relation-chip-grid">
+              {filteredGenres.map((genre) => (
+                <button
+                  className={selectedGenres.includes(genre.id) ? "relation-chip selected" : "relation-chip"}
+                  key={genre.id}
+                  onClick={() => toggleItem(genre.id, setSelectedGenres)}
+                  type="button"
+                >
+                  {genre.name}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="field">
+            <label>Cast Members</label>
+            <input value={castSearch} onChange={(event) => setCastSearch(event.target.value)} placeholder="Search cast" />
+            <div className="relation-chip-grid">
+              {filteredCast.map((member) => (
+                <button
+                  className={selectedCast.includes(member.id) ? "relation-chip selected" : "relation-chip"}
+                  key={member.id}
+                  onClick={() => toggleItem(member.id, setSelectedCast)}
+                  type="button"
+                >
+                  {member.name}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </FormSection>
 
@@ -334,15 +417,55 @@ export default function AdminMovieForm({
         <div className="form-grid two">
           <div className="field"><label>Official Platform</label><select name="platform_id"><option value="">Select platform</option>{platforms.map((platform) => <option value={platform.id} key={platform.id}>{platform.name}</option>)}</select></div>
           <div className="field"><label>Official Watch Link</label><input name="watch_url" placeholder="https://..." /></div>
-          <div className="field"><label>Availability Type</label><input name="availability_type" placeholder="subscription, rent, buy, free" /></div>
-          <div className="field"><label>Watch Link Language</label><input name="watch_language" placeholder="Hindi, English" /></div>
-          <div className="field"><label>Quality</label><input name="quality" placeholder="HD, 4K" /></div>
+        </div>
+        <div className="field">
+          <label>Availability Type</label>
+          <div className="option-group compact-options">
+            {AVAILABILITY_OPTIONS.map((option, index) => (
+              <label className="option-card" key={option.value}>
+                <input defaultChecked={index === 0} name="availability_type" type="radio" value={option.value} />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="field">
+          <label>Watch Link Language</label>
+          <div className="language-select-grid compact-chip-grid">
+            {WATCHFINDER_LANGUAGES.map((language) => (
+              <label className="language-select-chip" key={language}>
+                <input
+                  checked={selectedWatchLanguages.includes(language)}
+                  onChange={() => toggleItem(language, setSelectedWatchLanguages)}
+                  type="checkbox"
+                  value={language}
+                />
+                <span>{language}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="field">
+          <label>Quality</label>
+          <div className="language-select-grid compact-chip-grid">
+            {QUALITY_OPTIONS.map((quality) => (
+              <label className="language-select-chip" key={quality}>
+                <input
+                  checked={selectedQualities.includes(quality)}
+                  onChange={() => toggleItem(quality, setSelectedQualities)}
+                  type="checkbox"
+                  value={quality}
+                />
+                <span>{quality}</span>
+              </label>
+            ))}
+          </div>
         </div>
       </FormSection>
 
       <FormSection title="Licensed Video" helper="Optional. Leave this off for normal discovery pages with trailers and official watch links.">
         <label className="chip"><input checked={hasLicensedVideo} onChange={(event) => setHasLicensedVideo(event.target.checked)} name="has_licensed_video" type="checkbox" /> Has licensed video</label>
-        {hasLicensedVideo ? <p className="legal-badge">Only use videos you own or have permission to distribute.</p> : null}
+        {hasLicensedVideo ? <p className="legal-badge">Only use videos you own or have written permission to distribute. Do not upload pirated movies.</p> : null}
         <div className="form-grid two">
           <div className="field"><label>Video Provider</label><select name="video_provider"><option value="">None</option><option value="cloudflare_stream">Cloudflare Stream</option><option value="vimeo">Vimeo</option><option value="youtube_embed">YouTube Embed</option><option value="supabase_storage_small_video">Supabase small video</option><option value="external_legal_embed">External legal embed</option></select></div>
           <div className="field"><label>Video Embed URL</label><input name="video_embed_url" /></div>
@@ -357,7 +480,7 @@ export default function AdminMovieForm({
         <div className="field"><label>License Notes</label><textarea name="license_notes" /></div>
       </FormSection>
 
-      <FormSection title="SEO" helper="Optional metadata for movie detail pages and social previews.">
+      <FormSection title="SEO" helper="Optional metadata for Google and social previews. Blank fields fallback to movie title, description, banner, or poster.">
         <div className="form-grid two">
           <div className="field"><label>SEO Title</label><input name="seo_title" /></div>
           <div className="field"><label>OG Image URL</label><input name="og_image_url" /></div>
@@ -367,9 +490,15 @@ export default function AdminMovieForm({
 
       {message ? <p className={`form-message ${message.type}`}>{message.text}</p> : null}
       {savedMovieSlug ? (
-        <Link className="button" href={`/movie/${savedMovieSlug}`}>
-          <Eye size={18} /> View movie page
-        </Link>
+        <div className="save-actions">
+          <p className="platform-badge">Saved slug: {savedMovieSlug}</p>
+          <Link className="button" href={`/movie/${savedMovieSlug}`}>
+            <Eye size={18} /> View Movie Page
+          </Link>
+          <button className="button ghost" type="button" onClick={clearAddAnother}>
+            Add Another Movie
+          </button>
+        </div>
       ) : null}
       <button className="button primary" type="submit" disabled={saving}>
         <Save size={18} /> {saving ? "Saving..." : "Save movie"}
