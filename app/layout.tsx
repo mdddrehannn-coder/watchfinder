@@ -5,6 +5,8 @@ import BrandLogo from "@/components/BrandLogo";
 import BottomNav from "@/components/BottomNav";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
 import NavbarSearch from "@/components/NavbarSearch";
+import PWAInstallBanner from "@/components/PWAInstallBanner";
+import PWAInstallManager from "@/components/PWAInstallManager";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import ThemeManager from "@/components/ThemeManager";
 
@@ -74,24 +76,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <ThemeManager />
         <ServiceWorkerRegister />
-        <div className="app-shell">
-          <header className="site-header">
-            <div className="header-inner">
-              <BrandLogo variant="header" showText={false} />
-              <NavbarSearch />
-              <nav className="top-nav" aria-label="Primary">
-                {nav.map(([label, href]) => (
-                  <Link key={href} href={href}>
-                    {label}
-                  </Link>
-                ))}
-                <HeaderAuthButton />
-              </nav>
-            </div>
-          </header>
-          {children}
-          <BottomNav />
-        </div>
+        <PWAInstallManager>
+          <div className="app-shell">
+            <header className="site-header">
+              <div className="header-inner">
+                <BrandLogo variant="header" showText={false} />
+                <NavbarSearch />
+                <nav className="top-nav" aria-label="Primary">
+                  {nav.map(([label, href]) => (
+                    <Link key={href} href={href}>
+                      {label}
+                    </Link>
+                  ))}
+                  <HeaderAuthButton />
+                </nav>
+              </div>
+            </header>
+            <PWAInstallBanner />
+            {children}
+            <BottomNav />
+          </div>
+        </PWAInstallManager>
       </body>
     </html>
   );

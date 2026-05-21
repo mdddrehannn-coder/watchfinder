@@ -1,4 +1,4 @@
-const CACHE_VERSION = "watchfinder-cache-v2";
+const CACHE_VERSION = "watchfinder-cache-v3";
 const OLD_ICON_ASSETS = [
   "/favicon.ico",
   "/icon-192.png",
