@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import ThemeModeSelector from "@/components/ThemeModeSelector";
 
 export const metadata: Metadata = {
   title: "Settings",
@@ -12,7 +13,7 @@ export default function SettingsPage() {
       <section className="section form-grid">
         <div className="panel">
           <h2>Appearance</h2>
-          <p className="muted">Dark OTT mode is enabled across WatchFinder.</p>
+          <ThemeModeSelector />
         </div>
         <div className="panel">
           <h2>Language Preference</h2>

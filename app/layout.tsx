@@ -5,6 +5,7 @@ import "@/app/globals.css";
 import BrandLogo from "@/components/BrandLogo";
 import BottomNav from "@/components/BottomNav";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
+import ThemeManager from "@/components/ThemeManager";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
@@ -51,9 +52,26 @@ const nav = [
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const themeScript = `
+    (function () {
+      try {
+        var mode = localStorage.getItem("watchfinder-theme-mode") || "auto";
+        var hour = new Date().getHours();
+        var theme = mode === "light" || (mode === "auto" && hour >= 6 && hour < 18) ? "theme-light" : "theme-dark";
+        document.documentElement.classList.remove("theme-dark", "theme-light");
+        document.documentElement.classList.add(theme);
+        document.documentElement.dataset.themeMode = mode === "dark" || mode === "light" ? mode : "auto";
+      } catch (error) {
+        document.documentElement.classList.add("theme-dark");
+      }
+    })();
+  `;
+
   return (
-    <html lang="en">
+    <html lang="en" className="theme-dark" suppressHydrationWarning>
       <body>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <ThemeManager />
         <div className="app-shell">
           <header className="site-header">
             <div className="header-inner">
