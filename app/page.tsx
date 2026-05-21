@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Search } from "lucide-react";
 import MovieSlider from "@/components/MovieSlider";
+import PlatformLogo from "@/components/PlatformLogo";
 import PromotionBanner from "@/components/PromotionBanner";
 import AdSlot from "@/components/AdSlot";
 import {
@@ -31,9 +32,14 @@ export default async function HomePage() {
     getBlogPosts(6)
   ]);
 
+  const fallbackByPopularity = [...allMovies]
+    .sort((a, b) => (b.popularity_score || 0) - (a.popularity_score || 0))
+    .slice(0, 12);
   const freeLegal = filterDiscoveryMovies(allMovies, { freeLegal: true }).slice(0, 12);
   const hindiDubbed = allMovies.filter(isHindiFriendly).slice(0, 12);
   const officialYouTube = allMovies.filter(hasOfficialYouTube).slice(0, 12);
+  const newOttReleases = latest.length ? latest : allMovies.slice(0, 12);
+  const trendingMovies = trending.length ? trending : fallbackByPopularity;
 
   const quickActions = [
     {
@@ -86,8 +92,8 @@ export default async function HomePage() {
 
       <MovieSlider title="Free Legal Movies" movies={freeLegal} href="/free-movies" />
       <MovieSlider title="Hindi Dubbed Picks" movies={hindiDubbed} href="/hindi-dubbed" />
-      <MovieSlider title="New OTT Releases" movies={latest} href="/ott-releases" />
-      <MovieSlider title="Trending Now" movies={trending} href="/movies?trending=true" />
+      <MovieSlider title="New OTT Releases" movies={newOttReleases} href="/ott-releases" />
+      <MovieSlider title="Trending Now" movies={trendingMovies} href="/movies?trending=true" />
       <MovieSlider title="Official YouTube Movies" movies={officialYouTube} href="/free-movies?platform=youtube" />
       <PromotionBanner promotion={middlePromotions[0]} />
       <AdSlot slot={ads[0]} />
@@ -99,17 +105,19 @@ export default async function HomePage() {
             View all
           </Link>
         </div>
-        <div className="platform-grid">
-          {platforms.slice(0, 8).map((platform) => (
-            <Link className="platform-card" href={`/platform/${platform.slug}`} key={platform.id}>
-              <div className="platform-logo">
-                {platform.logo_url ? <img src={platform.logo_url} alt={platform.name} /> : platform.name.slice(0, 1)}
-              </div>
-              <strong>{platform.name}</strong>
-              <p className="muted">Official titles and watch links</p>
-            </Link>
-          ))}
-        </div>
+        {platforms.length ? (
+          <div className="platform-grid">
+            {platforms.slice(0, 8).map((platform) => (
+              <Link className="platform-card" href={`/platform/${platform.slug}`} key={platform.id}>
+                <PlatformLogo platform={platform} />
+                <strong>{platform.name}</strong>
+                <p className="muted">Official titles and watch links</p>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="empty">Add platforms from admin panel to display this section.</div>
+        )}
       </section>
 
       <section className="section">

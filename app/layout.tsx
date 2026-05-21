@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     template: "%s - WatchFinder"
   },
   description: "Find free legal movies, Hindi dubbed titles, trailers and OTT availability in one place.",
-  manifest: "/manifest.webmanifest",
+  manifest: "/manifest.json",
   icons: {
     icon: [
       { url: "/favicon.ico" },

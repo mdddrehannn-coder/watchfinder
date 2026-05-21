@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Clock, Heart, LogOut, MessageSquare, Moon, Share2, Settings } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
+import InstallAppButton from "@/components/InstallAppButton";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 export default function ProfileMenu({ initialEmail }: { initialEmail: string }) {
@@ -46,6 +47,12 @@ export default function ProfileMenu({ initialEmail }: { initialEmail: string }) 
         <Link className="panel" href="/settings"><Settings size={22} /> <strong>Settings</strong></Link>
         <button className="panel" onClick={share} type="button"><Share2 size={22} /> <strong>Share WatchFinder</strong></button>
         <div className="panel"><Moon size={22} /> <strong>Dark mode</strong><p className="muted">Enabled by default</p></div>
+      </div>
+
+      <div className="panel install-app-card">
+        <h2>Download My App</h2>
+        <p className="muted">Install WatchFinder on your phone for quick access.</p>
+        <InstallAppButton />
       </div>
 
       <div className="panel">

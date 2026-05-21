@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import MovieGrid from "@/components/MovieGrid";
 import MovieSlider from "@/components/MovieSlider";
+import PlatformLogo from "@/components/PlatformLogo";
 import { getBlogPosts, getMovies, getPlatforms } from "@/lib/data";
 import { isHindiFriendly } from "@/lib/discovery";
 
@@ -45,9 +46,7 @@ export default async function OttReleasesPage() {
         <div className="platform-grid">
           {platforms.slice(0, 8).map((platform) => (
             <Link className="platform-card" href={`/platform/${platform.slug}`} key={platform.id}>
-              <div className="platform-logo">
-                {platform.logo_url ? <img src={platform.logo_url} alt={platform.name} /> : platform.name.slice(0, 1)}
-              </div>
+              <PlatformLogo platform={platform} />
               <strong>{platform.name}</strong>
               <p className="muted">Official OTT availability</p>
             </Link>

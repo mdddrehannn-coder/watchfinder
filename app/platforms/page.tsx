@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import EmptyState from "@/components/EmptyState";
+import PlatformLogo from "@/components/PlatformLogo";
 import { getPlatforms } from "@/lib/data";
 
 export const metadata: Metadata = {
@@ -20,11 +21,9 @@ export default async function PlatformsPage() {
           <div className="platform-grid">
             {platforms.map((platform) => (
               <Link className="platform-card" href={`/platform/${platform.slug}`} key={platform.id}>
-                <div className="platform-logo">
-                  {platform.logo_url ? <img src={platform.logo_url} alt={platform.name} /> : platform.name.slice(0, 1)}
-                </div>
+                <PlatformLogo platform={platform} />
                 <strong>{platform.name}</strong>
-                {platform.description ? <p className="muted">{platform.description}</p> : <p className="muted">Official availability</p>}
+                {platform.description ? <p className="muted">{platform.description}</p> : <p className="muted">Official titles and watch links</p>}
               </Link>
             ))}
           </div>

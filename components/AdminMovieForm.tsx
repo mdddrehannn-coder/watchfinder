@@ -385,6 +385,10 @@ export default function AdminMovieForm({
             <small>Sets type to short film</small>
           </button>
         </div>
+        <div className="admin-visibility-note">
+          <strong>Homepage visibility</strong>
+          <p>To show in Trending Now: enable Trending. To show in Hindi Dubbed Picks: select Hindi or Hindi Dubbed language. To show in New OTT Releases: enable Latest. To show in Official YouTube Movies: choose YouTube platform and Official availability. To show in Free Legal Movies: only select Free Legal when the full video is legally available.</p>
+        </div>
       </FormSection>
 
       <FormSection title="Basic Details" helper="Add the core title metadata. Keep status as draft until the listing is ready for the public site.">

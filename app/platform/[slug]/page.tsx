@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import MovieGrid from "@/components/MovieGrid";
+import PlatformLogo from "@/components/PlatformLogo";
 import { getMovies, getPlatformBySlug } from "@/lib/data";
 
 export async function generateMetadata({
@@ -24,8 +25,13 @@ export default async function PlatformDetailPage({ params }: { params: Promise<{
 
   return (
     <main className="page-inner">
-      <h1>{platform?.name || "Platform"}</h1>
-      <p className="muted">Published titles linked to this official platform.</p>
+      <section className="platform-detail-head">
+        {platform ? <PlatformLogo platform={platform} /> : null}
+        <div>
+          <h1>{platform?.name || "Platform"}</h1>
+          <p className="muted">Published titles linked to this official platform.</p>
+        </div>
+      </section>
       <section className="section">
         <MovieGrid movies={movies} />
       </section>

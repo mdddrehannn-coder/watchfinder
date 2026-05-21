@@ -20,8 +20,15 @@ export function hasFreeAvailability(movie: Movie) {
 
 export function hasOfficialYouTube(movie: Movie) {
   return Boolean(
-    movie.movie_platform_links?.some((link) =>
-      link.watch_url?.toLowerCase().includes("youtube.com") || link.platforms?.name?.toLowerCase().includes("youtube")
+    movie.movie_platform_links?.some((link) => {
+      const isYouTube =
+        link.watch_url?.toLowerCase().includes("youtube.com") ||
+        link.watch_url?.toLowerCase().includes("youtu.be") ||
+        link.platforms?.name?.toLowerCase().includes("youtube");
+      const isOfficialOrFree =
+        link.is_official !== false || link.availability_type === "official" || link.availability_type === "free";
+      return isYouTube && isOfficialOrFree;
+    }
     )
   );
 }
@@ -30,8 +37,7 @@ export function isLegalFreeMovie(movie: Movie) {
   return Boolean(
     movie.has_licensed_video ||
       hasFreeAvailability(movie) ||
-      (movie.license_type && FREE_LICENSE_TYPES.includes(movie.license_type)) ||
-      hasOfficialYouTube(movie)
+      (movie.license_type && FREE_LICENSE_TYPES.includes(movie.license_type))
   );
 }
 

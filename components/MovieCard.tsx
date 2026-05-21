@@ -1,14 +1,22 @@
 import Link from "next/link";
-import { Star } from "lucide-react";
 import { firstPlatformLabel } from "@/lib/data";
-import { movieSmartBadges } from "@/lib/discovery";
+import { hasOfficialLink, isHindiFriendly, isLegalFreeMovie, movieQualities } from "@/lib/discovery";
 import { formatType } from "@/lib/format";
-import LanguageTags from "@/components/LanguageTags";
+import { splitLanguages } from "@/lib/languages";
 import type { Movie } from "@/types/watchfinder";
 
 export default function MovieCard({ movie }: { movie: Movie }) {
   const platform = firstPlatformLabel(movie);
-  const badges = movieSmartBadges(movie);
+  const languages = splitLanguages(movie.language).slice(0, 2);
+  const qualities = movieQualities(movie).slice(0, 2);
+  const allBadges = [
+    !movie.has_licensed_video ? "Trailer Only" : null,
+    isLegalFreeMovie(movie) ? "Free Legal" : null,
+    hasOfficialLink(movie) ? "Official" : null,
+    isHindiFriendly(movie) ? "Hindi Dubbed" : null
+  ].filter(Boolean) as string[];
+  const visibleBadges = allBadges.slice(0, 2);
+  const moreCount = allBadges.length - visibleBadges.length;
 
   return (
     <Link className="movie-card" href={`/movie/${movie.slug}`}>
@@ -16,20 +24,23 @@ export default function MovieCard({ movie }: { movie: Movie }) {
         {movie.poster_url ? <img src={movie.poster_url} alt={`${movie.title} poster`} /> : null}
       </div>
       <div className="movie-body">
-        <p className="movie-title">{movie.title}</p>
+        <p className="movie-title" title={movie.title}>{movie.title}</p>
         <div className="meta-line">
-          {movie.rating ? (
-            <span className="rating-badge">
-              <Star size={13} fill="currentColor" /> {movie.rating}
-            </span>
-          ) : null}
-          <span>{formatType(movie.type)}</span>
+          <span className="movie-type-text">{formatType(movie.type)}</span>
         </div>
-        <LanguageTags value={movie.language} compact />
+        <div className="language-tags compact">
+          {languages.map((language) => (
+            <span className="language-tag" key={language}>{language}</span>
+          ))}
+          {qualities.map((quality) => (
+            <span className="language-tag quality-tag" key={quality}>{quality}</span>
+          ))}
+        </div>
         <div className="smart-badge-row">
-          {badges.map((badge) => (
+          {visibleBadges.map((badge) => (
             <span className="smart-badge" key={badge}>{badge}</span>
           ))}
+          {moreCount > 0 ? <span className="smart-badge more-badge">+{moreCount} more</span> : null}
         </div>
         {platform ? <span className="platform-badge">{platform}</span> : null}
       </div>

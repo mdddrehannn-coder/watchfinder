@@ -17,7 +17,7 @@ import {
   getPromotions,
   getSimilarMovies
 } from "@/lib/data";
-import { movieAvailabilityTypes, movieQualities, readableAvailability } from "@/lib/discovery";
+import { movieAvailabilityTypes, movieQualities, movieSmartBadges, readableAvailability } from "@/lib/discovery";
 import { formatDuration, formatType } from "@/lib/format";
 
 export async function generateMetadata({
@@ -65,6 +65,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
   );
   const qualities = movieQualities(movie);
   const availabilityTypes = movieAvailabilityTypes(movie);
+  const allBadges = movieSmartBadges(movie);
 
   return (
     <main className="page-inner">
@@ -89,6 +90,11 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
             </div>
             <h1>{movie.title}</h1>
             <LanguageTags value={movie.language} />
+            <div className="smart-badge-row detail-badge-row">
+              {allBadges.map((badge) => (
+                <span className="smart-badge" key={badge}>{badge}</span>
+              ))}
+            </div>
             {qualities.length || availabilityTypes.length ? (
               <div className="language-tags">
                 {availabilityTypes.map((availability) => (
@@ -128,7 +134,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
               {movie.license_owner_name ? <span className="platform-badge">{movie.license_owner_name}</span> : null}
             </div>
           ) : (
-            <p className="muted">WatchFinder does not host unauthorized movies. Use official links below.</p>
+            <p className="muted">Trailer-only listing. WatchFinder does not host unauthorized movies. Use official links below.</p>
           )}
         </div>
       </section>
