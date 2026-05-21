@@ -24,7 +24,7 @@ export default function WatchLinks({ links = [] }: { links?: MoviePlatformLink[]
   return (
     <section className="section">
       <div className="section-head">
-        <h2>Where to Watch</h2>
+        <h2>Where to Watch Legally</h2>
       </div>
       <div className="watch-link-grid">
         {official.map((link) => (

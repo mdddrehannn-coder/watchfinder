@@ -1,70 +1,100 @@
 import Link from "next/link";
-import HeroCarousel from "@/components/HeroCarousel";
+import { Search } from "lucide-react";
 import MovieSlider from "@/components/MovieSlider";
 import PromotionBanner from "@/components/PromotionBanner";
 import AdSlot from "@/components/AdSlot";
 import {
   getAdSlots,
+  getBlogPosts,
   getMovies,
   getPlatforms,
   getPromotions
 } from "@/lib/data";
+import { filterDiscoveryMovies, hasOfficialYouTube, isHindiFriendly } from "@/lib/discovery";
 
 export default async function HomePage() {
   const [
-    heroPromotions,
     middlePromotions,
     ads,
     platforms,
+    allMovies,
     trending,
     latest,
-    featured,
-    hindi,
-    bollywood,
-    hollywood,
-    southIndian,
-    webSeries,
-    anime
+    posts
   ] = await Promise.all([
-    getPromotions("home_hero"),
     getPromotions("home_middle"),
     getAdSlots("home"),
     getPlatforms(),
+    getMovies({ limit: 120 }),
     getMovies({ trending: true, limit: 12 }),
-    getMovies({ latest: true, limit: 12 }),
-    getMovies({ featured: true, limit: 12 }),
-    getMovies({ language: "Hindi", limit: 12 }),
-    getMovies({ language: "Hindi", type: "movie", limit: 12 }),
-    getMovies({ language: "English", type: "movie", limit: 12 }),
-    getMovies({ language: "Tamil", limit: 12 }),
-    getMovies({ type: "tv_show", limit: 12 }),
-    getMovies({ type: "anime", limit: 12 })
+    getMovies({ latest: true, limit: 18 }),
+    getBlogPosts(6)
   ]);
+
+  const freeLegal = filterDiscoveryMovies(allMovies, { freeLegal: true }).slice(0, 12);
+  const hindiDubbed = allMovies.filter(isHindiFriendly).slice(0, 12);
+  const officialYouTube = allMovies.filter(hasOfficialYouTube).slice(0, 12);
+
+  const quickActions = [
+    {
+      title: "Free Legal Movies",
+      text: "Public-domain, licensed and official free titles.",
+      href: "/free-movies"
+    },
+    {
+      title: "Hindi Dubbed Finder",
+      text: "Find South, Hollywood and anime titles in Hindi.",
+      href: "/hindi-dubbed"
+    },
+    {
+      title: "New OTT Releases",
+      text: "Track legal streaming availability.",
+      href: "/ott-releases"
+    },
+    {
+      title: "Official Trailers",
+      text: "Watch trailers and then choose official platforms.",
+      href: "/search?q=trailer"
+    }
+  ];
 
   return (
     <main className="page-inner">
-      <HeroCarousel promotions={heroPromotions} />
-
-      <section className="section">
-        <div className="tabs">
-          <Link className="tab" href="/search">
-            Recommend
-          </Link>
-          <Link className="tab" href="/movies">
-            Movies
-          </Link>
-          <Link className="tab" href="/tv-shows">
-            TV Shows
-          </Link>
-          <Link className="tab" href="/anime">
-            Anime
-          </Link>
+      <section className="home-hero">
+        <div>
+          <p className="rating-badge">Legal OTT discovery</p>
+          <h1>Find free legal movies, Hindi dubbed titles, trailers and OTT availability in one place.</h1>
+          <p className="muted">
+            WatchFinder helps you discover official trailers, where-to-watch links, Hindi-friendly listings and legally available free movies.
+          </p>
+          <form className="hero-search" action="/search">
+            <Search size={20} />
+            <input name="q" placeholder="Search Hindi dubbed, free legal, Netflix, anime..." />
+            <button className="button primary" type="submit">Search</button>
+          </form>
         </div>
       </section>
 
+      <section className="section quick-action-grid">
+        {quickActions.map((action) => (
+          <Link className="quick-action-card" href={action.href} key={action.title}>
+            <strong>{action.title}</strong>
+            <span>{action.text}</span>
+          </Link>
+        ))}
+      </section>
+
+      <MovieSlider title="Free Legal Movies" movies={freeLegal} href="/free-movies" />
+      <MovieSlider title="Hindi Dubbed Picks" movies={hindiDubbed} href="/hindi-dubbed" />
+      <MovieSlider title="New OTT Releases" movies={latest} href="/ott-releases" />
+      <MovieSlider title="Trending Now" movies={trending} href="/movies?trending=true" />
+      <MovieSlider title="Official YouTube Movies" movies={officialYouTube} href="/free-movies?platform=youtube" />
+      <PromotionBanner promotion={middlePromotions[0]} />
+      <AdSlot slot={ads[0]} />
+
       <section className="section">
         <div className="section-head">
-          <h2>Streaming Platforms</h2>
+          <h2>Popular Platforms</h2>
           <Link className="muted" href="/platforms">
             View all
           </Link>
@@ -82,17 +112,26 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <MovieSlider title="Trending Now" movies={trending} href="/categories?trending=true" />
-      <MovieSlider title="Latest Releases" movies={latest} href="/categories?latest=true" />
-      <MovieSlider title="Featured" movies={featured} />
-      <PromotionBanner promotion={middlePromotions[0]} />
-      <AdSlot slot={ads[0]} />
-      <MovieSlider title="Hindi Dubbed" movies={hindi} />
-      <MovieSlider title="Bollywood" movies={bollywood} />
-      <MovieSlider title="Hollywood" movies={hollywood} />
-      <MovieSlider title="South Indian" movies={southIndian} />
-      <MovieSlider title="Web Series" movies={webSeries} href="/tv-shows" />
-      <MovieSlider title="Anime" movies={anime} href="/anime" />
+      <section className="section">
+        <div className="section-head">
+          <h2>Guides and OTT Updates</h2>
+          <Link className="muted" href="/blog">Read blog</Link>
+        </div>
+        {posts.length ? (
+          <div className="grid">
+            {posts.map((post) => (
+              <Link className="blog-card" href={`/blog/${post.slug}`} key={post.id}>
+                {post.featured_image_url ? <img src={post.featured_image_url} alt={post.title} /> : null}
+                <p className="rating-badge">{post.category || "Movie Guide"}</p>
+                <h2>{post.title}</h2>
+                <p className="muted">{post.excerpt}</p>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="empty">Add content from admin panel to display this section.</div>
+        )}
+      </section>
     </main>
   );
 }

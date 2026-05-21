@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { Star } from "lucide-react";
 import { firstPlatformLabel } from "@/lib/data";
+import { movieSmartBadges } from "@/lib/discovery";
 import { formatType } from "@/lib/format";
 import LanguageTags from "@/components/LanguageTags";
 import type { Movie } from "@/types/watchfinder";
 
 export default function MovieCard({ movie }: { movie: Movie }) {
   const platform = firstPlatformLabel(movie);
+  const badges = movieSmartBadges(movie);
 
   return (
     <Link className="movie-card" href={`/movie/${movie.slug}`}>
@@ -24,6 +26,11 @@ export default function MovieCard({ movie }: { movie: Movie }) {
           <span>{formatType(movie.type)}</span>
         </div>
         <LanguageTags value={movie.language} compact />
+        <div className="smart-badge-row">
+          {badges.map((badge) => (
+            <span className="smart-badge" key={badge}>{badge}</span>
+          ))}
+        </div>
         {platform ? <span className="platform-badge">{platform}</span> : null}
       </div>
     </Link>

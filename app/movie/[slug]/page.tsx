@@ -17,6 +17,7 @@ import {
   getPromotions,
   getSimilarMovies
 } from "@/lib/data";
+import { movieAvailabilityTypes, movieQualities, readableAvailability } from "@/lib/discovery";
 import { formatDuration, formatType } from "@/lib/format";
 
 export async function generateMetadata({
@@ -53,6 +54,17 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
   ]);
 
   const hasProof = licenseDocuments.length > 0;
+  const legalVideoSource = movie.video_embed_url || movie.video_id;
+  const canShowLicensedVideo = Boolean(
+    movie.has_licensed_video &&
+      legalVideoSource &&
+      hasProof &&
+      movie.video_provider &&
+      movie.license_type &&
+      movie.license_owner_name
+  );
+  const qualities = movieQualities(movie);
+  const availabilityTypes = movieAvailabilityTypes(movie);
 
   return (
     <main className="page-inner">
@@ -77,6 +89,16 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
             </div>
             <h1>{movie.title}</h1>
             <LanguageTags value={movie.language} />
+            {qualities.length || availabilityTypes.length ? (
+              <div className="language-tags">
+                {availabilityTypes.map((availability) => (
+                  <span className="platform-badge" key={availability}>{readableAvailability(availability)}</span>
+                ))}
+                {qualities.map((quality) => (
+                  <span className="language-tag" key={quality}>{quality}</span>
+                ))}
+              </div>
+            ) : null}
             <p className="muted">{movie.description}</p>
             <div className="chip-row">
               {movie.genres?.map((genre) => (
@@ -92,6 +114,22 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
               <ShareButton title={movie.title} />
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="section panel legal-watch-panel">
+        <div>
+          <h2>{canShowLicensedVideo ? "Watch Free Legally" : "Where to Watch Legally"}</h2>
+          {canShowLicensedVideo ? (
+            <div className="language-tags">
+              <span className="legal-badge">Licensed / Permission Verified</span>
+              <span className="platform-badge">{movie.license_type?.replaceAll("_", " ")}</span>
+              <span className="platform-badge">{movie.video_provider?.replaceAll("_", " ")}</span>
+              {movie.license_owner_name ? <span className="platform-badge">{movie.license_owner_name}</span> : null}
+            </div>
+          ) : (
+            <p className="muted">WatchFinder does not host unauthorized movies. Use official links below.</p>
+          )}
         </div>
       </section>
 

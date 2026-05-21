@@ -399,6 +399,27 @@ img {
   font-weight: 800;
 }
 
+.smart-badge-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.45rem 0;
+}
+
+.smart-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.42rem;
+  background: rgba(244, 63, 94, 0.12);
+  color: #ffe4e9;
+  border: 1px solid rgba(244, 63, 94, 0.25);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: capitalize;
+}
+
 .legal-badge {
   background: rgba(51, 209, 122, 0.15);
   color: #baf7d2;
@@ -492,6 +513,110 @@ img {
 .detail-layout {
   display: grid;
   gap: 1rem;
+}
+
+.home-hero,
+.discover-hero {
+  border: 1px solid var(--line);
+  border-radius: 1.1rem;
+  padding: clamp(1.25rem, 5vw, 2.5rem);
+  background:
+    linear-gradient(135deg, rgba(244, 63, 94, 0.18), rgba(34, 211, 238, 0.08)),
+    rgba(255, 255, 255, 0.055);
+  box-shadow: var(--shadow);
+}
+
+.home-hero h1,
+.discover-hero h1 {
+  margin: 0.75rem 0;
+  max-width: 54rem;
+  font-size: clamp(2.1rem, 7vw, 4.8rem);
+  line-height: 1;
+}
+
+.discover-hero h1 {
+  font-size: clamp(2rem, 6vw, 3.7rem);
+}
+
+.home-hero p,
+.discover-hero p {
+  max-width: 42rem;
+}
+
+.hero-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: center;
+  max-width: 48rem;
+  margin-top: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.hero-search input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.hero-search .button {
+  grid-column: 1 / -1;
+  justify-content: center;
+}
+
+.quick-action-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.quick-action-card,
+.positioning-chip {
+  display: grid;
+  gap: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--text);
+}
+
+.quick-action-card:hover,
+.positioning-chip:hover {
+  border-color: rgba(244, 63, 94, 0.52);
+  background: rgba(244, 63, 94, 0.1);
+}
+
+.quick-action-card strong,
+.positioning-chip {
+  font-weight: 900;
+}
+
+.quick-action-card span,
+.positioning-chip small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.positioning-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.positioning-chip {
+  text-align: left;
+}
+
+.legal-watch-panel {
+  display: grid;
+  gap: 0.6rem;
 }
 
 .detail-poster {
@@ -959,6 +1084,18 @@ img {
 
   .platform-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .quick-action-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .hero-search {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .hero-search .button {
+    grid-column: auto;
   }
 
   .detail-layout {

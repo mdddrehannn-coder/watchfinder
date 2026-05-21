@@ -4,15 +4,19 @@ import EmptyState from "@/components/EmptyState";
 import { getBlogPosts } from "@/lib/data";
 
 export const metadata: Metadata = {
-  title: "Blog and OTT News",
-  description: "Read WatchFinder movie news, OTT updates and legal streaming guides."
+  title: "OTT, Hindi Dubbed and Free Legal Movie Guides - WatchFinder",
+  description: "Read WatchFinder guides for OTT releases, Hindi dubbed titles, free legal movies, where-to-watch help and public-domain classics."
 };
 
 export default async function BlogPage() {
   const posts = await getBlogPosts(60);
   return (
     <main className="page-inner">
-      <h1>Blog and News</h1>
+      <section className="discover-hero">
+        <p className="rating-badge">Guides</p>
+        <h1>OTT and Movie Guides</h1>
+        <p className="muted">SEO-friendly guides for OTT releases, Hindi dubbed titles, free legal movies and where-to-watch answers.</p>
+      </section>
       <section className="section">
         {posts.length ? (
           <div className="grid">

@@ -65,6 +65,8 @@ export async function getMovies(options: {
   topRated?: boolean;
   limit?: number;
   search?: string;
+  availability?: string;
+  quality?: string;
 } = {}) {
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return [] as Movie[];
@@ -98,6 +100,18 @@ export async function getMovies(options: {
   if (options.platformSlug) {
     movies = movies.filter((movie) =>
       movie.movie_platform_links?.some((link) => link.platforms?.slug === options.platformSlug)
+    );
+  }
+
+  if (options.availability) {
+    movies = movies.filter((movie) =>
+      movie.movie_platform_links?.some((link) => link.availability_type === options.availability)
+    );
+  }
+
+  if (options.quality) {
+    movies = movies.filter((movie) =>
+      movie.movie_platform_links?.some((link) => link.quality?.includes(options.quality || ""))
     );
   }
 

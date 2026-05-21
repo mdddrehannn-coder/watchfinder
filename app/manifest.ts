@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "WatchFinder",
     short_name: "WatchFinder",
-    description: "Find Movies, Web Series and OTT Updates in One Place",
+    description: "Find free legal movies, Hindi dubbed titles, trailers and OTT availability in one place.",
     start_url: "/",
     scope: "/",
     display: "standalone",

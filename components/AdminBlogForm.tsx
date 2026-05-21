@@ -5,6 +5,15 @@ import { slugify } from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { uploadBlogImage } from "@/lib/storage";
 
+const BLOG_CATEGORIES = [
+  "OTT Releases",
+  "Hindi Dubbed",
+  "Free Legal Movies",
+  "Where to Watch",
+  "Public Domain Classics",
+  "Movie Guides"
+];
+
 export default function AdminBlogForm() {
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
@@ -60,7 +69,15 @@ export default function AdminBlogForm() {
         <div className="field"><label>Title</label><input required value={title} onChange={(e) => updateTitle(e.target.value)} /></div>
         <div className="field"><label>Slug</label><input required value={slug} onChange={(e) => setSlug(slugify(e.target.value))} /></div>
         <div className="field"><label>Featured Image</label><input name="featured_image" type="file" accept="image/*" /></div>
-        <div className="field"><label>Category</label><input name="category" /></div>
+        <div className="field">
+          <label>Category</label>
+          <select name="category" defaultValue="">
+            <option value="">Select category</option>
+            {BLOG_CATEGORIES.map((category) => (
+              <option value={category} key={category}>{category}</option>
+            ))}
+          </select>
+        </div>
         <div className="field"><label>Tags</label><input name="tags" placeholder="ott, review, news" /></div>
         <div className="field"><label>Status</label><select name="status" defaultValue="draft"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></div>
         <div className="field"><label>Published At</label><input name="published_at" type="datetime-local" /></div>

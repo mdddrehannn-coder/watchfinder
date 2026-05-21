@@ -72,7 +72,10 @@ export default function AdminMovieForm({
 }) {
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
+  const [selectedType, setSelectedType] = useState("movie");
+  const [selectedStatus, setSelectedStatus] = useState("draft");
   const [hasLicensedVideo, setHasLicensedVideo] = useState(false);
+  const [isLatest, setIsLatest] = useState(false);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [selectedCast, setSelectedCast] = useState<string[]>([]);
@@ -80,6 +83,10 @@ export default function AdminMovieForm({
   const [castSearch, setCastSearch] = useState("");
   const [selectedWatchLanguages, setSelectedWatchLanguages] = useState<string[]>([]);
   const [selectedQualities, setSelectedQualities] = useState<string[]>([]);
+  const [selectedPlatformId, setSelectedPlatformId] = useState("");
+  const [availabilityType, setAvailabilityType] = useState("subscription");
+  const [videoProvider, setVideoProvider] = useState("");
+  const [licenseType, setLicenseType] = useState("");
   const [message, setMessage] = useState<Message | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedMovieSlug, setSavedMovieSlug] = useState<string | null>(null);
@@ -115,19 +122,19 @@ export default function AdminMovieForm({
   function validate(form: FormData) {
     if (!title.trim()) return "Title is required.";
     if (!slug.trim()) return "Slug is required.";
-    if (!form.get("status")) return "Status is required.";
+    if (!selectedStatus) return "Status is required.";
 
     const watchUrl = toNullableString(form.get("watch_url"));
-    const platformId = toNullableString(form.get("platform_id"));
+    const platformId = selectedPlatformId;
     if (watchUrl && !platformId) return "Select an official platform before adding a watch link.";
     if (platformId && !watchUrl) return "Official watch link is required when a platform is selected.";
 
     if (hasLicensedVideo) {
-      if (!toNullableString(form.get("video_provider"))) return "Video provider is required for licensed video.";
+      if (!videoProvider) return "Video provider is required for licensed video.";
       if (!toNullableString(form.get("video_embed_url")) && !toNullableString(form.get("video_id"))) {
         return "Video embed URL or video ID is required for licensed video.";
       }
-      if (!toNullableString(form.get("license_type"))) return "License type is required for licensed video.";
+      if (!licenseType) return "License type is required for licensed video.";
       if (!toNullableString(form.get("license_owner_name"))) return "License owner name is required for licensed video.";
     }
 
@@ -146,6 +153,50 @@ export default function AdminMovieForm({
     setter((current) =>
       current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
     );
+  }
+
+  function applyPositioning(positioning: string) {
+    if (positioning === "trailer") {
+      setHasLicensedVideo(false);
+      setVideoProvider("");
+      setLicenseType("");
+      return;
+    }
+
+    if (positioning === "free") {
+      setHasLicensedVideo(true);
+      setAvailabilityType("free");
+      return;
+    }
+
+    if (positioning === "hindi") {
+      setSelectedLanguages((current) => current.includes("Hindi Dubbed") ? current : [...current, "Hindi Dubbed"]);
+      return;
+    }
+
+    if (positioning === "ott") {
+      setIsLatest(true);
+      return;
+    }
+
+    if (positioning === "public_domain") {
+      setHasLicensedVideo(true);
+      setLicenseType("public_domain");
+      return;
+    }
+
+    if (positioning === "youtube") {
+      const youtube = platforms.find((platform) =>
+        `${platform.name} ${platform.slug}`.toLowerCase().includes("youtube")
+      );
+      if (youtube) setSelectedPlatformId(youtube.id);
+      setAvailabilityType("free");
+      return;
+    }
+
+    if (positioning === "short") {
+      setSelectedType("short_film");
+    }
   }
 
   function clearAddAnother() {
@@ -174,7 +225,7 @@ export default function AdminMovieForm({
       const payload = {
         title: title.trim(),
         slug: slug.trim(),
-        type: form.get("type"),
+        type: selectedType,
         description: toNullableString(form.get("description")),
         release_year: toNullableNumber(form.get("release_year")),
         duration_minutes: toNullableNumber(form.get("duration_minutes")),
@@ -185,17 +236,17 @@ export default function AdminMovieForm({
         trailer_provider: toNullableString(form.get("trailer_provider")),
         is_trending: form.get("is_trending") === "on",
         is_featured: form.get("is_featured") === "on",
-        is_latest: form.get("is_latest") === "on",
+        is_latest: isLatest,
         popularity_score: toNullableNumber(form.get("popularity_score")) ?? 0,
-        status: form.get("status"),
+        status: selectedStatus,
         seo_title: toNullableString(form.get("seo_title")),
         seo_description: toNullableString(form.get("seo_description")),
         og_image_url: toNullableString(form.get("og_image_url")),
         has_licensed_video: hasLicensedVideo,
-        video_provider: hasLicensedVideo ? toNullableString(form.get("video_provider")) : null,
+        video_provider: hasLicensedVideo ? videoProvider : null,
         video_embed_url: hasLicensedVideo ? toNullableString(form.get("video_embed_url")) : null,
         video_id: hasLicensedVideo ? toNullableString(form.get("video_id")) : null,
-        license_type: hasLicensedVideo ? toNullableString(form.get("license_type")) : null,
+        license_type: hasLicensedVideo ? licenseType : null,
         license_owner_name: hasLicensedVideo ? toNullableString(form.get("license_owner_name")) : null,
         license_start_date: hasLicensedVideo ? toNullableString(form.get("license_start_date")) : null,
         license_expiry_date: hasLicensedVideo ? toNullableString(form.get("license_expiry_date")) : null,
@@ -233,14 +284,14 @@ export default function AdminMovieForm({
         if (castError) throw castError;
       }
 
-      const platformId = toNullableString(form.get("platform_id"));
+      const platformId = selectedPlatformId;
       const watchUrl = toNullableString(form.get("watch_url"));
       if (platformId && watchUrl) {
         const { error: platformError } = await supabase.from("movie_platform_links").insert({
           movie_id: movie.id,
           platform_id: platformId,
           watch_url: watchUrl,
-          availability_type: toNullableString(form.get("availability_type")) || "subscription",
+          availability_type: availabilityType,
           language: joinLanguages(selectedWatchLanguages) || null,
           quality: selectedQualities.join(", ") || null,
           is_official: true,
@@ -257,7 +308,7 @@ export default function AdminMovieForm({
           file_url: uploaded.publicUrl,
           file_path: uploaded.path,
           file_name: uploaded.fileName,
-          license_type: toNullableString(form.get("license_type")),
+          license_type: licenseType,
           owner_name: toNullableString(form.get("license_owner_name")),
           notes: toNullableString(form.get("license_notes")),
           uploaded_by: auth.user?.id ?? null
@@ -270,7 +321,10 @@ export default function AdminMovieForm({
       event.currentTarget.reset();
       setTitle("");
       setSlug("");
+      setSelectedType("movie");
+      setSelectedStatus("draft");
       setHasLicensedVideo(false);
+      setIsLatest(false);
       setSelectedLanguages([]);
       setSelectedGenres([]);
       setSelectedCast([]);
@@ -278,6 +332,10 @@ export default function AdminMovieForm({
       setCastSearch("");
       setSelectedWatchLanguages([]);
       setSelectedQualities([]);
+      setSelectedPlatformId("");
+      setAvailabilityType("subscription");
+      setVideoProvider("");
+      setLicenseType("");
       setPosterPreview(null);
       setBannerPreview(null);
     } catch (error) {
@@ -296,6 +354,39 @@ export default function AdminMovieForm({
 
   return (
     <form className="form-grid panel admin-movie-form" onSubmit={submit}>
+      <FormSection title="Content Positioning" helper="Choose a helper chip to prepare existing fields for the way this title should appear on WatchFinder. These do not create new database columns.">
+        <div className="positioning-grid">
+          <button className="positioning-chip" type="button" onClick={() => applyPositioning("trailer")}>
+            Trailer Only
+            <small>Turns licensed video off</small>
+          </button>
+          <button className="positioning-chip" type="button" onClick={() => applyPositioning("free")}>
+            Free Legal Movie
+            <small>Marks licensed/free where possible</small>
+          </button>
+          <button className="positioning-chip" type="button" onClick={() => applyPositioning("hindi")}>
+            Hindi Dubbed Finder
+            <small>Adds Hindi Dubbed language</small>
+          </button>
+          <button className="positioning-chip" type="button" onClick={() => applyPositioning("ott")}>
+            OTT Release
+            <small>Marks as latest</small>
+          </button>
+          <button className="positioning-chip" type="button" onClick={() => applyPositioning("public_domain")}>
+            Public Domain
+            <small>Sets public_domain license</small>
+          </button>
+          <button className="positioning-chip" type="button" onClick={() => applyPositioning("youtube")}>
+            Official YouTube
+            <small>Selects YouTube if available</small>
+          </button>
+          <button className="positioning-chip" type="button" onClick={() => applyPositioning("short")}>
+            Short Film / Indie Film
+            <small>Sets type to short film</small>
+          </button>
+        </div>
+      </FormSection>
+
       <FormSection title="Basic Details" helper="Add the core title metadata. Keep status as draft until the listing is ready for the public site.">
         <div className="form-grid two">
           <div className="field"><label>Title <span className="required">*</span></label><input required value={title} onChange={(e) => updateTitle(e.target.value)} /></div>
@@ -309,25 +400,25 @@ export default function AdminMovieForm({
         <div className="field">
           <label>Type</label>
           <div className="option-group">
-            <label className="option-card"><input type="radio" name="type" value="movie" defaultChecked /> <span>Movie</span></label>
-            <label className="option-card"><input type="radio" name="type" value="tv_show" /> <span>TV Show</span></label>
-            <label className="option-card"><input type="radio" name="type" value="anime" /> <span>Anime</span></label>
-            <label className="option-card"><input type="radio" name="type" value="short_film" /> <span>Short Film</span></label>
+            <label className="option-card"><input type="radio" name="type" value="movie" checked={selectedType === "movie"} onChange={() => setSelectedType("movie")} /> <span>Movie</span></label>
+            <label className="option-card"><input type="radio" name="type" value="tv_show" checked={selectedType === "tv_show"} onChange={() => setSelectedType("tv_show")} /> <span>TV Show</span></label>
+            <label className="option-card"><input type="radio" name="type" value="anime" checked={selectedType === "anime"} onChange={() => setSelectedType("anime")} /> <span>Anime</span></label>
+            <label className="option-card"><input type="radio" name="type" value="short_film" checked={selectedType === "short_film"} onChange={() => setSelectedType("short_film")} /> <span>Short Film</span></label>
           </div>
         </div>
         <div className="field">
           <label>Status <span className="required">*</span></label>
           <div className="option-group status-options">
-            <label className="option-card"><input type="radio" name="status" value="draft" defaultChecked required /> <span>Draft</span><small>Hidden from public website</small></label>
-            <label className="option-card option-card-published"><input type="radio" name="status" value="published" required /> <span>Published</span><small>Visible on website</small></label>
-            <label className="option-card"><input type="radio" name="status" value="archived" required /> <span>Archived</span><small>Hidden/old listing</small></label>
+            <label className="option-card"><input type="radio" name="status" value="draft" checked={selectedStatus === "draft"} onChange={() => setSelectedStatus("draft")} required /> <span>Draft</span><small>Hidden from public website</small></label>
+            <label className="option-card option-card-published"><input type="radio" name="status" value="published" checked={selectedStatus === "published"} onChange={() => setSelectedStatus("published")} required /> <span>Published</span><small>Visible on website</small></label>
+            <label className="option-card"><input type="radio" name="status" value="archived" checked={selectedStatus === "archived"} onChange={() => setSelectedStatus("archived")} required /> <span>Archived</span><small>Hidden/old listing</small></label>
           </div>
         </div>
         <div className="field"><label>Description</label><textarea name="description" /></div>
         <div className="chip-row">
           <label className="chip"><input name="is_trending" type="checkbox" /> Trending</label>
           <label className="chip"><input name="is_featured" type="checkbox" /> Featured</label>
-          <label className="chip"><input name="is_latest" type="checkbox" /> Latest</label>
+          <label className="chip"><input name="is_latest" type="checkbox" checked={isLatest} onChange={(event) => setIsLatest(event.target.checked)} /> Latest</label>
         </div>
       </FormSection>
 
@@ -415,15 +506,15 @@ export default function AdminMovieForm({
 
       <FormSection title="Official Watch Link" helper="Optional. Add only official legal platform links. Movies can be saved without a platform link.">
         <div className="form-grid two">
-          <div className="field"><label>Official Platform</label><select name="platform_id"><option value="">Select platform</option>{platforms.map((platform) => <option value={platform.id} key={platform.id}>{platform.name}</option>)}</select></div>
+          <div className="field"><label>Official Platform</label><select name="platform_id" value={selectedPlatformId} onChange={(event) => setSelectedPlatformId(event.target.value)}><option value="">Select platform</option>{platforms.map((platform) => <option value={platform.id} key={platform.id}>{platform.name}</option>)}</select></div>
           <div className="field"><label>Official Watch Link</label><input name="watch_url" placeholder="https://..." /></div>
         </div>
         <div className="field">
           <label>Availability Type</label>
           <div className="option-group compact-options">
-            {AVAILABILITY_OPTIONS.map((option, index) => (
+            {AVAILABILITY_OPTIONS.map((option) => (
               <label className="option-card" key={option.value}>
-                <input defaultChecked={index === 0} name="availability_type" type="radio" value={option.value} />
+                <input checked={availabilityType === option.value} onChange={() => setAvailabilityType(option.value)} name="availability_type" type="radio" value={option.value} />
                 <span>{option.label}</span>
               </label>
             ))}
@@ -466,18 +557,24 @@ export default function AdminMovieForm({
       <FormSection title="Licensed Video" helper="Optional. Leave this off for normal discovery pages with trailers and official watch links.">
         <label className="chip"><input checked={hasLicensedVideo} onChange={(event) => setHasLicensedVideo(event.target.checked)} name="has_licensed_video" type="checkbox" /> Has licensed video</label>
         {hasLicensedVideo ? <p className="legal-badge">Only use videos you own or have written permission to distribute. Do not upload pirated movies.</p> : null}
-        <div className="form-grid two">
-          <div className="field"><label>Video Provider</label><select name="video_provider"><option value="">None</option><option value="cloudflare_stream">Cloudflare Stream</option><option value="vimeo">Vimeo</option><option value="youtube_embed">YouTube Embed</option><option value="supabase_storage_small_video">Supabase small video</option><option value="external_legal_embed">External legal embed</option></select></div>
-          <div className="field"><label>Video Embed URL</label><input name="video_embed_url" /></div>
-          <div className="field"><label>Video ID</label><input name="video_id" /></div>
-          <div className="field"><label>License Type {hasLicensedVideo ? <span className="required">*</span> : null}</label><select name="license_type"><option value="">Select</option><option value="self_owned">Self owned</option><option value="creator_permission">Creator permission</option><option value="public_domain">Public domain</option><option value="purchased_license">Purchased license</option></select></div>
-          <div className="field"><label>License Owner Name {hasLicensedVideo ? <span className="required">*</span> : null}</label><input name="license_owner_name" /></div>
-          <div className="field"><label>License Start Date</label><input name="license_start_date" type="date" /></div>
-          <div className="field"><label>License Expiry Date</label><input name="license_expiry_date" type="date" /></div>
-          <div className="field"><label>Distribution Territory</label><input name="distribution_territory" /></div>
-          <div className="field"><label>License Document</label><input name="license_document" type="file" /></div>
-        </div>
-        <div className="field"><label>License Notes</label><textarea name="license_notes" /></div>
+        {hasLicensedVideo ? (
+          <>
+            <div className="form-grid two">
+              <div className="field"><label>Video Provider <span className="required">*</span></label><select name="video_provider" value={videoProvider} onChange={(event) => setVideoProvider(event.target.value)}><option value="">None</option><option value="cloudflare_stream">Cloudflare Stream</option><option value="vimeo">Vimeo</option><option value="youtube_embed">YouTube Embed</option><option value="supabase_storage_small_video">Supabase small video</option><option value="external_legal_embed">External legal embed</option></select></div>
+              <div className="field"><label>Video Embed URL</label><input name="video_embed_url" /></div>
+              <div className="field"><label>Video ID</label><input name="video_id" /></div>
+              <div className="field"><label>License Type <span className="required">*</span></label><select name="license_type" value={licenseType} onChange={(event) => setLicenseType(event.target.value)}><option value="">Select</option><option value="self_owned">Self owned</option><option value="creator_permission">Creator permission</option><option value="public_domain">Public domain</option><option value="purchased_license">Purchased license</option></select></div>
+              <div className="field"><label>License Owner Name <span className="required">*</span></label><input name="license_owner_name" /></div>
+              <div className="field"><label>License Start Date</label><input name="license_start_date" type="date" /></div>
+              <div className="field"><label>License Expiry Date</label><input name="license_expiry_date" type="date" /></div>
+              <div className="field"><label>Distribution Territory</label><input name="distribution_territory" /></div>
+              <div className="field"><label>License Document</label><input name="license_document" type="file" /></div>
+            </div>
+            <div className="field"><label>License Notes</label><textarea name="license_notes" /></div>
+          </>
+        ) : (
+          <p className="muted">License fields are hidden until licensed video is enabled.</p>
+        )}
       </FormSection>
 
       <FormSection title="SEO" helper="Optional metadata for Google and social previews. Blank fields fallback to movie title, description, banner, or poster.">

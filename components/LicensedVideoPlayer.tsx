@@ -32,7 +32,7 @@ export default function LicensedVideoPlayer({
     <section className="section">
       <div className="section-head">
         <div>
-          <h2>Licensed Video</h2>
+          <h2>Play Licensed Video</h2>
           <span className="legal-badge">Licensed / Permission Verified</span>
         </div>
       </div>

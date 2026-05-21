@@ -3,6 +3,11 @@ import SearchFilters from "@/components/SearchFilters";
 import SearchHistory from "@/components/SearchHistory";
 import MovieGrid from "@/components/MovieGrid";
 import { getGenres, getMovies, getPlatforms, getPopularSearches } from "@/lib/data";
+import {
+  filterDiscoveryMovies,
+  hasOfficialYouTube,
+  matchesDiscoveryQuery
+} from "@/lib/discovery";
 
 export const metadata: Metadata = {
   title: "Search",
@@ -15,20 +20,27 @@ export default async function SearchPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const params = await searchParams;
-  const [genres, platforms, popular, results] = await Promise.all([
+  const [genres, platforms, popular, movies] = await Promise.all([
     getGenres(),
     getPlatforms(),
     getPopularSearches(),
     getMovies({
-      search: params.q,
       type: params.type,
       language: params.language,
       genreSlug: params.genre,
       platformSlug: params.platform,
       year: params.year,
-      limit: 72
+      limit: 120
     })
   ]);
+  let results = movies.filter((movie) => matchesDiscoveryQuery(movie, params.q));
+  results = filterDiscoveryMovies(results, {
+    freeLegal: params.quick === "freeLegal",
+    hindiDubbed: params.quick === "hindiDubbed",
+    latest: params.quick === "ottRelease"
+  });
+  if (params.quick === "officialYouTube") results = results.filter(hasOfficialYouTube);
+  if (params.quick === "publicDomain") results = results.filter((movie) => movie.license_type === "public_domain");
 
   return (
     <main className="page-inner">
@@ -38,8 +50,17 @@ export default async function SearchPage({
           <label htmlFor="q">Search</label>
           <input id="q" name="q" defaultValue={params.q || ""} placeholder="Animal, Netflix, anime, Hindi..." />
         </div>
-        <SearchFilters genres={genres} platforms={platforms} />
+        <SearchFilters genres={genres} platforms={platforms} defaults={params} showDiscoveryFilters />
       </form>
+      <section className="section">
+        <div className="chip-row">
+          <a className="chip" href="/search?quick=freeLegal">Free Legal</a>
+          <a className="chip" href="/search?quick=hindiDubbed">Hindi Dubbed</a>
+          <a className="chip" href="/search?quick=ottRelease">OTT Release</a>
+          <a className="chip" href="/search?quick=officialYouTube">Official YouTube</a>
+          <a className="chip" href="/search?quick=publicDomain">Public Domain</a>
+        </div>
+      </section>
       <SearchHistory currentQuery={params.q} />
       <section className="section">
         <h2>Popular Searches</h2>

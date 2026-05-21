@@ -29,7 +29,7 @@ export default function MovieSlider({
           ))}
         </div>
       ) : (
-        <EmptyState title={`No ${title.toLowerCase()} yet`} />
+        <EmptyState title={`No ${title.toLowerCase()} yet`} message="Add content from admin panel to display this section." />
       )}
     </section>
   );

@@ -10,10 +10,10 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   applicationName: "WatchFinder",
   title: {
-    default: "WatchFinder - Find Movies, Web Series and OTT Updates in One Place",
+    default: "WatchFinder - Free Legal Movies, Hindi Dubbed Finder and OTT Release Guide",
     template: "%s - WatchFinder"
   },
-  description: "Find Movies, Web Series and OTT Updates in One Place.",
+  description: "Find free legal movies, Hindi dubbed titles, trailers and OTT availability in one place.",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "WatchFinder",
-    description: "Find Movies, Web Series and OTT Updates in One Place",
+    description: "Find free legal movies, Hindi dubbed titles, trailers and OTT availability in one place.",
     siteName: "WatchFinder",
     images: ["/logo.png"],
     type: "website"
@@ -42,10 +42,10 @@ export const viewport: Viewport = {
 };
 
 const nav = [
+  ["Free Movies", "/free-movies"],
+  ["Hindi Dubbed", "/hindi-dubbed"],
+  ["OTT Releases", "/ott-releases"],
   ["Movies", "/movies"],
-  ["TV Shows", "/tv-shows"],
-  ["Anime", "/anime"],
-  ["Categories", "/categories"],
   ["Platforms", "/platforms"],
   ["Blog", "/blog"]
 ];
