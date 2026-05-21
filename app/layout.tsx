@@ -77,7 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="app-shell">
           <header className="site-header">
             <div className="header-inner">
-              <BrandLogo variant="header" />
+              <BrandLogo variant="header" showText={false} />
               <Link className="search-pill" href="/search" aria-label="Search movies and shows">
                 <Search size={18} />
                 <span className="muted">Search movies, shows, platforms</span>
