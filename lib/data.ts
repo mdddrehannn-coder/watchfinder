@@ -118,6 +118,42 @@ export async function getMovies(options: {
   return movies;
 }
 
+export async function getHomepageHeroMovies() {
+  const supabase = createSupabaseAnonServerClient();
+  if (!supabase) return [] as Movie[];
+
+  const { data, error } = await supabase
+    .from("movies")
+    .select(movieSelect)
+    .eq("status", "published")
+    .order("created_at", { ascending: false, nullsFirst: false })
+    .limit(80);
+
+  if (error || !data) return [];
+
+  function priority(movie: Movie) {
+    if (movie.is_featured) return 0;
+    if (movie.is_latest) return 1;
+    if (movie.is_trending) return 2;
+    return 3;
+  }
+
+  function timestamp(movie: Movie) {
+    return new Date(movie.updated_at || movie.created_at || 0).getTime() || 0;
+  }
+
+  return data
+    .map(normalizeMovie)
+    .sort((a, b) => {
+      const priorityDiff = priority(a) - priority(b);
+      if (priorityDiff !== 0) return priorityDiff;
+      const dateDiff = timestamp(b) - timestamp(a);
+      if (dateDiff !== 0) return dateDiff;
+      return (b.popularity_score || 0) - (a.popularity_score || 0);
+    })
+    .slice(0, 6);
+}
+
 export async function getMovieBySlug(slug: string) {
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return null;

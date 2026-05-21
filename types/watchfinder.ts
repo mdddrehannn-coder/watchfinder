@@ -74,6 +74,7 @@ export type Movie = {
   license_notes?: string | null;
   distribution_territory?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
   genres?: Genre[];
   cast_members?: CastMember[];
   movie_platform_links?: MoviePlatformLink[];

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Search } from "lucide-react";
+import HomepageHeroSlider from "@/components/HomepageHeroSlider";
 import MovieSlider from "@/components/MovieSlider";
 import PlatformLogo from "@/components/PlatformLogo";
 import PromotionBanner from "@/components/PromotionBanner";
@@ -7,6 +7,7 @@ import AdSlot from "@/components/AdSlot";
 import {
   getAdSlots,
   getBlogPosts,
+  getHomepageHeroMovies,
   getMovies,
   getPlatforms,
   getPromotions
@@ -18,6 +19,7 @@ export default async function HomePage() {
     middlePromotions,
     ads,
     platforms,
+    heroMovies,
     allMovies,
     trending,
     latest,
@@ -26,6 +28,7 @@ export default async function HomePage() {
     getPromotions("home_middle"),
     getAdSlots("home"),
     getPlatforms(),
+    getHomepageHeroMovies(),
     getMovies({ limit: 120 }),
     getMovies({ trending: true, limit: 12 }),
     getMovies({ latest: true, limit: 18 }),
@@ -66,20 +69,7 @@ export default async function HomePage() {
 
   return (
     <main className="page-inner">
-      <section className="home-hero">
-        <div>
-          <p className="rating-badge">Legal OTT discovery</p>
-          <h1>Find free legal movies, Hindi dubbed titles, trailers and OTT availability in one place.</h1>
-          <p className="muted">
-            WatchFinder helps you discover official trailers, where-to-watch links, Hindi-friendly listings and legally available free movies.
-          </p>
-          <form className="hero-search" action="/search">
-            <Search size={20} />
-            <input name="q" placeholder="Search Hindi dubbed, free legal, Netflix, anime..." />
-            <button className="button primary" type="submit">Search</button>
-          </form>
-        </div>
-      </section>
+      <HomepageHeroSlider movies={heroMovies} />
 
       <section className="section quick-action-grid">
         {quickActions.map((action) => (
