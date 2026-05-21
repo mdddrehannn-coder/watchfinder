@@ -30,51 +30,66 @@ export default async function SearchPage({
       genreSlug: params.genre,
       platformSlug: params.platform,
       year: params.year,
-      limit: 120
+      limit: 300
     })
   ]);
   let results = movies.filter((movie) => matchesDiscoveryQuery(movie, params.q));
   results = filterDiscoveryMovies(results, {
+    availability: params.availability,
     freeLegal: params.quick === "freeLegal",
     hindiDubbed: params.quick === "hindiDubbed",
-    latest: params.quick === "ottRelease"
+    latest: params.quick === "ottRelease",
+    quality: params.quality
   });
   if (params.quick === "officialYouTube") results = results.filter(hasOfficialYouTube);
   if (params.quick === "publicDomain") results = results.filter((movie) => movie.license_type === "public_domain");
 
   return (
     <main className="page-inner">
-      <h1>Search WatchFinder</h1>
-      <form className="section form-grid" action="/search">
-        <div className="field">
-          <label htmlFor="q">Search</label>
-          <input id="q" name="q" defaultValue={params.q || ""} placeholder="Animal, Netflix, anime, Hindi..." />
-        </div>
-        <SearchFilters genres={genres} platforms={platforms} defaults={params} showDiscoveryFilters />
-      </form>
-      <section className="section">
-        <div className="chip-row">
-          <a className="chip" href="/search?quick=freeLegal">Free Legal</a>
-          <a className="chip" href="/search?quick=hindiDubbed">Hindi Dubbed</a>
-          <a className="chip" href="/search?quick=ottRelease">OTT Release</a>
-          <a className="chip" href="/search?quick=officialYouTube">Official YouTube</a>
-          <a className="chip" href="/search?quick=publicDomain">Public Domain</a>
-        </div>
+      <section className="search-hero">
+        <h1>Search WatchFinder</h1>
+        <form className="simple-search-form" action="/search">
+          <input name="q" defaultValue={params.q || ""} placeholder="Search by movie, language, genre, platform..." />
+          <button className="button primary" type="submit">Search</button>
+        </form>
       </section>
+      <details className="section panel advanced-filters">
+        <summary className="button">Filters</summary>
+        <form className="form-grid" action="/search">
+          <input type="hidden" name="q" defaultValue={params.q || ""} />
+          <SearchFilters genres={genres} platforms={platforms} defaults={params} showDiscoveryFilters />
+          <div className="chip-row">
+            <a className="chip" href="/search?quick=freeLegal">Free Legal</a>
+            <a className="chip" href="/search?quick=hindiDubbed">Hindi Dubbed</a>
+            <a className="chip" href="/search?quick=ottRelease">OTT Release</a>
+            <a className="chip" href="/search?quick=officialYouTube">Official YouTube</a>
+            <a className="chip" href="/search?quick=publicDomain">Public Domain</a>
+          </div>
+        </form>
+      </details>
       <SearchHistory currentQuery={params.q} />
-      <section className="section">
-        <h2>Popular Searches</h2>
-        <div className="chip-row">
-          {popular.map((term) => (
-            <a className="chip" href={`/search?q=${encodeURIComponent(term)}`} key={term}>
-              {term}
-            </a>
-          ))}
+      {!params.q && !params.quick ? (
+        <section className="section">
+          <h2>Popular Searches</h2>
+          <div className="chip-row">
+            {popular.map((term) => (
+              <a className="chip" href={`/search?q=${encodeURIComponent(term)}`} key={term}>
+                {term}
+              </a>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      <section className="section search-results-section">
+        <div className="section-head">
+          <h2>{params.q ? `Results for "${params.q}"` : "Recommended Results"}</h2>
+          <p className="muted">{results.length} found</p>
         </div>
-      </section>
-      <section className="section">
-        <h2>{params.q ? `Results for "${params.q}"` : "Recommended Results"}</h2>
-        <MovieGrid movies={results} />
+        <MovieGrid
+          movies={results}
+          emptyTitle="No movies found"
+          emptyMessage="Try another title, language, or platform."
+        />
       </section>
     </main>
   );

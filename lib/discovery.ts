@@ -124,6 +124,8 @@ export function matchesDiscoveryQuery(movie: Movie, query?: string) {
 
   const haystack = [
     movie.title,
+    movie.slug,
+    movie.type,
     movie.description,
     movie.language,
     movie.license_type,

@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
-import { Search } from "lucide-react";
 import "@/app/globals.css";
 import BrandLogo from "@/components/BrandLogo";
 import BottomNav from "@/components/BottomNav";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
+import NavbarSearch from "@/components/NavbarSearch";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import ThemeManager from "@/components/ThemeManager";
 
@@ -78,10 +78,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <header className="site-header">
             <div className="header-inner">
               <BrandLogo variant="header" showText={false} />
-              <Link className="search-pill" href="/search" aria-label="Search movies and shows">
-                <Search size={18} />
-                <span className="muted">Search movies, shows, platforms</span>
-              </Link>
+              <NavbarSearch />
               <nav className="top-nav" aria-label="Primary">
                 {nav.map(([label, href]) => (
                   <Link key={href} href={href}>
