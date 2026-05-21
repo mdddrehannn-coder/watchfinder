@@ -1,10 +1,9 @@
-import BrandLogo from "@/components/BrandLogo";
+import BrandLoader from "@/components/BrandLoader";
 
 export default function Loading() {
   return (
     <main className="loading-screen">
-      <BrandLogo href="" variant="splash" />
-      <p>Loading WatchFinder</p>
+      <BrandLoader />
     </main>
   );
 }

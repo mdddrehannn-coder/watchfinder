@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import "@/app/globals.css";
 import BrandLogo from "@/components/BrandLogo";
 import BottomNav from "@/components/BottomNav";
+import FirstLoadSplash from "@/components/FirstLoadSplash";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
 import ThemeManager from "@/components/ThemeManager";
 
@@ -33,7 +34,7 @@ export const metadata: Metadata = {
     title: "WatchFinder",
     description: "Find free legal movies, Hindi dubbed titles, trailers and OTT availability in one place.",
     siteName: "WatchFinder",
-    images: ["/logo.png"],
+    images: ["/brand/watchfinder-wordmark.png"],
     type: "website"
   }
 };
@@ -72,6 +73,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <ThemeManager />
+        <FirstLoadSplash />
         <div className="app-shell">
           <header className="site-header">
             <div className="header-inner">

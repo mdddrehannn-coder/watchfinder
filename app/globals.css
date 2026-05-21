@@ -121,28 +121,55 @@ html.theme-light .site-header {
 .brand-logo {
   display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.7rem;
   color: var(--text);
   font-weight: 900;
   letter-spacing: 0;
   white-space: nowrap;
 }
 
-.brand-logo-mark {
+.brand-logo-mark-shell {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
   flex: 0 0 auto;
-  border-radius: 50%;
-  object-fit: cover;
-  background: #050506;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 22px rgba(244, 63, 94, 0.18);
+  border-radius: 0.85rem;
+  overflow: hidden;
+  background: #090a0f;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 10px 24px rgba(244, 63, 94, 0.18);
 }
 
-.brand-logo-text {
-  font-size: 1.2rem;
-  line-height: 1;
+html.theme-light .brand-logo-mark-shell {
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.1), 0 10px 24px rgba(244, 63, 94, 0.14);
 }
 
-.brand-logo-text span {
-  color: var(--brand);
+.brand-logo-mark,
+.brand-wordmark {
+  grid-area: 1 / 1;
+  object-fit: contain;
+}
+
+.brand-logo-mark {
+  width: 100%;
+  height: 100%;
+  flex: 0 0 auto;
+}
+
+.brand-wordmark-shell {
+  position: relative;
+  display: inline-grid;
+  align-items: center;
+  width: 11.25rem;
+  height: 2.15rem;
+  overflow: hidden;
+}
+
+.brand-wordmark {
+  width: 100%;
+  height: 100%;
 }
 
 .brand-logo-header {
@@ -155,23 +182,47 @@ html.theme-light .site-header {
   justify-self: center;
   display: inline-grid;
   justify-items: center;
-  gap: 0.7rem;
+  gap: 0.75rem;
   text-align: center;
 }
 
-.brand-logo-auth .brand-logo-text,
-.brand-logo-profile .brand-logo-text,
-.brand-logo-splash .brand-logo-text {
-  font-size: 1.45rem;
+.brand-logo-auth .brand-logo-mark-shell,
+.brand-logo-profile .brand-logo-mark-shell,
+.brand-logo-splash .brand-logo-mark-shell {
+  width: 4.75rem;
+  height: 4.75rem;
+  border-radius: 1.2rem;
 }
 
-.brand-logo-auth .brand-logo-mark,
-.brand-logo-profile .brand-logo-mark {
+.brand-logo-auth .brand-wordmark-shell,
+.brand-logo-profile .brand-wordmark-shell,
+.brand-logo-splash .brand-wordmark-shell {
+  width: 15rem;
+  height: 3.45rem;
+}
+
+.brand-logo-auth .brand-logo-mark-shell,
+.brand-logo-profile .brand-logo-mark-shell {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 18px 34px rgba(244, 63, 94, 0.24);
 }
 
-.brand-logo-splash .brand-logo-mark {
+.brand-logo-splash .brand-logo-mark-shell {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 20px 50px rgba(244, 63, 94, 0.28);
+}
+
+.brand-logo-mark-light,
+.brand-wordmark-light {
+  display: none;
+}
+
+html.theme-light .brand-logo-mark-dark,
+html.theme-light .brand-wordmark-dark {
+  display: none;
+}
+
+html.theme-light .brand-logo-mark-light,
+html.theme-light .brand-wordmark-light {
+  display: block;
 }
 
 .top-nav {
@@ -1575,15 +1626,124 @@ html.theme-light .theme-option.selected {
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 1rem;
   background:
     radial-gradient(circle at 50% 35%, rgba(244, 63, 94, 0.16), transparent 24rem),
-    var(--bg);
-  color: var(--muted);
+    #050608;
+  color: rgba(248, 250, 252, 0.76);
 }
 
 .loading-screen p {
   margin: 0;
+}
+
+.brand-loader {
+  width: min(100%, 30rem);
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.brand-loader-core {
+  display: grid;
+  justify-items: center;
+  gap: 0.85rem;
+  text-align: center;
+}
+
+.brand-loader .brand-logo-splash .brand-logo-mark-shell {
+  animation: loader-pulse 1.8s ease-in-out infinite;
+}
+
+.brand-loader-word {
+  position: relative;
+  overflow: hidden;
+  color: #ff1f2f;
+  font-size: clamp(1.35rem, 8vw, 2.35rem);
+  font-weight: 950;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
+  text-shadow: 0 0 22px rgba(244, 63, 94, 0.52);
+  animation: loader-word-slide 1.8s ease-in-out infinite;
+}
+
+.brand-loader-word::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.62), transparent);
+  transform: translateX(-130%);
+  animation: loader-shine 1.8s ease-in-out infinite;
+}
+
+.brand-loader p {
+  margin: 0;
+  color: rgba(248, 250, 252, 0.72);
+}
+
+.first-load-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(244, 63, 94, 0.18), transparent 22rem),
+    #050608;
+  animation: splash-fade 1.2s ease forwards;
+}
+
+@keyframes loader-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(244, 63, 94, 0));
+  }
+  50% {
+    transform: scale(1.045);
+    filter: drop-shadow(0 0 22px rgba(244, 63, 94, 0.38));
+  }
+}
+
+@keyframes loader-word-slide {
+  0% {
+    opacity: 0;
+    transform: translateY(0.6rem);
+  }
+  24%, 72% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+}
+
+@keyframes loader-shine {
+  0%, 32% {
+    transform: translateX(-130%);
+  }
+  78%, 100% {
+    transform: translateX(130%);
+  }
+}
+
+@keyframes splash-fade {
+  0%, 72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-loader .brand-logo-splash .brand-logo-mark-shell,
+  .brand-loader-word,
+  .brand-loader-word::after,
+  .first-load-splash {
+    animation: none;
+  }
 }
 
 @keyframes pulse {
@@ -1657,7 +1817,7 @@ html.theme-light .theme-option.selected {
 }
 
 @media (max-width: 520px) {
-  .brand-logo-header .brand-logo-text {
+  .brand-logo-header .brand-wordmark-shell {
     display: none;
   }
 

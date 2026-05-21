@@ -13,17 +13,42 @@ export default function BrandLogo({
 }) {
   const content = (
     <>
-      <Image
-        className="brand-logo-mark"
-        src="/logo.png"
-        alt="WatchFinder logo"
-        width={variant === "header" ? 40 : 76}
-        height={variant === "header" ? 40 : 76}
-        priority={variant === "header"}
-      />
+      <span className="brand-logo-mark-shell" aria-hidden="true">
+        <Image
+          className="brand-logo-mark brand-logo-mark-dark"
+          src="/brand/watchfinder-icon-dark.png"
+          alt=""
+          width={variant === "header" ? 44 : 76}
+          height={variant === "header" ? 44 : 76}
+          priority={variant === "header"}
+        />
+        <Image
+          className="brand-logo-mark brand-logo-mark-light"
+          src="/brand/watchfinder-icon-light.png"
+          alt=""
+          width={variant === "header" ? 44 : 76}
+          height={variant === "header" ? 44 : 76}
+          priority={variant === "header"}
+        />
+      </span>
       {showText ? (
-        <span className="brand-logo-text">
-          Watch<span>Finder</span>
+        <span className="brand-wordmark-shell" aria-label="WatchFinder">
+          <Image
+            className="brand-wordmark brand-wordmark-dark"
+            src="/brand/watchfinder-wordmark-dark.png"
+            alt="WatchFinder"
+            width={variant === "header" ? 180 : 240}
+            height={variant === "header" ? 60 : 80}
+            priority={variant === "header"}
+          />
+          <Image
+            className="brand-wordmark brand-wordmark-light"
+            src="/brand/watchfinder-wordmark-light.png"
+            alt="WatchFinder"
+            width={variant === "header" ? 180 : 240}
+            height={variant === "header" ? 60 : 80}
+            priority={variant === "header"}
+          />
         </span>
       ) : null}
     </>
