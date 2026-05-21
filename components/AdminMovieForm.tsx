@@ -93,6 +93,7 @@ export default function AdminMovieForm({
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
   const [bannerPreview, setBannerPreview] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const savingRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -242,22 +243,24 @@ export default function AdminMovieForm({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+
     const formElement = event.currentTarget;
     setMessage({ type: "info", text: "Saving movie..." });
     setSavedMovieSlug(null);
 
-    const form = new FormData(formElement);
-    const validationError = validate(form);
-    if (validationError) {
-      setMessage({ type: "error", text: validationError });
-      return;
-    }
-
-    setSaving(true);
-    const supabase = createSupabaseBrowserClient();
-    const { data: auth } = await supabase.auth.getUser();
-
     try {
+      const form = new FormData(formElement);
+      const validationError = validate(form);
+      if (validationError) {
+        setMessage({ type: "error", text: validationError });
+        return;
+      }
+
+      const supabase = createSupabaseBrowserClient();
+      const { data: auth } = await supabase.auth.getUser();
       const payload = {
         title: title.trim(),
         slug: slug.trim(),
@@ -290,10 +293,20 @@ export default function AdminMovieForm({
         distribution_territory: hasLicensedVideo ? toNullableString(form.get("distribution_territory")) : null
       };
 
-      const { data: movie, error } = await supabase.from("movies").insert(payload).select("id, slug").single();
+      const { data: existingMovie, error: existingError } = await supabase
+        .from("movies")
+        .select("id, slug")
+        .eq("slug", payload.slug)
+        .maybeSingle();
+      if (existingError) throw existingError;
+
+      const wasUpdate = Boolean(existingMovie);
+      const saveQuery = existingMovie
+        ? supabase.from("movies").update(payload).eq("id", existingMovie.id)
+        : supabase.from("movies").insert(payload);
+      const { data: movie, error } = await saveQuery.select("id, slug").single();
       if (error || !movie) {
-        setMessage({ type: "error", text: error?.message || "Movie save failed." });
-        return;
+        throw error || new Error("Movie save failed.");
       }
 
       const poster = form.get("poster") as File;
@@ -304,6 +317,14 @@ export default function AdminMovieForm({
       if (Object.keys(updatePayload).length) {
         const { error: imageError } = await supabase.from("movies").update(updatePayload).eq("id", movie.id);
         if (imageError) throw imageError;
+      }
+
+      if (wasUpdate) {
+        const { error: genreDeleteError } = await supabase.from("movie_genres").delete().eq("movie_id", movie.id);
+        if (genreDeleteError) throw genreDeleteError;
+
+        const { error: castDeleteError } = await supabase.from("movie_cast").delete().eq("movie_id", movie.id);
+        if (castDeleteError) throw castDeleteError;
       }
 
       if (selectedGenres.length) {
@@ -323,6 +344,14 @@ export default function AdminMovieForm({
       const platformId = selectedPlatformId;
       const watchUrl = toNullableString(form.get("watch_url"));
       if (platformId && watchUrl) {
+        if (wasUpdate) {
+          const { error: platformDeleteError } = await supabase
+            .from("movie_platform_links")
+            .delete()
+            .eq("movie_id", movie.id);
+          if (platformDeleteError) throw platformDeleteError;
+        }
+
         const { error: platformError } = await supabase.from("movie_platform_links").insert({
           movie_id: movie.id,
           platform_id: platformId,
@@ -352,12 +381,13 @@ export default function AdminMovieForm({
         if (licenseError) throw licenseError;
       }
 
-      setMessage({ type: "success", text: "Movie saved successfully." });
+      setMessage({ type: "success", text: wasUpdate ? "Movie updated successfully." : "Movie saved successfully." });
       setSavedMovieSlug(movie.slug);
       resetFormState(formElement);
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Movie save failed." });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
