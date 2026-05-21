@@ -4,7 +4,6 @@ import { Search } from "lucide-react";
 import "@/app/globals.css";
 import BrandLogo from "@/components/BrandLogo";
 import BottomNav from "@/components/BottomNav";
-import FirstLoadSplash from "@/components/FirstLoadSplash";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
 import ThemeManager from "@/components/ThemeManager";
 
@@ -73,7 +72,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <ThemeManager />
-        <FirstLoadSplash />
         <div className="app-shell">
           <header className="site-header">
             <div className="header-inner">
