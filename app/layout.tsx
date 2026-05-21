@@ -19,11 +19,11 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   icons: {
     icon: [
-      { url: "/favicon.ico" },
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512.png", sizes: "512x512", type: "image/png" }
+      { url: "/favicon-v2.ico?v=2" },
+      { url: "/icon-192-v2.png?v=2", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512-v2.png?v=2", sizes: "512x512", type: "image/png" }
     ],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }]
+    apple: [{ url: "/apple-touch-icon-v2.png?v=2", sizes: "180x180", type: "image/png" }]
   },
   appleWebApp: {
     capable: true,

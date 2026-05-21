@@ -40,6 +40,16 @@ Production check:
 npm run build
 ```
 
+## PWA App Icon Refresh
+
+WatchFinder uses versioned PWA icons in `manifest.json` so new installs receive the latest W app icon.
+
+If an already installed Android/iPhone home screen app still shows an older icon:
+
+1. Remove/uninstall the installed WatchFinder app from the home screen.
+2. Clear browser site data for WatchFinder if the old icon still appears.
+3. Reopen WatchFinder in the browser and install/add it to the home screen again.
+
 ## GitHub Repo Setup
 
 1. Create a new GitHub repository named `watchfinder`.
