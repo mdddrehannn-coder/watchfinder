@@ -16,7 +16,7 @@ export default async function ProfilePage() {
     return (
       <main className="page-inner">
         <section className="section panel profile-login-card">
-          <BrandLogo variant="profile" />
+          <BrandLogo variant="profile" showText={false} />
           <h1>Please login to access your profile</h1>
           <p className="muted">Login to save favorites and watch history.</p>
           <Link className="button primary" href="/login?next=/profile">
@@ -29,7 +29,6 @@ export default async function ProfilePage() {
 
   return (
     <main className="page-inner">
-      <BrandLogo variant="profile" />
       <h1>Profile</h1>
       <ProfileMenu initialEmail={user.email || "Signed in"} />
     </main>

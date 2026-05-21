@@ -32,7 +32,7 @@ export default function ProfileMenu({ initialEmail }: { initialEmail: string }) 
   return (
     <div className="form-grid">
       <div className="panel">
-        <BrandLogo href="" variant="profile" />
+        <BrandLogo href="" variant="profile" showText={false} />
         <h2>Your Account</h2>
         <p className="muted">{email}</p>
         <button className="button" onClick={logout} type="button">
