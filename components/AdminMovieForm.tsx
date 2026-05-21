@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChangeEvent, Dispatch, FormEvent, SetStateAction, useEffect, useState } from "react";
+import { ChangeEvent, Dispatch, FormEvent, SetStateAction, useEffect, useRef, useState } from "react";
 import { Eye, Save } from "lucide-react";
 import { slugify } from "@/lib/format";
 import { joinLanguages, WATCHFINDER_LANGUAGES } from "@/lib/languages";
@@ -92,6 +92,7 @@ export default function AdminMovieForm({
   const [savedMovieSlug, setSavedMovieSlug] = useState<string | null>(null);
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
   const [bannerPreview, setBannerPreview] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     return () => {
@@ -199,7 +200,41 @@ export default function AdminMovieForm({
     }
   }
 
+  function resetFormState(formElement?: HTMLFormElement | null) {
+    try {
+      formElement?.reset();
+    } catch {
+      // A successful save should not become a visible error because a browser reset failed.
+    }
+    setTitle("");
+    setSlug("");
+    setSelectedType("movie");
+    setSelectedStatus("draft");
+    setHasLicensedVideo(false);
+    setIsLatest(false);
+    setSelectedLanguages([]);
+    setSelectedGenres([]);
+    setSelectedCast([]);
+    setGenreSearch("");
+    setCastSearch("");
+    setSelectedWatchLanguages([]);
+    setSelectedQualities([]);
+    setSelectedPlatformId("");
+    setAvailabilityType("subscription");
+    setVideoProvider("");
+    setLicenseType("");
+    try {
+      if (posterPreview) URL.revokeObjectURL(posterPreview);
+      if (bannerPreview) URL.revokeObjectURL(bannerPreview);
+    } catch {
+      // Object URL cleanup is best-effort.
+    }
+    setPosterPreview(null);
+    setBannerPreview(null);
+  }
+
   function clearAddAnother() {
+    resetFormState(formRef.current);
     setMessage(null);
     setSavedMovieSlug(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -207,10 +242,11 @@ export default function AdminMovieForm({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setMessage({ type: "info", text: "Saving movie..." });
     setSavedMovieSlug(null);
 
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     const validationError = validate(form);
     if (validationError) {
       setMessage({ type: "error", text: validationError });
@@ -318,26 +354,7 @@ export default function AdminMovieForm({
 
       setMessage({ type: "success", text: "Movie saved successfully." });
       setSavedMovieSlug(movie.slug);
-      event.currentTarget.reset();
-      setTitle("");
-      setSlug("");
-      setSelectedType("movie");
-      setSelectedStatus("draft");
-      setHasLicensedVideo(false);
-      setIsLatest(false);
-      setSelectedLanguages([]);
-      setSelectedGenres([]);
-      setSelectedCast([]);
-      setGenreSearch("");
-      setCastSearch("");
-      setSelectedWatchLanguages([]);
-      setSelectedQualities([]);
-      setSelectedPlatformId("");
-      setAvailabilityType("subscription");
-      setVideoProvider("");
-      setLicenseType("");
-      setPosterPreview(null);
-      setBannerPreview(null);
+      resetFormState(formElement);
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Movie save failed." });
     } finally {
@@ -353,7 +370,7 @@ export default function AdminMovieForm({
   );
 
   return (
-    <form className="form-grid panel admin-movie-form" onSubmit={submit}>
+    <form ref={formRef} className="form-grid panel admin-movie-form" onSubmit={submit}>
       <FormSection title="Content Positioning" helper="Choose a helper chip to prepare existing fields for the way this title should appear on WatchFinder. These do not create new database columns.">
         <div className="positioning-grid">
           <button className="positioning-chip" type="button" onClick={() => applyPositioning("trailer")}>
