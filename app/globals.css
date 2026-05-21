@@ -1820,27 +1820,6 @@ html.theme-light .bottom-nav a:hover {
   animation: loader-pulse 1.8s ease-in-out infinite;
 }
 
-.brand-loader-word {
-  position: relative;
-  overflow: hidden;
-  color: #ff1f2f;
-  font-size: clamp(1.35rem, 8vw, 2.35rem);
-  font-weight: 950;
-  letter-spacing: 0.22em;
-  text-indent: 0.22em;
-  text-shadow: 0 0 22px rgba(244, 63, 94, 0.52);
-  animation: loader-word-slide 1.8s ease-in-out infinite;
-}
-
-.brand-loader-word::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.62), transparent);
-  transform: translateX(-130%);
-  animation: loader-shine 1.8s ease-in-out infinite;
-}
-
 .brand-loader p {
   margin: 0;
   color: rgba(248, 250, 252, 0.72);
@@ -1869,30 +1848,6 @@ html.theme-light .bottom-nav a:hover {
   }
 }
 
-@keyframes loader-word-slide {
-  0% {
-    opacity: 0;
-    transform: translateY(0.6rem);
-  }
-  24%, 72% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-0.5rem);
-  }
-}
-
-@keyframes loader-shine {
-  0%, 32% {
-    transform: translateX(-130%);
-  }
-  78%, 100% {
-    transform: translateX(130%);
-  }
-}
-
 @keyframes splash-fade {
   0%, 72% {
     opacity: 1;
@@ -1905,8 +1860,6 @@ html.theme-light .bottom-nav a:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .brand-loader .brand-logo-splash .brand-logo-mark-shell,
-  .brand-loader-word,
-  .brand-loader-word::after,
   .first-load-splash {
     animation: none;
   }

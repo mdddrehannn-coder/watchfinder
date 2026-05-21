@@ -8,10 +8,7 @@ export default function BrandLoader({
   return (
     <div className="brand-loader" role="status" aria-live="polite">
       <div className="brand-loader-core">
-        <BrandLogo href="" variant="splash" />
-        <div className="brand-loader-word" aria-hidden="true">
-          WATCH
-        </div>
+        <BrandLogo href="" variant="splash" showText={false} />
         <p>{label}</p>
       </div>
     </div>
