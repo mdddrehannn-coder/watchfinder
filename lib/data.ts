@@ -147,9 +147,9 @@ export async function getHomepageHeroMovies() {
     .sort((a, b) => {
       const priorityDiff = priority(a) - priority(b);
       if (priorityDiff !== 0) return priorityDiff;
-      const dateDiff = timestamp(b) - timestamp(a);
-      if (dateDiff !== 0) return dateDiff;
-      return (b.popularity_score || 0) - (a.popularity_score || 0);
+      const popularityDiff = (b.popularity_score || 0) - (a.popularity_score || 0);
+      if (popularityDiff !== 0) return popularityDiff;
+      return timestamp(b) - timestamp(a);
     })
     .slice(0, 6);
 }

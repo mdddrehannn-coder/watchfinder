@@ -9,6 +9,7 @@ import {
   isLegalFreeMovie,
   movieQualities
 } from "@/lib/discovery";
+import { formatType, getYouTubeEmbedUrl } from "@/lib/format";
 import { splitLanguages } from "@/lib/languages";
 import type { Movie } from "@/types/watchfinder";
 
@@ -18,26 +19,77 @@ function firstPlatform(movie: Movie) {
 
 function slideBadges(movie: Movie) {
   return [
-    isLegalFreeMovie(movie) ? "Free Legal" : null,
-    isHindiFriendly(movie) ? "Hindi Dubbed" : null,
+    formatType(movie.type),
+    splitLanguages(movie.language)[0] || null,
+    movieQualities(movie)[0] || null,
     !movie.has_licensed_video ? "Trailer Only" : null,
-    hasOfficialLink(movie) ? "Official" : null
-  ].filter(Boolean).slice(0, 2) as string[];
+    hasOfficialLink(movie) ? "Official" : null,
+    isLegalFreeMovie(movie) ? "Free Legal" : null,
+    isHindiFriendly(movie) ? "Hindi Dubbed" : null
+  ].filter(Boolean).slice(0, 3) as string[];
+}
+
+function getPreviewSrc(trailerUrl?: string | null) {
+  const embedUrl = getYouTubeEmbedUrl(trailerUrl);
+  if (!embedUrl || !embedUrl.includes("youtube.com/embed/")) return null;
+  const videoId = embedUrl.split("/embed/")[1]?.split("?")[0];
+  const params = new URLSearchParams({
+    autoplay: "1",
+    mute: "1",
+    controls: "0",
+    playsinline: "1",
+    rel: "0",
+    modestbranding: "1"
+  });
+  if (videoId) {
+    params.set("loop", "1");
+    params.set("playlist", videoId);
+  }
+  return `${embedUrl}?${params.toString()}`;
 }
 
 export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
+  const [previewAllowed, setPreviewAllowed] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const slides = useMemo(() => movies.slice(0, 6), [movies]);
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const mobile = window.matchMedia("(max-width: 719px)");
+
+    function updatePreviewPermission() {
+      setPreviewAllowed(!reducedMotion.matches && !mobile.matches && document.visibilityState === "visible");
+    }
+
+    updatePreviewPermission();
+    reducedMotion.addEventListener("change", updatePreviewPermission);
+    mobile.addEventListener("change", updatePreviewPermission);
+    document.addEventListener("visibilitychange", updatePreviewPermission);
+
+    return () => {
+      reducedMotion.removeEventListener("change", updatePreviewPermission);
+      mobile.removeEventListener("change", updatePreviewPermission);
+      document.removeEventListener("visibilitychange", updatePreviewPermission);
+    };
+  }, []);
 
   useEffect(() => {
     if (paused || slides.length <= 1) return;
     const timer = window.setInterval(() => {
       setActive((current) => (current + 1) % slides.length);
-    }, 4000);
+    }, 5000);
     return () => window.clearInterval(timer);
   }, [paused, slides.length]);
+
+  useEffect(() => {
+    setPreviewReady(false);
+    if (!previewAllowed) return;
+    const timer = window.setTimeout(() => setPreviewReady(true), 3000);
+    return () => window.clearTimeout(timer);
+  }, [active, previewAllowed]);
 
   function previous() {
     setActive((current) => (current === 0 ? slides.length - 1 : current - 1));
@@ -61,7 +113,7 @@ export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
     return (
       <section className="home-movie-hero empty-home-hero">
         <p className="rating-badge">Featured Updates</p>
-        <p>Add featured or latest movies from admin panel to show homepage slider.</p>
+        <p>Add Published + Featured/Latest/Trending movies from admin panel to show homepage slider.</p>
       </section>
     );
   }
@@ -77,30 +129,31 @@ export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
       onTouchEnd={(event) => handleTouchEnd(event.changedTouches[0]?.clientX ?? 0)}
     >
       <div className="hero-slide-track" style={{ transform: `translateX(-${active * 100}%)` }}>
-        {slides.map((movie) => {
+        {slides.map((movie, index) => {
           const image = movie.banner_url || movie.poster_url;
-          const languages = splitLanguages(movie.language).slice(0, 3);
-          const quality = movieQualities(movie)[0];
-          const platform = firstPlatform(movie);
           const badges = slideBadges(movie);
+          const previewSrc = active === index && previewReady ? getPreviewSrc(movie.trailer_url) : null;
 
           return (
             <article className="hero-movie-slide" key={movie.id}>
+              <Link className="hero-slide-link" href={`/movie/${movie.slug}`} aria-label={`View ${movie.title}`} />
               <div className={movie.banner_url ? "hero-movie-image" : "hero-movie-image poster-backdrop"}>
                 {image ? <img src={image} alt={movie.title} /> : null}
               </div>
+              {previewSrc ? (
+                <iframe
+                  className="hero-trailer-preview"
+                  src={previewSrc}
+                  title={`${movie.title} muted trailer preview`}
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  aria-hidden="true"
+                />
+              ) : null}
               <div className="hero-movie-content">
-                <p className="rating-badge">Latest on WatchFinder</p>
+                <p className="hero-kicker">Latest on WatchFinder</p>
                 <h1>{movie.title}</h1>
                 {movie.description ? <p className="hero-movie-description">{movie.description}</p> : null}
-                <div className="language-tags">
-                  {languages.map((language) => (
-                    <span className="language-tag" key={language}>{language}</span>
-                  ))}
-                  {quality ? <span className="language-tag quality-tag">{quality}</span> : null}
-                  {platform ? <span className="platform-badge">{platform}</span> : null}
-                </div>
-                <div className="smart-badge-row">
+                <div className="smart-badge-row hero-badge-row">
                   {badges.map((badge) => (
                     <span className="smart-badge" key={badge}>{badge}</span>
                   ))}
@@ -110,9 +163,9 @@ export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
                     View Details
                   </Link>
                   {movie.trailer_url ? (
-                    <a className="button ghost" href={movie.trailer_url} target="_blank" rel="noreferrer">
+                    <Link className="button hero-secondary-button" href={`/movie/${movie.slug}#trailer`}>
                       <Play size={16} /> Watch Trailer
-                    </a>
+                    </Link>
                   ) : null}
                 </div>
               </div>

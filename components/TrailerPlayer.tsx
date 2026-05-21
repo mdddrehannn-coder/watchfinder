@@ -5,7 +5,7 @@ export default function TrailerPlayer({ trailerUrl }: { trailerUrl?: string | nu
   if (!embedUrl) return null;
 
   return (
-    <section className="section">
+    <section className="section" id="trailer">
       <div className="section-head">
         <h2>Official Trailer</h2>
       </div>
