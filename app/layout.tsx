@@ -11,8 +11,8 @@ import AppUpdateManager from "@/components/AppUpdateManager";
 import PWAInstallBanner from "@/components/PWAInstallBanner";
 import PWAInstallManager from "@/components/PWAInstallManager";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import SimpleSplashScreen from "@/components/SimpleSplashScreen";
 import ThemeManager from "@/components/ThemeManager";
-import WatchFinderIntro from "@/components/WatchFinderIntro";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
@@ -79,7 +79,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <ThemeManager />
-        <WatchFinderIntro />
+        <SimpleSplashScreen />
         <ServiceWorkerRegister />
         <PWAInstallManager>
           <Suspense fallback={null}>
