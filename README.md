@@ -13,6 +13,54 @@ Tagline: **Find Movies, Web Series and OTT Updates in One Place**
 - Vercel project: `watchfinder`
 - Supabase project: `watchfinder-prod`
 
+## Project Structure
+
+The repository root is the main WatchFinder project folder. Keep `package.json` at the repository root and keep Vercel Root Directory set to the default/root.
+
+```text
+watchfinder/
+  app/                  Next.js routes, layouts, metadata and global CSS
+  components/           Reusable UI, admin, PWA, analytics and auth components
+  lib/                  Supabase clients, data helpers, analytics and utilities
+  public/
+    brand/              WatchFinder logo and wordmark source assets
+    platforms/          Local platform logo SVG assets
+    posters/            Optional local poster assets only
+    banners/            Optional local banner assets only
+  scripts/              One-off asset/build helper scripts
+  supabase/migrations/  Project migrations, including analytics
+  types/                Shared TypeScript types
+  package.json
+  next.config.mjs
+  tsconfig.json
+  README.md
+  .env.example
+  .gitignore
+```
+
+Future WatchFinder code, UI, assets, and feature updates should stay inside this same structure. Do not create separate random folders or nested projects such as `watchfinder/WatchFinder/app`.
+
+## Asset Locations
+
+- Brand logos and wordmarks belong in `public/brand/`.
+- Browser/PWA entry icons also keep root copies such as `public/icon-192-v3.png`, `public/icon-512-v3.png`, `public/apple-touch-icon-v3.png`, and `public/favicon-v3.ico` because browsers and manifests read those public paths directly.
+- Platform logo SVGs belong in `public/platforms/`.
+- Local poster files, if ever used, belong in `public/posters/`.
+- Local banner files, if ever used, belong in `public/banners/`.
+- Supabase-hosted poster/banner URLs stored in the database should not be moved or rewritten.
+
+## Future Updates
+
+Make future changes inside the existing root project. Add new routes in `app/`, reusable UI in `components/`, shared helpers in `lib/`, shared types in `types/`, and static assets under the correct `public/` subfolder.
+
+For each production update:
+
+1. Make code/assets changes in this repo root.
+2. Run `npm run build`.
+3. Commit and push to `main`.
+4. Let Vercel deploy from the root project.
+5. If the PWA version changes, update `public/version.json` and keep manifest/icon references current.
+
 ## Environment Variables
 
 Create `.env.local` from `.env.example`:
@@ -43,6 +91,8 @@ npm run build
 ## PWA App Icon Refresh
 
 WatchFinder uses versioned PWA icons in `manifest.json` so new installs receive the latest W app icon.
+
+The installed PWA also checks `public/version.json` for website updates. When that version changes, users can refresh from the in-app update banner.
 
 If an already installed Android/iPhone home screen app still shows an older icon:
 

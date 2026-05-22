@@ -7,6 +7,7 @@ import BrandLogo from "@/components/BrandLogo";
 import BottomNav from "@/components/BottomNav";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
 import NavbarSearch from "@/components/NavbarSearch";
+import AppUpdateManager from "@/components/AppUpdateManager";
 import PWAInstallBanner from "@/components/PWAInstallBanner";
 import PWAInstallManager from "@/components/PWAInstallManager";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
@@ -23,11 +24,11 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   icons: {
     icon: [
-      { url: "/favicon-v2.ico?v=2" },
-      { url: "/icon-192-v2.png?v=2", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512-v2.png?v=2", sizes: "512x512", type: "image/png" }
+      { url: "/favicon-v3.ico?v=3" },
+      { url: "/icon-192-v3.png?v=3", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512-v3.png?v=3", sizes: "512x512", type: "image/png" }
     ],
-    apple: [{ url: "/apple-touch-icon-v2.png?v=2", sizes: "180x180", type: "image/png" }]
+    apple: [{ url: "/apple-touch-icon-v3.png?v=3", sizes: "180x180", type: "image/png" }]
   },
   appleWebApp: {
     capable: true,
@@ -98,6 +99,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </header>
             <PWAInstallBanner />
+            <AppUpdateManager />
             {children}
             <BottomNav />
           </div>

@@ -55,7 +55,7 @@ export default function PWAInstallBanner() {
   return (
     <aside className="pwa-install-banner" aria-label="Install WatchFinder app">
       <div className="pwa-install-icon">
-        <Image src="/icon-192-v2.png" width={44} height={44} alt="" />
+        <Image src="/icon-192-v3.png" width={44} height={44} alt="" />
       </div>
       <div className="pwa-install-copy">
         <strong>Install WatchFinder App</strong>
