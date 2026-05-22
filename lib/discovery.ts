@@ -132,6 +132,11 @@ export function matchesDiscoveryQuery(movie: Movie, query?: string) {
     ...movieQualities(movie),
     ...movieAvailabilityTypes(movie),
     ...(movie.genres || []).map((genre) => genre.name),
+    ...(movie.content_channels || []).flatMap((channel) => [
+      channel.name,
+      channel.slug,
+      channel.channel_type
+    ]),
     ...(movie.movie_platform_links || []).flatMap((link) => [
       link.platforms?.name,
       link.platforms?.slug,

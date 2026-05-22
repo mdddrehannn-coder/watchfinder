@@ -4,6 +4,8 @@ import type {
   AdSlot,
   BlogPost,
   CastMember,
+  ContentChannel,
+  ContentChannelType,
   Genre,
   LicenseDocument,
   Movie,
@@ -16,7 +18,8 @@ const movieSelect = `
   *,
   movie_genres(genres(*)),
   movie_cast(cast_members(*)),
-  movie_platform_links(*, platforms(*))
+  movie_platform_links(*, platforms(*)),
+  content_channel_items(content_channels(*))
 `;
 
 function normalizeMovie(row: any): Movie {
@@ -24,7 +27,8 @@ function normalizeMovie(row: any): Movie {
     ...row,
     genres: (row.movie_genres ?? []).map((item: any) => item.genres).filter(Boolean),
     cast_members: (row.movie_cast ?? []).map((item: any) => item.cast_members).filter(Boolean),
-    movie_platform_links: row.movie_platform_links ?? []
+    movie_platform_links: row.movie_platform_links ?? [],
+    content_channels: (row.content_channel_items ?? []).map((item: any) => item.content_channels).filter(Boolean)
   };
 }
 
@@ -226,6 +230,81 @@ export async function getPlatforms() {
   return (data ?? []) as Platform[];
 }
 
+export async function getContentChannels(channelType?: ContentChannelType | string, admin = false) {
+  const supabase = admin ? await createSupabaseServerClient() : createSupabaseAnonServerClient();
+  if (!supabase) return [] as ContentChannel[];
+
+  let query = supabase
+    .from("content_channels")
+    .select("*, content_channel_items(movie_id)")
+    .order("sort_order", { ascending: true, nullsFirst: false })
+    .order("name", { ascending: true });
+
+  if (channelType) query = query.eq("channel_type", channelType);
+  if (!admin) query = query.eq("is_active", true);
+
+  const { data } = await query;
+  return (data ?? []).map((channel: any) => ({
+    ...channel,
+    item_count: (channel.content_channel_items ?? []).length
+  })) as ContentChannel[];
+}
+
+export async function getContentChannelBySlug(channelType: ContentChannelType | string, slug: string) {
+  const supabase = createSupabaseAnonServerClient();
+  if (!supabase) return null;
+
+  const { data } = await supabase
+    .from("content_channels")
+    .select("*")
+    .eq("channel_type", channelType)
+    .eq("slug", slug)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  return (data as ContentChannel | null) ?? null;
+}
+
+export async function getMoviesForContentChannel(channelId: string) {
+  const supabase = createSupabaseAnonServerClient();
+  if (!supabase) return [] as Movie[];
+
+  const { data } = await supabase
+    .from("content_channel_items")
+    .select(`movies(${movieSelect})`)
+    .eq("channel_id", channelId)
+    .order("created_at", { ascending: false });
+
+  return (data ?? [])
+    .map((item: any) => item.movies)
+    .filter((movie: any) => movie?.status === "published")
+    .map(normalizeMovie);
+}
+
+export async function getChannelLinkedMovies(channelType: ContentChannelType | string, limit = 12) {
+  const channels = await getContentChannels(channelType);
+  const channelIds = new Set(channels.map((channel) => channel.id));
+  const movies = await getMovies({ limit: 160 });
+  return movies
+    .filter((movie) =>
+      movie.content_channels?.some((channel) => channelIds.has(channel.id)) ||
+      (channelType === "cartoon" && ["cartoon", "anime"].includes(String(movie.type))) ||
+      (channelType === "tv_show" && movie.type === "tv_show")
+    )
+    .slice(0, limit);
+}
+
+export async function getSearchChannels(query: string) {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return [] as ContentChannel[];
+  const channels = await getContentChannels();
+  return channels
+    .filter((channel) =>
+      `${channel.name} ${channel.slug} ${channel.description || ""} ${channel.channel_type}`.toLowerCase().includes(trimmed)
+    )
+    .slice(0, 8);
+}
+
 export async function getPlatformBySlug(slug: string) {
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return null;
@@ -323,13 +402,14 @@ export async function getAdminCollections() {
     };
   }
 
-  const [promotions, adSlots, blogPosts, feedbackMessages, licenseDocuments, siteSettings] = await Promise.all([
+  const [promotions, adSlots, blogPosts, feedbackMessages, licenseDocuments, siteSettings, contentChannels] = await Promise.all([
     supabase.from("promotions").select("*").order("priority", { ascending: false, nullsFirst: false }),
     supabase.from("ad_slots").select("*").order("placement"),
     supabase.from("blog_posts").select("*").order("published_at", { ascending: false, nullsFirst: false }),
     supabase.from("feedback_messages").select("*").order("created_at", { ascending: false }),
     supabase.from("license_documents").select("*").order("created_at", { ascending: false }),
-    supabase.from("site_settings").select("*")
+    supabase.from("site_settings").select("*"),
+    supabase.from("content_channels").select("*, content_channel_items(movie_id)").order("channel_type").order("sort_order")
   ]);
 
   return {
@@ -338,7 +418,11 @@ export async function getAdminCollections() {
     blogPosts: blogPosts.data ?? [],
     feedbackMessages: feedbackMessages.data ?? [],
     licenseDocuments: licenseDocuments.data ?? [],
-    siteSettings: siteSettings.data ?? []
+    siteSettings: siteSettings.data ?? [],
+    contentChannels: (contentChannels.data ?? []).map((channel: any) => ({
+      ...channel,
+      item_count: (channel.content_channel_items ?? []).length
+    }))
   };
 }
 

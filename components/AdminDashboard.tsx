@@ -5,11 +5,12 @@ import { useMemo, useState } from "react";
 import { Edit3, Eye, Plus, Search } from "lucide-react";
 import AdminAdSlotForm from "@/components/AdminAdSlotForm";
 import AdminBlogForm from "@/components/AdminBlogForm";
+import AdminChannelManager from "@/components/AdminChannelManager";
 import AdminLicenseForm from "@/components/AdminLicenseForm";
 import AdminMovieForm from "@/components/AdminMovieForm";
 import AdminPromotionForm from "@/components/AdminPromotionForm";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
-import type { CastMember, Genre, Movie, Platform } from "@/types/watchfinder";
+import type { CastMember, ContentChannel, Genre, Movie, Platform } from "@/types/watchfinder";
 
 type AdminSection =
   | "dashboard"
@@ -19,6 +20,8 @@ type AdminSection =
   | "genres"
   | "platforms"
   | "cast-members"
+  | "cartoon-channels"
+  | "tv-show-channels"
   | "promotions"
   | "ad-slots"
   | "blog-posts"
@@ -34,6 +37,8 @@ const sections: Array<{ id: AdminSection; label: string }> = [
   { id: "genres", label: "Genres" },
   { id: "platforms", label: "Platforms" },
   { id: "cast-members", label: "Cast Members" },
+  { id: "cartoon-channels", label: "Cartoon Channels" },
+  { id: "tv-show-channels", label: "TV Show Channels" },
   { id: "promotions", label: "Promotions" },
   { id: "ad-slots", label: "Ad Slots" },
   { id: "blog-posts", label: "Blog Posts" },
@@ -352,6 +357,7 @@ export default function AdminDashboard({
                 <option value="">All types</option>
                 <option value="movie">Movie</option>
                 <option value="tv_show">TV Show</option>
+                <option value="cartoon">Cartoon</option>
                 <option value="anime">Anime</option>
                 <option value="short_film">Short Film</option>
               </select>
@@ -369,6 +375,7 @@ export default function AdminDashboard({
                       <span className={statusClass(movie.status)}>{movie.status || "draft"}</span>
                       <span>{movie.type}</span>
                       <span>{movie.language || "No language"}</span>
+                      <span>{movie.content_channels?.map((channel) => channel.name).join(", ") || "No channel"}</span>
                       <span>Updated {formatDate(movie.updated_at || movie.created_at)}</span>
                     </div>
                     {analyticsStats.movieStatsById.get(movie.id) ? (
@@ -547,6 +554,7 @@ export default function AdminDashboard({
               onBackToMovies={() => setActiveSection("movies")}
               onAddNew={showAddMovie}
               movieAnalytics={editingMovie ? analyticsStats.movieStatsById.get(editingMovie.id) : undefined}
+              contentChannels={(collections.contentChannels ?? []) as ContentChannel[]}
             />
           </section>
         ) : null}
@@ -554,6 +562,8 @@ export default function AdminDashboard({
         {activeSection === "genres" ? <section className="section"><h2>Genres</h2><div className="chip-row">{genres.map((genre) => <span className="chip" key={genre.id}>{genre.name}</span>)}</div></section> : null}
         {activeSection === "platforms" ? <section className="section"><h2>Platforms</h2><div className="chip-row">{platforms.map((platform) => <span className="chip" key={platform.id}>{platform.name}</span>)}</div></section> : null}
         {activeSection === "cast-members" ? <section className="section"><h2>Cast Members</h2><div className="chip-row">{castMembers.map((member) => <span className="chip" key={member.id}>{member.name}</span>)}</div></section> : null}
+        {activeSection === "cartoon-channels" ? <section className="section"><AdminChannelManager initialChannels={collections.contentChannels ?? []} channelType="cartoon" title="Cartoon Channels" /></section> : null}
+        {activeSection === "tv-show-channels" ? <section className="section"><AdminChannelManager initialChannels={collections.contentChannels ?? []} channelType="tv_show" title="TV Show Channels" /></section> : null}
         {activeSection === "promotions" ? <section className="section"><h2>Promotions</h2><AdminPromotionForm /><div className="form-grid section">{collections.promotions.map((item: any) => <div className="panel" key={item.id}><strong>{item.title}</strong><p className="muted">{item.placement} - {item.is_active ? "active" : "inactive"}</p></div>)}</div></section> : null}
         {activeSection === "ad-slots" ? <section className="section"><h2>Ad Slots</h2><AdminAdSlotForm /><div className="form-grid section">{collections.adSlots.map((item: any) => <div className="panel" key={item.id}><strong>{item.slot_name}</strong><p className="muted">{item.placement} - {item.is_active ? "active" : "inactive"}</p></div>)}</div></section> : null}
         {activeSection === "blog-posts" ? <section className="section"><h2>Blog Posts</h2><AdminBlogForm /><div className="form-grid section">{collections.blogPosts.map((item: any) => <div className="panel" key={item.id}><strong>{item.title}</strong><p className="muted">{item.status} - {item.category}</p></div>)}</div></section> : null}

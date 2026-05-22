@@ -1,4 +1,4 @@
-export type MovieType = "movie" | "tv_show" | "anime" | "short_film";
+export type MovieType = "movie" | "tv_show" | "anime" | "short_film" | "cartoon";
 export type MovieStatus = "draft" | "published" | "archived";
 export type VideoProvider =
   | "cloudflare_stream"
@@ -78,6 +78,24 @@ export type Movie = {
   genres?: Genre[];
   cast_members?: CastMember[];
   movie_platform_links?: MoviePlatformLink[];
+  content_channels?: ContentChannel[];
+};
+
+export type ContentChannelType = "cartoon" | "tv_show";
+
+export type ContentChannel = {
+  id: string;
+  name: string;
+  slug: string;
+  channel_type: ContentChannelType | string;
+  logo_url?: string | null;
+  description?: string | null;
+  official_url?: string | null;
+  sort_order?: number | null;
+  is_active?: boolean | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  item_count?: number;
 };
 
 export type MoviePlatformLink = {

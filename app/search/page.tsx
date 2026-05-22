@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import ChannelCard from "@/components/ChannelCard";
 import SearchFilters from "@/components/SearchFilters";
 import SearchHistory from "@/components/SearchHistory";
 import MovieGrid from "@/components/MovieGrid";
 import SearchAnalyticsTracker from "@/components/SearchAnalyticsTracker";
-import { getGenres, getMovies, getPlatforms, getPopularSearches } from "@/lib/data";
+import { getGenres, getMovies, getPlatforms, getPopularSearches, getSearchChannels } from "@/lib/data";
 import {
   filterDiscoveryMovies,
   hasOfficialYouTube,
@@ -21,7 +22,7 @@ export default async function SearchPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const params = await searchParams;
-  const [genres, platforms, popular, movies] = await Promise.all([
+  const [genres, platforms, popular, movies, channels] = await Promise.all([
     getGenres(),
     getPlatforms(),
     getPopularSearches(),
@@ -32,7 +33,8 @@ export default async function SearchPage({
       platformSlug: params.platform,
       year: params.year,
       limit: 300
-    })
+    }),
+    getSearchChannels(params.q || "")
   ]);
   let results = movies.filter((movie) => matchesDiscoveryQuery(movie, params.q));
   results = filterDiscoveryMovies(results, {
@@ -93,6 +95,24 @@ export default async function SearchPage({
           emptyMessage="Try another title, language, or platform."
         />
       </section>
+      {channels.length ? (
+        <section className="section">
+          <div className="section-head">
+            <h2>Matching Channels</h2>
+            <p className="muted">{channels.length} found</p>
+          </div>
+          <div className="channel-grid">
+            {channels.map((channel) => (
+              <ChannelCard
+                channel={channel}
+                fallbackText={channel.channel_type === "cartoon" ? "Cartoon shows and official links" : "TV shows and official links"}
+                href={channel.channel_type === "cartoon" ? `/cartoons/${channel.slug}` : `/tv-shows/${channel.slug}`}
+                key={channel.id}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }

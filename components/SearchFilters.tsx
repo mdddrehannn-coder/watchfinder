@@ -20,6 +20,7 @@ export default function SearchFilters({
           <option value="">All</option>
           <option value="movie">Movie</option>
           <option value="tv_show">TV Show</option>
+          <option value="cartoon">Cartoon</option>
           <option value="anime">Anime</option>
           <option value="short_film">Short Film</option>
         </select>

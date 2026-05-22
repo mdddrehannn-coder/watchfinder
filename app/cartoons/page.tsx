@@ -3,18 +3,18 @@ import ChannelCard from "@/components/ChannelCard";
 import { getContentChannels } from "@/lib/data";
 
 export const metadata: Metadata = {
-  title: "TV Shows",
-  description: "Browse TV shows by channel and official availability on WatchFinder."
+  title: "Cartoons",
+  description: "Find cartoons by channel and official availability on WatchFinder."
 };
 
-export default async function TvShowsPage() {
-  const channels = await getContentChannels("tv_show");
+export default async function CartoonsPage() {
+  const channels = await getContentChannels("cartoon");
 
   return (
     <main className="page-inner">
       <section className="discover-hero">
-        <h1>TV Shows</h1>
-        <p className="muted">Browse TV shows by channel and official availability.</p>
+        <h1>Cartoons</h1>
+        <p className="muted">Find cartoons by channel and official availability.</p>
       </section>
       <section className="section">
         {channels.length ? (
@@ -22,14 +22,14 @@ export default async function TvShowsPage() {
             {channels.map((channel) => (
               <ChannelCard
                 channel={channel}
-                fallbackText="TV shows and official links"
-                href={`/tv-shows/${channel.slug}`}
+                fallbackText="Cartoon shows and official links"
+                href={`/cartoons/${channel.slug}`}
                 key={channel.id}
               />
             ))}
           </div>
         ) : (
-          <div className="empty">No TV show channels added yet.</div>
+          <div className="empty">No cartoon channels added yet.</div>
         )}
       </section>
     </main>

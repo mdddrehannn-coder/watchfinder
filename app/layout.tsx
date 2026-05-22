@@ -55,7 +55,8 @@ const nav = [
   ["OTT Releases", "/ott-releases"],
   ["Movies", "/movies"],
   ["Platforms", "/platforms"],
-  ["Blog", "/blog"]
+  ["Cartoons", "/cartoons"],
+  ["TV Shows", "/tv-shows"]
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

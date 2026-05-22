@@ -9,8 +9,10 @@ import { splitLanguages } from "@/lib/languages";
 
 type Suggestion = {
   id: string;
+  kind?: "movie" | "channel";
   title: string;
   slug: string;
+  href?: string;
   poster_url?: string | null;
   release_year?: number | null;
   language?: string | null;
@@ -101,7 +103,7 @@ export default function NavbarSearch() {
               return (
                 <Link
                   className="search-suggestion"
-                  href={`/movie/${movie.slug}`}
+                  href={movie.href || `/movie/${movie.slug}`}
                   key={movie.id}
                   onClick={() => setOpen(false)}
                 >
@@ -110,7 +112,7 @@ export default function NavbarSearch() {
                   </span>
                   <span className="search-suggestion-copy">
                     <strong>{movie.title}</strong>
-                    <small>{[movie.release_year, language].filter(Boolean).join(" • ") || "WatchFinder title"}</small>
+                    <small>{[movie.release_year, language].filter(Boolean).join(" - ") || (movie.kind === "channel" ? "WatchFinder channel" : "WatchFinder title")}</small>
                   </span>
                 </Link>
               );

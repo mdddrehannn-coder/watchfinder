@@ -16,6 +16,7 @@ export function formatType(type?: string | null) {
   const map: Record<MovieType, string> = {
     movie: "Movie",
     tv_show: "TV Show",
+    cartoon: "Cartoon",
     anime: "Anime",
     short_film: "Short Film"
   };

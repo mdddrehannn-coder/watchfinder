@@ -7,7 +7,7 @@ import { slugify } from "@/lib/format";
 import { joinLanguages, WATCHFINDER_LANGUAGES } from "@/lib/languages";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { uploadBanner, uploadLicenseDocumentWithPath, uploadPoster } from "@/lib/storage";
-import type { CastMember, Genre, Movie, Platform } from "@/types/watchfinder";
+import type { CastMember, ContentChannel, Genre, Movie, Platform } from "@/types/watchfinder";
 
 type Message = {
   type: "success" | "error" | "info";
@@ -76,7 +76,8 @@ export default function AdminMovieForm({
   onAddNew,
   onBackToMovies,
   onSaved,
-  movieAnalytics
+  movieAnalytics,
+  contentChannels = []
 }: {
   genres: Genre[];
   castMembers: CastMember[];
@@ -85,6 +86,7 @@ export default function AdminMovieForm({
   onAddNew?: () => void;
   onBackToMovies?: () => void;
   onSaved?: (movie: Movie) => void;
+  contentChannels?: ContentChannel[];
   movieAnalytics?: {
     views: number;
     todayViews: number;
@@ -113,6 +115,11 @@ export default function AdminMovieForm({
   const [selectedQualities, setSelectedQualities] = useState<string[]>(splitStoredValues(firstPlatformLink?.quality));
   const [selectedPlatformId, setSelectedPlatformId] = useState(firstPlatformLink?.platform_id ?? "");
   const [availabilityType, setAvailabilityType] = useState(firstPlatformLink?.availability_type ?? "subscription");
+  const firstChannelType = initialMovie?.content_channels?.[0]?.channel_type;
+  const [selectedChannelType, setSelectedChannelType] = useState<"" | "cartoon" | "tv_show">(
+    firstChannelType === "cartoon" || firstChannelType === "tv_show" ? firstChannelType : ""
+  );
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>((initialMovie?.content_channels ?? []).map((channel) => channel.id));
   const [videoProvider, setVideoProvider] = useState(initialMovie?.video_provider ?? "");
   const [licenseType, setLicenseType] = useState(initialMovie?.license_type ?? "");
   const [message, setMessage] = useState<Message | null>(null);
@@ -144,6 +151,9 @@ export default function AdminMovieForm({
     setSelectedQualities(splitStoredValues(link?.quality));
     setSelectedPlatformId(link?.platform_id ?? "");
     setAvailabilityType(link?.availability_type ?? "subscription");
+    const nextChannelType = initialMovie?.content_channels?.[0]?.channel_type;
+    setSelectedChannelType(nextChannelType === "cartoon" || nextChannelType === "tv_show" ? nextChannelType : "");
+    setSelectedChannelIds((initialMovie?.content_channels ?? []).map((channel) => channel.id));
     setVideoProvider(initialMovie?.video_provider ?? "");
     setLicenseType(initialMovie?.license_type ?? "");
     setMessage(null);
@@ -291,6 +301,8 @@ export default function AdminMovieForm({
     setSelectedQualities([]);
     setSelectedPlatformId("");
     setAvailabilityType("subscription");
+    setSelectedChannelType("");
+    setSelectedChannelIds([]);
     setVideoProvider("");
     setLicenseType("");
     setSelectedPositioning([]);
@@ -311,6 +323,13 @@ export default function AdminMovieForm({
     setSavedMovieSlug(null);
     onAddNew?.();
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function updateChannelType(value: "" | "cartoon" | "tv_show") {
+    setSelectedChannelType(value);
+    setSelectedChannelIds([]);
+    if (value === "cartoon") setSelectedType("cartoon");
+    if (value === "tv_show") setSelectedType("tv_show");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -449,6 +468,21 @@ export default function AdminMovieForm({
         if (platformError) throw platformError;
       }
 
+      if (wasUpdate) {
+        const { error: channelDeleteError } = await supabase
+          .from("content_channel_items")
+          .delete()
+          .eq("movie_id", movie.id);
+        if (channelDeleteError) throw channelDeleteError;
+      }
+
+      if (selectedChannelIds.length) {
+        const { error: channelLinkError } = await supabase
+          .from("content_channel_items")
+          .insert(selectedChannelIds.map((channel_id) => ({ movie_id: movie.id, channel_id })));
+        if (channelLinkError) throw channelLinkError;
+      }
+
       const licenseDoc = form.get("license_document") as File;
       if (licenseDoc?.size) {
         const uploaded = await uploadLicenseDocumentWithPath(movie.id, licenseDoc);
@@ -467,7 +501,13 @@ export default function AdminMovieForm({
 
       setMessage({ type: "success", text: wasUpdate ? "Movie updated successfully." : "Movie saved successfully." });
       setSavedMovieSlug(movie.slug);
-      onSaved?.({ ...(initialMovie || {}), ...payload, id: movie.id, slug: movie.slug } as Movie);
+      onSaved?.({
+        ...(initialMovie || {}),
+        ...payload,
+        id: movie.id,
+        slug: movie.slug,
+        content_channels: contentChannels.filter((channel) => selectedChannelIds.includes(channel.id))
+      } as Movie);
       resetFormState(formElement);
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Movie save failed." });
@@ -560,6 +600,7 @@ export default function AdminMovieForm({
           <div className="option-group">
             <label className="option-card"><input type="radio" name="type" value="movie" checked={selectedType === "movie"} onChange={() => setSelectedType("movie")} /> <span>Movie</span></label>
             <label className="option-card"><input type="radio" name="type" value="tv_show" checked={selectedType === "tv_show"} onChange={() => setSelectedType("tv_show")} /> <span>TV Show</span></label>
+            <label className="option-card"><input type="radio" name="type" value="cartoon" checked={selectedType === "cartoon"} onChange={() => setSelectedType("cartoon")} /> <span>Cartoon</span></label>
             <label className="option-card"><input type="radio" name="type" value="anime" checked={selectedType === "anime"} onChange={() => setSelectedType("anime")} /> <span>Anime</span></label>
             <label className="option-card"><input type="radio" name="type" value="short_film" checked={selectedType === "short_film"} onChange={() => setSelectedType("short_film")} /> <span>Short Film</span></label>
           </div>
@@ -599,6 +640,32 @@ export default function AdminMovieForm({
             Clear selected languages
           </button>
         ) : null}
+      </FormSection>
+
+      <FormSection title="Cartoon / TV Channel" helper="Optional. Link this title to one or more cartoon or TV channels for the public channel pages.">
+        <div className="option-group compact-options">
+          <label className="option-card"><input checked={selectedChannelType === ""} onChange={() => updateChannelType("")} type="radio" name="channel_type_ui" /> <span>None</span></label>
+          <label className="option-card"><input checked={selectedChannelType === "cartoon"} onChange={() => updateChannelType("cartoon")} type="radio" name="channel_type_ui" /> <span>Cartoon</span></label>
+          <label className="option-card"><input checked={selectedChannelType === "tv_show"} onChange={() => updateChannelType("tv_show")} type="radio" name="channel_type_ui" /> <span>TV Show</span></label>
+        </div>
+        {selectedChannelType ? (
+          <div className="relation-chip-grid">
+            {contentChannels
+              .filter((channel) => channel.channel_type === selectedChannelType)
+              .map((channel) => (
+                <button
+                  className={selectedChannelIds.includes(channel.id) ? "relation-chip selected" : "relation-chip"}
+                  key={channel.id}
+                  onClick={() => toggleItem(channel.id, setSelectedChannelIds)}
+                  type="button"
+                >
+                  {channel.name}
+                </button>
+              ))}
+          </div>
+        ) : (
+          <p className="muted">No channel link selected.</p>
+        )}
       </FormSection>
 
       <FormSection title="Images" helper="Upload strong artwork. Poster recommended 600x900. Banner recommended 1600x700.">

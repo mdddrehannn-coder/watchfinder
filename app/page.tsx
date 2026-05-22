@@ -7,6 +7,7 @@ import AdSlot from "@/components/AdSlot";
 import {
   getAdSlots,
   getBlogPosts,
+  getChannelLinkedMovies,
   getHomepageHeroMovies,
   getMovies,
   getPlatforms,
@@ -23,7 +24,9 @@ export default async function HomePage() {
     allMovies,
     trending,
     latest,
-    posts
+    posts,
+    popularCartoons,
+    popularTvShows
   ] = await Promise.all([
     getPromotions("home_middle"),
     getAdSlots("home"),
@@ -32,7 +35,9 @@ export default async function HomePage() {
     getMovies({ limit: 120 }),
     getMovies({ trending: true, limit: 12 }),
     getMovies({ latest: true, limit: 18 }),
-    getBlogPosts(6)
+    getBlogPosts(6),
+    getChannelLinkedMovies("cartoon", 12),
+    getChannelLinkedMovies("tv_show", 12)
   ]);
 
   const fallbackByPopularity = [...allMovies]
@@ -85,6 +90,8 @@ export default async function HomePage() {
       <MovieSlider title="New OTT Releases" movies={newOttReleases} href="/ott-releases" />
       <MovieSlider title="Trending Now" movies={trendingMovies} href="/movies?trending=true" />
       <MovieSlider title="Official YouTube Movies" movies={officialYouTube} href="/free-movies?platform=youtube" />
+      <MovieSlider title="Popular Cartoons" movies={popularCartoons} href="/cartoons" />
+      <MovieSlider title="Popular TV Shows" movies={popularTvShows} href="/tv-shows" />
       <PromotionBanner promotion={middlePromotions[0]} />
       <AdSlot slot={ads[0]} />
 
