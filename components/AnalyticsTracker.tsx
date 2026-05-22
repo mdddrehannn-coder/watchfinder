@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { trackEvent, trackPageView, upsertAnalyticsSession } from "@/lib/analytics";
+import { trackEvent, trackPageView, updateSessionHeartbeat } from "@/lib/analytics";
 
 export default function AnalyticsTracker() {
   const pathname = usePathname();
@@ -19,9 +19,9 @@ export default function AnalyticsTracker() {
     function heartbeat() {
       if (document.visibilityState !== "visible") return;
       trackEvent({ event_type: "session_active" });
-      upsertAnalyticsSession();
     }
 
+    updateSessionHeartbeat();
     const interval = window.setInterval(heartbeat, 30000);
     document.addEventListener("visibilitychange", heartbeat);
     return () => {

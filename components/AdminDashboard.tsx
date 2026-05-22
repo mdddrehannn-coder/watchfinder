@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Edit3, Eye, Plus, Search } from "lucide-react";
+import { Activity, Edit3, Eye, Plus, Search } from "lucide-react";
 import AdminAdSlotForm from "@/components/AdminAdSlotForm";
 import AdminBlogForm from "@/components/AdminBlogForm";
 import AdminChannelManager from "@/components/AdminChannelManager";
 import AdminLicenseForm from "@/components/AdminLicenseForm";
 import AdminMovieForm from "@/components/AdminMovieForm";
 import AdminPromotionForm from "@/components/AdminPromotionForm";
+import { trackEvent } from "@/lib/analytics";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import type { CastMember, ContentChannel, Genre, Movie, Platform } from "@/types/watchfinder";
 
@@ -83,6 +85,7 @@ type AnalyticsSession = {
   last_seen_at?: string | null;
   page_views?: number | null;
   total_watch_seconds?: number | null;
+  current_page?: string | null;
   device_type?: string | null;
   browser_name?: string | null;
 };
@@ -90,6 +93,13 @@ type AnalyticsSession = {
 type AnalyticsData = {
   events: AnalyticsEvent[];
   sessions: AnalyticsSession[];
+  debug?: {
+    eventsCount: number;
+    sessionsCount: number;
+    lastEventAt?: string | null;
+    lastSessionAt?: string | null;
+    errors?: string[];
+  };
 };
 
 type MovieAnalyticsSummary = {
@@ -141,6 +151,7 @@ export default function AdminDashboard({
   collections: any;
   analytics: AnalyticsData;
 }) {
+  const router = useRouter();
   const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
   const [movies, setMovies] = useState<Movie[]>(initialMovies);
   const [editingMovie, setEditingMovie] = useState<Movie | null>(null);
@@ -149,6 +160,7 @@ export default function AdminDashboard({
   const [typeFilter, setTypeFilter] = useState("");
   const [movieMessage, setMovieMessage] = useState<string | null>(null);
   const [analyticsRange, setAnalyticsRange] = useState("today");
+  const [analyticsTestMessage, setAnalyticsTestMessage] = useState<string | null>(null);
 
   const filteredMovies = useMemo(() => {
     const query = movieSearch.trim().toLowerCase();
@@ -273,6 +285,14 @@ export default function AdminDashboard({
     setActiveSection("add-movie");
     setMovieMessage(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function sendTestAnalyticsEvent() {
+    setAnalyticsTestMessage("Sending test event...");
+    await trackEvent({ event_type: "test_event", page_path: "/admin", metadata: { source: "admin_analytics_button" } });
+    setAnalyticsTestMessage("Test event sent. Refreshing analytics data...");
+    router.refresh();
+    window.setTimeout(() => setAnalyticsTestMessage(null), 3500);
   }
 
   function handleSaved(savedMovie: Movie) {
@@ -431,6 +451,18 @@ export default function AdminDashboard({
               </div>
             </div>
 
+            {analytics.debug?.errors?.length ? (
+              <div className="notice-card error">
+                <strong>Analytics query failed.</strong>
+                <p>Check Supabase analytics tables, RLS policies, and admin role access.</p>
+                <div className="meta-line">
+                  {analytics.debug.errors.map((error) => (
+                    <span key={error}>{error}</span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             <div className="grid">
               <div className="admin-card"><strong>{analyticsStats.activeSessions.length}</strong><p className="muted">Active users now</p></div>
               <div className="admin-card"><strong>{analyticsStats.pageViewsToday}</strong><p className="muted">Page views today</p></div>
@@ -438,6 +470,25 @@ export default function AdminDashboard({
               <div className="admin-card"><strong>{secondsLabel(analyticsStats.watchSecondsToday)}</strong><p className="muted">Watch time today</p></div>
               <div className="admin-card"><strong>{analyticsStats.watchLinkClicksToday}</strong><p className="muted">Watch link clicks today</p></div>
               <div className="admin-card"><strong>{analyticsStats.searchesToday}</strong><p className="muted">Searches today</p></div>
+            </div>
+
+            <div className="panel analytics-debug-panel">
+              <div>
+                <h3>Analytics debug</h3>
+                <p className="muted">Use this to confirm inserts and admin reads are working.</p>
+              </div>
+              <div className="grid">
+                <div className="admin-card"><strong>{analytics.debug?.eventsCount ?? analytics.events.length}</strong><p className="muted">Total events</p></div>
+                <div className="admin-card"><strong>{analytics.debug?.sessionsCount ?? analytics.sessions.length}</strong><p className="muted">Total sessions</p></div>
+                <div className="admin-card"><strong>{analytics.debug?.lastEventAt ? formatDate(analytics.debug.lastEventAt) : "None"}</strong><p className="muted">Last event</p></div>
+                <div className="admin-card"><strong>{analytics.debug?.lastSessionAt ? formatDate(analytics.debug.lastSessionAt) : "None"}</strong><p className="muted">Last session</p></div>
+              </div>
+              <div className="chip-row">
+                <button className="button primary" type="button" onClick={sendTestAnalyticsEvent}>
+                  <Activity size={16} /> Send test analytics event
+                </button>
+                {analyticsTestMessage ? <span className="chip active">{analyticsTestMessage}</span> : null}
+              </div>
             </div>
 
             <div className="form-grid two section">
@@ -482,8 +533,9 @@ export default function AdminDashboard({
                 <h3>Active sessions</h3>
                 <div className="admin-mini-table">
                   {analyticsStats.activeSessions.slice(0, 12).map((session) => (
-                    <div className="admin-mini-row" key={session.id}>
+                    <div className="admin-mini-row analytics-session-row" key={session.id}>
                       <strong>{session.user_id ? `User ${session.user_id.slice(0, 8)}` : `Guest ${session.anonymous_session_id.slice(0, 8)}`}</strong>
+                      <span>{session.current_page || "No page"}</span>
                       <span>{session.device_type || "device"}</span>
                       <span>{session.browser_name || "browser"}</span>
                       <span>{session.page_views || 0} pages</span>

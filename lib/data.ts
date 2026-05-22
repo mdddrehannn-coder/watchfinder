@@ -1,4 +1,4 @@
-import { createSupabaseAnonServerClient, createSupabaseServerClient } from "@/lib/supabase-server";
+import { createSupabaseAdminClient, createSupabaseAnonServerClient, createSupabaseServerClient } from "@/lib/supabase-server";
 import { isActiveWindow } from "@/lib/format";
 import type {
   AdSlot,
@@ -427,18 +427,25 @@ export async function getAdminCollections() {
 }
 
 export async function getAdminAnalyticsData() {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseAdminClient() ?? (await createSupabaseServerClient());
   if (!supabase) {
     return {
       events: [],
-      sessions: []
+      sessions: [],
+      debug: {
+        eventsCount: 0,
+        sessionsCount: 0,
+        lastEventAt: null,
+        lastSessionAt: null,
+        errors: ["Supabase environment variables are not configured."]
+      }
     };
   }
 
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
   try {
-    const [events, sessions] = await Promise.all([
+    const [events, sessions, eventsCount, sessionsCount, lastEvent, lastSession] = await Promise.all([
       supabase
         .from("analytics_events")
         .select("*")
@@ -449,17 +456,53 @@ export async function getAdminAnalyticsData() {
         .from("analytics_sessions")
         .select("*")
         .order("last_seen_at", { ascending: false })
-        .limit(500)
+        .limit(500),
+      supabase
+        .from("analytics_events")
+        .select("id", { count: "exact", head: true }),
+      supabase
+        .from("analytics_sessions")
+        .select("id", { count: "exact", head: true }),
+      supabase
+        .from("analytics_events")
+        .select("created_at")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("analytics_sessions")
+        .select("last_seen_at")
+        .order("last_seen_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
     ]);
+
+    const errors = [events.error, sessions.error, eventsCount.error, sessionsCount.error, lastEvent.error, lastSession.error]
+      .filter(Boolean)
+      .map((error) => error?.message || "Unknown analytics query error");
 
     return {
       events: events.data ?? [],
-      sessions: sessions.data ?? []
+      sessions: sessions.data ?? [],
+      debug: {
+        eventsCount: eventsCount.count ?? 0,
+        sessionsCount: sessionsCount.count ?? 0,
+        lastEventAt: lastEvent.data?.created_at ?? null,
+        lastSessionAt: lastSession.data?.last_seen_at ?? null,
+        errors
+      }
     };
-  } catch {
+  } catch (error) {
     return {
       events: [],
-      sessions: []
+      sessions: [],
+      debug: {
+        eventsCount: 0,
+        sessionsCount: 0,
+        lastEventAt: null,
+        lastSessionAt: null,
+        errors: [error instanceof Error ? error.message : "Unknown analytics query failure."]
+      }
     };
   }
 }

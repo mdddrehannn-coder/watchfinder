@@ -19,7 +19,8 @@ export type AnalyticsEventType =
   | "search"
   | "app_install_prompt_shown"
   | "app_install_clicked"
-  | "app_installed";
+  | "app_installed"
+  | "test_event";
 
 type AnalyticsPayload = {
   event_type: AnalyticsEventType;
@@ -68,6 +69,11 @@ function getBrowserName() {
   return "Other";
 }
 
+function getCurrentPage() {
+  if (typeof window === "undefined") return null;
+  return `${window.location.pathname}${window.location.search || ""}`;
+}
+
 function warnAnalytics(error: unknown) {
   if (process.env.NODE_ENV === "development") console.warn("WatchFinder analytics failed", error);
 }
@@ -83,17 +89,28 @@ export async function upsertAnalyticsSession(options: { pageView?: boolean; watc
     const supabase = createSupabaseBrowserClient();
     const anonymous_session_id = getAnonymousSessionId();
     const user_id = await currentUserId();
-    await supabase.rpc("record_analytics_session", {
+    const args = {
       p_anonymous_session_id: anonymous_session_id,
       p_user_id: user_id,
       p_page_view_increment: options.pageView ? 1 : 0,
       p_watch_seconds_increment: Math.max(0, Math.round(options.watchSeconds || 0)),
       p_device_type: getDeviceType(),
-      p_browser_name: getBrowserName()
-    });
+      p_browser_name: getBrowserName(),
+      p_current_page: getCurrentPage()
+    };
+    const { error } = await supabase.rpc("record_analytics_session", args);
+    if (error) {
+      const { p_current_page, ...legacyArgs } = args;
+      const legacy = await supabase.rpc("record_analytics_session", legacyArgs);
+      if (legacy.error) throw error;
+    }
   } catch (error) {
     warnAnalytics(error);
   }
+}
+
+export function updateSessionHeartbeat() {
+  return upsertAnalyticsSession();
 }
 
 export async function trackEvent(payload: AnalyticsPayload) {
@@ -104,7 +121,7 @@ export async function trackEvent(payload: AnalyticsPayload) {
     const anonymous_session_id = getAnonymousSessionId();
     const user_id = await currentUserId();
 
-    await supabase.from("analytics_events").insert({
+    const { error } = await supabase.from("analytics_events").insert({
       event_type: payload.event_type,
       user_id,
       anonymous_session_id,
@@ -121,6 +138,7 @@ export async function trackEvent(payload: AnalyticsPayload) {
       browser_name: getBrowserName(),
       metadata: payload.metadata || {}
     });
+    if (error) throw error;
 
     await upsertAnalyticsSession({
       pageView: payload.event_type === "page_view",

@@ -1819,6 +1819,33 @@ html.theme-light .status-archived {
   font-size: 0.86rem;
 }
 
+.analytics-session-row {
+  grid-template-columns: minmax(0, 1.25fr) minmax(7rem, 1fr) repeat(4, minmax(4rem, auto));
+}
+
+.analytics-debug-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.notice-card {
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.notice-card.error {
+  border-color: rgba(248, 113, 113, 0.42);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.notice-card strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
 .admin-mini-row:last-child {
   border-bottom: 0;
 }
