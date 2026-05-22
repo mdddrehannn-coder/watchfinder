@@ -2061,6 +2061,204 @@ html.theme-light .pwa-install-banner {
   flex: 1 1 8rem;
 }
 
+.watchfinder-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 1.35rem;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(244, 63, 94, 0.24), transparent 23rem),
+    radial-gradient(circle at 50% 120%, rgba(244, 63, 94, 0.14), transparent 22rem),
+    #050608;
+  animation: introFadeOut 360ms ease 2.45s forwards;
+}
+
+html.theme-light .watchfinder-intro {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(225, 29, 72, 0.2), transparent 23rem),
+    radial-gradient(circle at 50% 110%, rgba(225, 29, 72, 0.12), transparent 21rem),
+    #f8fafc;
+}
+
+.intro-glow {
+  position: absolute;
+  width: min(64vw, 28rem);
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: rgba(244, 63, 94, 0.2);
+  filter: blur(52px);
+  animation: introGlow 2400ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+.intro-w-mark {
+  position: relative;
+  width: clamp(8.2rem, 42vw, 17rem);
+  height: clamp(8rem, 40vw, 16.5rem);
+  filter: drop-shadow(0 0 22px rgba(244, 63, 94, 0.35));
+  animation: introMarkPulse 900ms ease 1500ms both;
+}
+
+.intro-ribbon {
+  position: absolute;
+  bottom: 5%;
+  width: 22%;
+  height: 90%;
+  border-radius: 0.22rem;
+  background:
+    linear-gradient(115deg, rgba(255, 255, 255, 0.22), transparent 28%),
+    linear-gradient(180deg, #ff1732 0%, #dc061a 52%, #8d010c 100%);
+  box-shadow:
+    inset -0.45rem 0 0 rgba(92, 0, 8, 0.22),
+    inset 0.28rem 0.28rem 0 rgba(255, 97, 112, 0.18),
+    0 1.2rem 2.5rem rgba(244, 63, 94, 0.28);
+  transform-origin: center bottom;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.intro-ribbon-left {
+  left: 11%;
+  transform: translateY(-48%) rotate(-16deg);
+  animation: introStrokeDown 620ms cubic-bezier(0.2, 0.92, 0.18, 1) 120ms forwards;
+}
+
+.intro-ribbon-middle-back {
+  left: 33%;
+  height: 82%;
+  bottom: 12%;
+  transform: translateY(48%) rotate(14deg);
+  animation: introStrokeUp 620ms cubic-bezier(0.2, 0.92, 0.18, 1) 420ms forwards;
+}
+
+.intro-ribbon-middle-front {
+  left: 47%;
+  transform: translateY(-48%) rotate(-16deg);
+  animation: introStrokeDown 620ms cubic-bezier(0.2, 0.92, 0.18, 1) 720ms forwards;
+}
+
+.intro-ribbon-right {
+  right: 12%;
+  transform: translateY(48%) rotate(14deg);
+  animation: introStrokeUp 620ms cubic-bezier(0.2, 0.92, 0.18, 1) 1020ms forwards;
+}
+
+.watchfinder-intro p {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: rgba(248, 250, 252, 0.78);
+  font-size: 0.88rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  animation: introTextIn 700ms ease 1450ms both;
+}
+
+html.theme-light .watchfinder-intro p {
+  color: rgba(17, 24, 39, 0.72);
+}
+
+@keyframes introStrokeDown {
+  0% {
+    opacity: 0;
+    transform: translateY(-52%) rotate(-16deg) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(-16deg) scale(1);
+  }
+}
+
+@keyframes introStrokeUp {
+  0% {
+    opacity: 0;
+    transform: translateY(52%) rotate(14deg) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(14deg) scale(1);
+  }
+}
+
+@keyframes introGlow {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.72;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes introMarkPulse {
+  0% {
+    filter: drop-shadow(0 0 18px rgba(244, 63, 94, 0.24));
+    transform: scale(1);
+  }
+  55% {
+    filter: drop-shadow(0 0 44px rgba(244, 63, 94, 0.62));
+    transform: scale(1.025);
+  }
+  100% {
+    filter: drop-shadow(0 0 26px rgba(244, 63, 94, 0.36));
+    transform: scale(1);
+  }
+}
+
+@keyframes introTextIn {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes introFadeOut {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .watchfinder-intro {
+    animation: introFadeOut 240ms ease 760ms forwards;
+  }
+
+  .intro-glow,
+  .intro-w-mark,
+  .intro-ribbon,
+  .watchfinder-intro p {
+    animation: none;
+    opacity: 1;
+  }
+
+  .intro-ribbon-left {
+    transform: rotate(-16deg);
+  }
+
+  .intro-ribbon-middle-back,
+  .intro-ribbon-right {
+    transform: rotate(14deg);
+  }
+
+  .intro-ribbon-middle-front {
+    transform: rotate(-16deg);
+  }
+}
+
 html.theme-light .app-update-banner {
   background:
     linear-gradient(135deg, rgba(225, 29, 72, 0.12), rgba(255, 255, 255, 0.88)),
