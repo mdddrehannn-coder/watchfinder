@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import MovieGrid from "@/components/MovieGrid";
 import { getContentChannelBySlug, getMoviesForContentChannel } from "@/lib/data";
+import { getFallbackChannelBySlug } from "@/lib/default-content-channels";
 
 export async function generateMetadata({
   params
@@ -9,7 +10,7 @@ export async function generateMetadata({
   params: Promise<{ channelSlug: string }>;
 }): Promise<Metadata> {
   const { channelSlug } = await params;
-  const channel = await getContentChannelBySlug("cartoon", channelSlug);
+  const channel = (await getContentChannelBySlug("cartoon", channelSlug)) ?? getFallbackChannelBySlug("cartoon", channelSlug);
   if (!channel) return { title: "Cartoon Channel" };
   return {
     title: `${channel.name} Cartoons`,
@@ -19,10 +20,10 @@ export async function generateMetadata({
 
 export default async function CartoonChannelPage({ params }: { params: Promise<{ channelSlug: string }> }) {
   const { channelSlug } = await params;
-  const channel = await getContentChannelBySlug("cartoon", channelSlug);
+  const channel = (await getContentChannelBySlug("cartoon", channelSlug)) ?? getFallbackChannelBySlug("cartoon", channelSlug);
   if (!channel) notFound();
 
-  const movies = await getMoviesForContentChannel(channel.id);
+  const movies = channel.id.startsWith("fallback-") ? [] : await getMoviesForContentChannel(channel.id);
 
   return (
     <main className="page-inner">

@@ -1,20 +1,22 @@
 import type { Metadata } from "next";
 import ChannelCard from "@/components/ChannelCard";
 import { getContentChannels } from "@/lib/data";
+import { fallbackCartoonChannels } from "@/lib/default-content-channels";
 
 export const metadata: Metadata = {
   title: "Cartoons",
-  description: "Find cartoons by channel and official availability on WatchFinder."
+  description: "Browse cartoons by channel, kids network, and official availability on WatchFinder."
 };
 
 export default async function CartoonsPage() {
-  const channels = await getContentChannels("cartoon");
+  const dbChannels = await getContentChannels("cartoon");
+  const channels = dbChannels.length ? dbChannels : fallbackCartoonChannels;
 
   return (
     <main className="page-inner">
       <section className="discover-hero">
         <h1>Cartoons</h1>
-        <p className="muted">Find cartoons by channel and official availability.</p>
+        <p className="muted">Discover classic and popular cartoon shows by channel.</p>
       </section>
       <section className="section">
         {channels.length ? (
@@ -22,7 +24,7 @@ export default async function CartoonsPage() {
             {channels.map((channel) => (
               <ChannelCard
                 channel={channel}
-                fallbackText="Cartoon shows and official links"
+                fallbackText="Cartoon shows and kids favorites"
                 href={`/cartoons/${channel.slug}`}
                 key={channel.id}
               />

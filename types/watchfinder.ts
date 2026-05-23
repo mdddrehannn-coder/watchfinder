@@ -1,5 +1,5 @@
 export type MovieType = "movie" | "tv_show" | "anime" | "short_film" | "cartoon";
-export type MovieStatus = "draft" | "published" | "archived";
+export type MovieStatus = "draft" | "published" | "archived" | "hidden";
 export type VideoProvider =
   | "cloudflare_stream"
   | "vimeo"

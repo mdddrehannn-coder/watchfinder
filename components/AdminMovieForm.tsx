@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ChangeEvent, Dispatch, FormEvent, SetStateAction, useEffect, useRef, useState } from "react";
 import { Eye, Save } from "lucide-react";
+import { getMovieSaveVisibilityMessage, getMovieVisibilityCheck } from "@/lib/admin-visibility";
 import { slugify } from "@/lib/format";
 import { joinLanguages, WATCHFINDER_LANGUAGES } from "@/lib/languages";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
@@ -76,6 +77,7 @@ export default function AdminMovieForm({
   onAddNew,
   onBackToMovies,
   onSaved,
+  onDuplicateSlug,
   movieAnalytics,
   contentChannels = []
 }: {
@@ -86,6 +88,7 @@ export default function AdminMovieForm({
   onAddNew?: () => void;
   onBackToMovies?: () => void;
   onSaved?: (movie: Movie) => void;
+  onDuplicateSlug?: (movieId: string) => void;
   contentChannels?: ContentChannel[];
   movieAnalytics?: {
     views: number;
@@ -123,6 +126,7 @@ export default function AdminMovieForm({
   const [videoProvider, setVideoProvider] = useState(initialMovie?.video_provider ?? "");
   const [licenseType, setLicenseType] = useState(initialMovie?.license_type ?? "");
   const [message, setMessage] = useState<Message | null>(null);
+  const [duplicateMovieId, setDuplicateMovieId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedMovieSlug, setSavedMovieSlug] = useState<string | null>(null);
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
@@ -157,7 +161,9 @@ export default function AdminMovieForm({
     setVideoProvider(initialMovie?.video_provider ?? "");
     setLicenseType(initialMovie?.license_type ?? "");
     setMessage(null);
+    setDuplicateMovieId(null);
     setSavedMovieSlug(null);
+    setDuplicateMovieId(null);
     setSelectedPositioning([]);
     setHelperMessage(null);
     setPosterPreview(null);
@@ -397,6 +403,7 @@ export default function AdminMovieForm({
           .maybeSingle();
         if (existingError) throw existingError;
         if (existingMovie) {
+          setDuplicateMovieId(existingMovie.id);
           setMessage({
             type: "error",
             text: "A movie with this slug already exists. Please edit existing movie or use a different slug."
@@ -499,16 +506,36 @@ export default function AdminMovieForm({
         if (licenseError) throw licenseError;
       }
 
-      setMessage({ type: "success", text: wasUpdate ? "Movie updated successfully." : "Movie saved successfully." });
-      setSavedMovieSlug(movie.slug);
-      onSaved?.({
+      const savedMovie = {
         ...(initialMovie || {}),
         ...payload,
+        ...updatePayload,
         id: movie.id,
         slug: movie.slug,
+        genres: genres.filter((genre) => selectedGenres.includes(genre.id)),
+        cast_members: castMembers.filter((member) => selectedCast.includes(member.id)),
+        movie_platform_links: platformId && watchUrl ? [{
+          id: firstPlatformLink?.id || `local-${movie.id}-platform`,
+          movie_id: movie.id,
+          platform_id: platformId,
+          watch_url: watchUrl,
+          availability_type: availabilityType,
+          language: joinLanguages(selectedWatchLanguages) || null,
+          quality: selectedQualities.join(", ") || null,
+          is_official: true,
+          is_active: true,
+          platforms: platforms.find((platform) => platform.id === platformId) ?? null
+        }] : [],
         content_channels: contentChannels.filter((channel) => selectedChannelIds.includes(channel.id))
-      } as Movie);
-      resetFormState(formElement);
+      } as Movie;
+
+      setMessage({
+        type: "success",
+        text: `${wasUpdate ? "Movie updated successfully." : "Movie saved successfully."} ${getMovieSaveVisibilityMessage(savedMovie)}`
+      });
+      setSavedMovieSlug(movie.slug);
+      onSaved?.(savedMovie);
+      if (!wasUpdate) resetFormState(formElement);
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Movie save failed." });
     } finally {
@@ -524,6 +551,22 @@ export default function AdminMovieForm({
     member.name.toLowerCase().includes(castSearch.toLowerCase())
   );
   const watchMinutes = movieAnalytics ? Math.round(movieAnalytics.watchSeconds / 60) : 0;
+  const draftVisibilityCheck = getMovieVisibilityCheck({
+    ...(initialMovie || {}),
+    id: initialMovie?.id || "pending",
+    title: title || "Unsaved movie",
+    slug: slug || "unsaved-movie",
+    type: selectedType,
+    status: selectedStatus,
+    language: joinLanguages(selectedLanguages) || null,
+    poster_url: posterPreview || initialMovie?.poster_url || null,
+    banner_url: bannerPreview || initialMovie?.banner_url || null,
+    trailer_url: (formRef.current?.elements.namedItem("trailer_url") as HTMLInputElement | null)?.value || initialMovie?.trailer_url || null,
+    is_featured: isFeatured,
+    is_latest: isLatest,
+    is_trending: isTrending,
+    movie_platform_links: selectedPlatformId ? [{ id: "pending", movie_id: initialMovie?.id || "pending", platform_id: selectedPlatformId, watch_url: "pending" }] : initialMovie?.movie_platform_links || []
+  } as Movie);
 
   return (
     <form ref={formRef} className="form-grid panel admin-movie-form" onSubmit={submit}>
@@ -611,7 +654,13 @@ export default function AdminMovieForm({
             <label className="option-card"><input type="radio" name="status" value="draft" checked={selectedStatus === "draft"} onChange={() => setSelectedStatus("draft")} required /> <span>Draft</span><small>Hidden from public website</small></label>
             <label className="option-card option-card-published"><input type="radio" name="status" value="published" checked={selectedStatus === "published"} onChange={() => setSelectedStatus("published")} required /> <span>Published</span><small>Visible on website</small></label>
             <label className="option-card"><input type="radio" name="status" value="archived" checked={selectedStatus === "archived"} onChange={() => setSelectedStatus("archived")} required /> <span>Archived</span><small>Hidden/old listing</small></label>
+            <label className="option-card"><input type="radio" name="status" value="hidden" checked={selectedStatus === "hidden"} onChange={() => setSelectedStatus("hidden")} required /> <span>Hidden</span><small>Hidden from public website</small></label>
           </div>
+        </div>
+        <div className="admin-visibility-note">
+          <strong>Visibility Check</strong>
+          <p>{draftVisibilityCheck.publicReasons.join(", ")}. Homepage: {draftVisibilityCheck.homepageReasons.join(", ")}.</p>
+          {draftVisibilityCheck.warnings.length ? <p className="muted">Warnings: {draftVisibilityCheck.warnings.join(", ")}</p> : null}
         </div>
         <div className="field"><label>Description</label><textarea name="description" defaultValue={initialMovie?.description ?? ""} /></div>
         <div className="chip-row">
@@ -811,6 +860,11 @@ export default function AdminMovieForm({
       </FormSection>
 
       {message ? <p className={`form-message ${message.type}`}>{message.text}</p> : null}
+      {duplicateMovieId && onDuplicateSlug ? (
+        <button className="button" type="button" onClick={() => onDuplicateSlug(duplicateMovieId)}>
+          Open existing movie editor
+        </button>
+      ) : null}
       {savedMovieSlug ? (
         <div className="save-actions">
           <p className="platform-badge">Saved slug: {savedMovieSlug}</p>

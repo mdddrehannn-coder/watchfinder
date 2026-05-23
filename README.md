@@ -248,6 +248,12 @@ Useful placements:
 
 Do not use forced popup ads, betting ads, adult ads, fake download ads, redirects, piracy ads, or deceptive ad formats.
 
+## Production Data Safety
+
+Never run destructive seed/reset scripts on production Supabase. Do not run SQL that truncates, drops, deletes, or bulk-archives `movies`, `movie_platform_links`, `movie_genres`, `movie_cast`, `content_channels`, `content_channel_items`, analytics, users, profiles, or storage data unless you have a verified backup and intentionally want that result.
+
+Before major schema or admin changes, export a backup from Supabase or use the Admin Movies **Export JSON Backup** button. Public pages show movies with `status = published`; draft, hidden, and archived movies remain visible in Admin so uploaded content is not lost.
+
 ## Main Routes
 
 - `/`

@@ -174,7 +174,7 @@ export async function getMovieBySlug(slug: string) {
 }
 
 export async function getAllAdminMovies() {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseAdminClient() ?? (await createSupabaseServerClient());
   if (!supabase) return [] as Movie[];
   const { data } = await supabase.from("movies").select(movieSelect).order("created_at", { ascending: false });
   return (data ?? []).map(normalizeMovie);

@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Activity, Edit3, Eye, Plus, Search } from "lucide-react";
+import { Activity, Download, Edit3, Eye, Plus, Search } from "lucide-react";
 import AdminAdSlotForm from "@/components/AdminAdSlotForm";
 import AdminBlogForm from "@/components/AdminBlogForm";
 import AdminChannelManager from "@/components/AdminChannelManager";
 import AdminLicenseForm from "@/components/AdminLicenseForm";
 import AdminMovieForm from "@/components/AdminMovieForm";
+import { getMovieVisibilityCheck } from "@/lib/admin-visibility";
 import AdminPromotionForm from "@/components/AdminPromotionForm";
 import { trackEvent } from "@/lib/analytics";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
@@ -57,6 +58,7 @@ function formatDate(value?: string | null) {
 function statusClass(status?: string | null) {
   if (status === "published") return "status-badge status-published";
   if (status === "archived") return "status-badge status-archived";
+  if (status === "hidden") return "status-badge status-hidden";
   return "status-badge status-draft";
 }
 
@@ -158,6 +160,8 @@ export default function AdminDashboard({
   const [movieSearch, setMovieSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [languageFilter, setLanguageFilter] = useState("");
+  const [flagFilter, setFlagFilter] = useState("");
   const [movieMessage, setMovieMessage] = useState<string | null>(null);
   const [analyticsRange, setAnalyticsRange] = useState("today");
   const [analyticsTestMessage, setAnalyticsTestMessage] = useState<string | null>(null);
@@ -168,9 +172,14 @@ export default function AdminDashboard({
       if (query && !`${movie.title} ${movie.slug} ${movie.language || ""}`.toLowerCase().includes(query)) return false;
       if (statusFilter && movie.status !== statusFilter) return false;
       if (typeFilter && movie.type !== typeFilter) return false;
+      if (languageFilter && !String(movie.language || "").toLowerCase().includes(languageFilter.toLowerCase())) return false;
+      if (flagFilter === "featured" && !movie.is_featured) return false;
+      if (flagFilter === "latest" && !movie.is_latest) return false;
+      if (flagFilter === "trending" && !movie.is_trending) return false;
+      if (flagFilter === "homepage" && !getMovieVisibilityCheck(movie).visibleOnHomepageSlider) return false;
       return true;
     });
-  }, [movies, movieSearch, statusFilter, typeFilter]);
+  }, [movies, movieSearch, statusFilter, typeFilter, languageFilter, flagFilter]);
 
   const analyticsStats = useMemo(() => {
     const events = (analytics?.events ?? []).filter((event) => eventInRange(event, analyticsRange));
@@ -287,6 +296,28 @@ export default function AdminDashboard({
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function openMovieById(movieId: string) {
+    const movie = movies.find((item) => item.id === movieId);
+    if (movie) showEditMovie(movie);
+  }
+
+  function exportAdminBackup() {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      movies,
+      genres,
+      platforms,
+      contentChannels: collections.contentChannels ?? []
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `watchfinder-admin-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function sendTestAnalyticsEvent() {
     setAnalyticsTestMessage("Sending test event...");
     await trackEvent({ event_type: "test_event", page_path: "/admin", metadata: { source: "admin_analytics_button" } });
@@ -305,15 +336,15 @@ export default function AdminDashboard({
     });
   }
 
-  async function archiveMovie(movie: Movie) {
+  async function updateMovieStatus(movie: Movie, status: "published" | "draft" | "archived" | "hidden") {
     const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.from("movies").update({ status: "archived" }).eq("id", movie.id);
+    const { error } = await supabase.from("movies").update({ status }).eq("id", movie.id);
     if (error) {
       setMovieMessage(error.message);
       return;
     }
-    setMovies((current) => current.map((item) => item.id === movie.id ? { ...item, status: "archived" } : item));
-    setMovieMessage(`${movie.title} archived.`);
+    setMovies((current) => current.map((item) => item.id === movie.id ? { ...item, status } : item));
+    setMovieMessage(`${movie.title} moved to ${status}.`);
   }
 
   return (
@@ -360,6 +391,9 @@ export default function AdminDashboard({
               <button className="button primary" type="button" onClick={showAddMovie}>
                 <Plus size={18} /> Add Movie
               </button>
+              <button className="button" type="button" onClick={exportAdminBackup}>
+                <Download size={18} /> Export JSON Backup
+              </button>
             </div>
             {movieMessage ? <p className="form-message info">{movieMessage}</p> : null}
             <div className="panel form-grid admin-movie-filters">
@@ -372,6 +406,7 @@ export default function AdminDashboard({
                 <option value="draft">Draft</option>
                 <option value="published">Published</option>
                 <option value="archived">Archived</option>
+                <option value="hidden">Hidden</option>
               </select>
               <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
                 <option value="">All types</option>
@@ -381,46 +416,77 @@ export default function AdminDashboard({
                 <option value="anime">Anime</option>
                 <option value="short_film">Short Film</option>
               </select>
+              <input value={languageFilter} onChange={(event) => setLanguageFilter(event.target.value)} placeholder="Language filter" />
+              <select value={flagFilter} onChange={(event) => setFlagFilter(event.target.value)}>
+                <option value="">All flags</option>
+                <option value="featured">Featured</option>
+                <option value="latest">Latest</option>
+                <option value="trending">Trending</option>
+                <option value="homepage">Homepage visible</option>
+              </select>
             </div>
             <div className="admin-movie-list">
-              {filteredMovies.map((movie) => (
-                <article className="admin-movie-row" key={movie.id}>
-                  <div className="admin-movie-thumb">
-                    {movie.poster_url ? <img src={movie.poster_url} alt="" /> : <span>{movie.title.slice(0, 1)}</span>}
-                  </div>
-                  <div className="admin-movie-main">
-                    <strong>{movie.title}</strong>
-                    <p className="muted">{movie.slug}</p>
-                    <div className="meta-line">
-                      <span className={statusClass(movie.status)}>{movie.status || "draft"}</span>
-                      <span>{movie.type}</span>
-                      <span>{movie.language || "No language"}</span>
-                      <span>{movie.content_channels?.map((channel) => channel.name).join(", ") || "No channel"}</span>
-                      <span>Updated {formatDate(movie.updated_at || movie.created_at)}</span>
+              {filteredMovies.map((movie) => {
+                const visibility = getMovieVisibilityCheck(movie);
+                const platformsLabel = movie.movie_platform_links?.map((link) => link.platforms?.name).filter(Boolean).join(", ");
+                return (
+                  <article className="admin-movie-row" key={movie.id}>
+                    <div className="admin-movie-thumb">
+                      {movie.poster_url ? <img src={movie.poster_url} alt="" /> : <span>{movie.title.slice(0, 1)}</span>}
                     </div>
-                    {analyticsStats.movieStatsById.get(movie.id) ? (
+                    <div className="admin-movie-main">
+                      <strong>{movie.title}</strong>
+                      <p className="muted">{movie.slug}</p>
                       <div className="meta-line">
-                        <span>{analyticsStats.movieStatsById.get(movie.id)?.views ?? 0} views</span>
-                        <span>{analyticsStats.movieStatsById.get(movie.id)?.trailerPlays ?? 0} trailer plays</span>
-                        <span>{secondsLabel(analyticsStats.movieStatsById.get(movie.id)?.watchSeconds ?? 0)} watch time</span>
-                        <span>{analyticsStats.movieStatsById.get(movie.id)?.linkClicks ?? 0} link clicks</span>
+                        <span className={statusClass(movie.status)}>{movie.status || "draft"}</span>
+                        <span>{movie.type}</span>
+                        <span>{movie.language || "No language"}</span>
+                        <span>{platformsLabel || "No platform"}</span>
+                        <span>{movie.content_channels?.map((channel) => channel.name).join(", ") || "No channel"}</span>
+                        <span>Created {formatDate(movie.created_at)}</span>
+                        <span>Updated {formatDate(movie.updated_at || movie.created_at)}</span>
                       </div>
-                    ) : null}
-                  </div>
-                  <div className="admin-row-actions">
-                    <button className="button" type="button" onClick={() => showEditMovie(movie)}>
-                      <Edit3 size={16} /> Edit
-                    </button>
-                    <Link className="button" href={`/movie/${movie.slug}`}>
-                      <Eye size={16} /> View
-                    </Link>
-                    <button className="button ghost" type="button" onClick={() => archiveMovie(movie)}>
-                      Archive
-                    </button>
-                  </div>
-                </article>
-              ))}
-              {!filteredMovies.length ? <div className="empty">No movies match your filters.</div> : null}
+                      <div className="meta-line">
+                        {movie.is_featured ? <span className="platform-badge">Featured</span> : null}
+                        {movie.is_latest ? <span className="platform-badge">Latest</span> : null}
+                        {movie.is_trending ? <span className="platform-badge">Trending</span> : null}
+                        <span className={visibility.visibleOnPublicPages ? "legal-badge" : "status-badge status-draft"}>
+                          Public: {visibility.visibleOnPublicPages ? "Visible" : visibility.publicReasons.join(", ")}
+                        </span>
+                        <span className={visibility.visibleOnHomepageSlider ? "legal-badge" : "status-badge status-draft"}>
+                          Homepage: {visibility.homepageReasons.join(", ")}
+                        </span>
+                        {visibility.warnings.map((warning) => <span className="status-badge status-draft" key={warning}>{warning}</span>)}
+                      </div>
+                      {analyticsStats.movieStatsById.get(movie.id) ? (
+                        <div className="meta-line">
+                          <span>{analyticsStats.movieStatsById.get(movie.id)?.views ?? 0} views</span>
+                          <span>{analyticsStats.movieStatsById.get(movie.id)?.trailerPlays ?? 0} trailer plays</span>
+                          <span>{secondsLabel(analyticsStats.movieStatsById.get(movie.id)?.watchSeconds ?? 0)} watch time</span>
+                          <span>{analyticsStats.movieStatsById.get(movie.id)?.linkClicks ?? 0} link clicks</span>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="admin-row-actions">
+                      <button className="button" type="button" onClick={() => showEditMovie(movie)}>
+                        <Edit3 size={16} /> Edit
+                      </button>
+                      <Link className="button" href={`/movie/${movie.slug}`}>
+                        <Eye size={16} /> View
+                      </Link>
+                      {movie.status !== "published" ? (
+                        <button className="button" type="button" onClick={() => updateMovieStatus(movie, "published")}>Publish</button>
+                      ) : (
+                        <button className="button ghost" type="button" onClick={() => updateMovieStatus(movie, "draft")}>Move to Draft</button>
+                      )}
+                      {movie.status !== "archived" ? (
+                        <button className="button ghost" type="button" onClick={() => updateMovieStatus(movie, "archived")}>Archive</button>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+              {!filteredMovies.length ? <div className="empty">No movies found. Add your first movie.</div> : null}
             </div>
           </section>
         ) : null}
@@ -603,6 +669,7 @@ export default function AdminDashboard({
               platforms={platforms}
               initialMovie={editingMovie}
               onSaved={handleSaved}
+              onDuplicateSlug={openMovieById}
               onBackToMovies={() => setActiveSection("movies")}
               onAddNew={showAddMovie}
               movieAnalytics={editingMovie ? analyticsStats.movieStatsById.get(editingMovie.id) : undefined}
