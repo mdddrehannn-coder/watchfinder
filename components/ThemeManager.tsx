@@ -1,18 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
+import { getThemeClass, resolveWatchFinderTheme, WATCHFINDER_THEME_STORAGE_KEY } from "@/lib/theme";
 
-const STORAGE_KEY = "watchfinder-theme-mode";
 const THEME_EVENT = "watchfinder-theme-change";
-
-function getAutoTheme() {
-  const hour = new Date().getHours();
-  return hour >= 6 && hour < 18 ? "theme-light" : "theme-dark";
-}
 
 function applyTheme(mode?: string | null) {
   const selectedMode = mode === "dark" || mode === "light" ? mode : "auto";
-  const themeClass = selectedMode === "auto" ? getAutoTheme() : `theme-${selectedMode}`;
+  const themeClass = getThemeClass(resolveWatchFinderTheme(selectedMode));
   document.documentElement.classList.remove("theme-dark", "theme-light");
   document.documentElement.classList.add(themeClass);
   document.documentElement.dataset.themeMode = selectedMode;
@@ -22,7 +17,7 @@ export default function ThemeManager() {
   useEffect(() => {
     function readAndApply() {
       try {
-        applyTheme(localStorage.getItem(STORAGE_KEY));
+        applyTheme(localStorage.getItem(WATCHFINDER_THEME_STORAGE_KEY));
       } catch {
         applyTheme("dark");
       }
@@ -43,4 +38,4 @@ export default function ThemeManager() {
   return null;
 }
 
-export { STORAGE_KEY, THEME_EVENT };
+export { WATCHFINDER_THEME_STORAGE_KEY as STORAGE_KEY, THEME_EVENT };
