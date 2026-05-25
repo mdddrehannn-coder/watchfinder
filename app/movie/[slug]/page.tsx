@@ -68,6 +68,8 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
   const qualities = movieQualities(movie);
   const availabilityTypes = movieAvailabilityTypes(movie);
   const allBadges = movieSmartBadges(movie);
+  const primaryOfficialLink = movie.movie_platform_links?.find((link) => link.watch_url && link.is_official !== false);
+  const modalProvider = movie.video_provider || movie.trailer_provider || "youtube";
 
   return (
     <main className="page-inner">
@@ -80,10 +82,14 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
         <TrailerModalTrigger
           className="detail-banner"
           trailerUrl={movie.trailer_url}
+          videoEmbedUrl={movie.video_embed_url}
+          officialWatchUrl={primaryOfficialLink?.watch_url}
+          officialPlatformName={primaryOfficialLink?.platforms?.name}
           movieId={movie.id}
           movieSlug={movie.slug}
-          provider={movie.trailer_provider || "youtube"}
+          provider={modalProvider}
           title={movie.title}
+          showUnavailableMessage
         >
           {movie.banner_url || movie.poster_url ? <img src={movie.banner_url || movie.poster_url || ""} alt={movie.title} /> : null}
         </TrailerModalTrigger>
@@ -91,9 +97,12 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
           <TrailerModalTrigger
             className="detail-poster"
             trailerUrl={movie.trailer_url}
+            videoEmbedUrl={movie.video_embed_url}
+            officialWatchUrl={primaryOfficialLink?.watch_url}
+            officialPlatformName={primaryOfficialLink?.platforms?.name}
             movieId={movie.id}
             movieSlug={movie.slug}
-            provider={movie.trailer_provider || "youtube"}
+            provider={modalProvider}
             title={movie.title}
           >
             {movie.poster_url ? <img src={movie.poster_url} alt={`${movie.title} poster`} /> : null}

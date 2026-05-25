@@ -34,10 +34,14 @@ export function getYouTubeEmbedUrl(url?: string | null) {
   if (!url) return null;
   try {
     const parsed = new URL(url);
-    const videoId =
-      parsed.hostname.includes("youtu.be")
-        ? parsed.pathname.replace("/", "")
-        : parsed.searchParams.get("v") || parsed.pathname.split("/").pop();
+    const host = parsed.hostname.replace(/^www\./, "");
+    if (host === "youtu.be") {
+      const videoId = parsed.pathname.split("/").filter(Boolean)[0];
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : url;
+    }
+    if (!host.endsWith("youtube.com")) return url;
+    const pathVideoId = parsed.pathname.match(/\/(?:embed|shorts|live)\/([^/?#]+)/)?.[1];
+    const videoId = parsed.searchParams.get("v") || pathVideoId;
     return videoId ? `https://www.youtube.com/embed/${videoId}` : url;
   } catch {
     return url;

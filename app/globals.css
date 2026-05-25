@@ -1453,6 +1453,9 @@ html.theme-light .positioning-chip {
 }
 
 .detail-media-trigger-no-trailer {
+  position: relative;
+  display: block;
+  width: 100%;
   cursor: default;
 }
 
@@ -1543,6 +1546,33 @@ html.theme-light .positioning-chip {
   border: 0;
   border-radius: 0.75rem;
   background: #000;
+}
+
+.trailer-modal-official-link {
+  display: grid;
+  justify-items: start;
+  gap: 0.8rem;
+  padding: clamp(1.5rem, 6vw, 2.5rem);
+}
+
+.trailer-modal-official-link h2,
+.trailer-modal-official-link p {
+  margin: 0;
+}
+
+.detail-video-unavailable {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  max-width: calc(100% - 2rem);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 0.45rem 0.7rem;
+  background: rgba(2, 4, 9, 0.68);
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 0.84rem;
+  font-weight: 800;
+  backdrop-filter: blur(10px);
 }
 
 .embed {

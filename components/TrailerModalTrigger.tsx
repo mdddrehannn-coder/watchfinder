@@ -1,28 +1,93 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Play, X } from "lucide-react";
+import { Play } from "lucide-react";
 import { trackTrailerOpen, trackVideoComplete, trackVideoPlay, trackVideoProgress, trackWatchLinkClick } from "@/lib/analytics";
 import { cx, getYouTubeEmbedUrl } from "@/lib/format";
+import TrailerModal, { type TrailerModalSource } from "@/components/TrailerModal";
+
+function appendAutoplay(url: string) {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set("autoplay", "1");
+    parsed.searchParams.set("rel", "0");
+    parsed.searchParams.set("modestbranding", "1");
+    return parsed.toString();
+  } catch {
+    return `${url}${url.includes("?") ? "&" : "?"}autoplay=1`;
+  }
+}
+
+function resolveModalSource({
+  videoEmbedUrl,
+  trailerUrl,
+  officialWatchUrl,
+  officialPlatformName,
+  title
+}: {
+  videoEmbedUrl?: string | null;
+  trailerUrl?: string | null;
+  officialWatchUrl?: string | null;
+  officialPlatformName?: string | null;
+  title: string;
+}): TrailerModalSource | null {
+  const directEmbed = getYouTubeEmbedUrl(videoEmbedUrl) || videoEmbedUrl;
+  if (directEmbed) {
+    return {
+      kind: "embed",
+      src: appendAutoplay(directEmbed),
+      title: `${title} official video`
+    };
+  }
+
+  const trailerEmbed = getYouTubeEmbedUrl(trailerUrl);
+  if (trailerEmbed) {
+    return {
+      kind: "embed",
+      src: appendAutoplay(trailerEmbed),
+      title: `${title} official trailer`
+    };
+  }
+
+  if (officialWatchUrl) {
+    return {
+      kind: "official_link",
+      url: officialWatchUrl,
+      platformName: officialPlatformName || "Official platform",
+      title
+    };
+  }
+
+  return null;
+}
 
 export default function TrailerModalTrigger({
   trailerUrl,
+  videoEmbedUrl,
+  officialWatchUrl,
+  officialPlatformName,
   movieId,
   movieSlug,
   provider = "youtube",
   title,
   className,
+  showUnavailableMessage = false,
   children
 }: {
   trailerUrl?: string | null;
+  videoEmbedUrl?: string | null;
+  officialWatchUrl?: string | null;
+  officialPlatformName?: string | null;
   movieId: string;
   movieSlug: string;
   provider?: string | null;
   title: string;
   className?: string;
+  showUnavailableMessage?: boolean;
   children: React.ReactNode;
 }) {
-  const embedUrl = getYouTubeEmbedUrl(trailerUrl);
+  const source = resolveModalSource({ videoEmbedUrl, trailerUrl, officialWatchUrl, officialPlatformName, title });
+  const hasEmbedSource = source?.kind === "embed";
   const [open, setOpen] = useState(false);
   const trackingStartedRef = useRef(false);
   const timersRef = useRef<number[]>([]);
@@ -34,11 +99,12 @@ export default function TrailerModalTrigger({
 
   const startTracking = useCallback(function startTracking() {
     if (trackingStartedRef.current) return;
+    if (!hasEmbedSource) return;
     trackingStartedRef.current = true;
     const movie = { id: movieId, slug: movieSlug };
     const videoProvider = provider || "youtube";
     trackTrailerOpen(movie, videoProvider);
-    trackWatchLinkClick(movie, "Official trailer");
+    trackWatchLinkClick(movie, videoEmbedUrl ? "Official video" : "Official trailer");
     trackVideoPlay(movie, videoProvider);
     timersRef.current = [
       window.setTimeout(() => trackVideoProgress(movie, videoProvider, 15, 25), 15000),
@@ -46,10 +112,10 @@ export default function TrailerModalTrigger({
       window.setTimeout(() => trackVideoProgress(movie, videoProvider, 45, 75), 45000),
       window.setTimeout(() => trackVideoComplete(movie, videoProvider, 60), 60000)
     ];
-  }, [movieId, movieSlug, provider]);
+  }, [hasEmbedSource, movieId, movieSlug, provider, videoEmbedUrl]);
 
   function openModal() {
-    if (!embedUrl) return;
+    if (!source) return;
     setOpen(true);
     startTracking();
   }
@@ -78,15 +144,18 @@ export default function TrailerModalTrigger({
 
   useEffect(() => clearTimers, [clearTimers]);
 
-  if (!embedUrl) {
-    return <div className={cx(className, "detail-media-trigger-no-trailer")}>{children}</div>;
+  if (!source) {
+    return (
+      <div className={cx(className, "detail-media-trigger-no-trailer")}>
+        {children}
+        {showUnavailableMessage ? <span className="detail-video-unavailable">No official video available yet.</span> : null}
+      </div>
+    );
   }
-
-  const modalSrc = `${embedUrl}${embedUrl.includes("?") ? "&" : "?"}autoplay=1&rel=0&modestbranding=1`;
 
   return (
     <>
-      <button className={cx(className, "detail-media-trigger")} type="button" onClick={openModal} aria-label={`Watch trailer for ${title}`}>
+      <button className={cx(className, "detail-media-trigger")} type="button" onClick={openModal} aria-label={`Watch ${title}`}>
         {children}
         <span className="detail-play-overlay" aria-hidden="true">
           <span className="detail-play-button">
@@ -94,28 +163,7 @@ export default function TrailerModalTrigger({
           </span>
         </span>
       </button>
-      {open ? (
-        <div className="trailer-modal-backdrop" role="presentation" onMouseDown={closeModal}>
-          <div
-            aria-label={`Official trailer for ${title}`}
-            aria-modal="true"
-            className="trailer-modal"
-            onMouseDown={(event) => event.stopPropagation()}
-            role="dialog"
-          >
-            <button className="icon-button trailer-modal-close" type="button" onClick={closeModal} aria-label="Close trailer">
-              <X size={20} />
-            </button>
-            <iframe
-              className="trailer-modal-frame"
-              src={modalSrc}
-              title={`Official trailer for ${title}`}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-            />
-          </div>
-        </div>
-      ) : null}
+      <TrailerModal open={open} onClose={closeModal} source={source} movie={{ id: movieId, slug: movieSlug }} />
     </>
   );
 }
