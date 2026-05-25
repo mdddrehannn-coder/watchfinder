@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { trackVideoComplete, trackVideoPlay, trackVideoProgress } from "@/lib/analytics";
 import type { Movie } from "@/types/watchfinder";
 
@@ -30,6 +30,7 @@ export default function LicensedVideoPlayer({
   const src = sourceFor(movie);
   const hasRequiredLicenseFields = Boolean(movie.license_type && movie.license_owner_name && movie.video_provider);
   const startedRef = useRef(false);
+  const sectionRef = useRef<HTMLElement | null>(null);
   const timersRef = useRef<number[]>([]);
 
   useEffect(() => {
@@ -39,7 +40,7 @@ export default function LicensedVideoPlayer({
     };
   }, []);
 
-  function startTracking() {
+  const startTracking = useCallback(function startTracking() {
     if (startedRef.current) return;
     startedRef.current = true;
     const videoProvider = movie.video_provider || "licensed_video";
@@ -50,12 +51,24 @@ export default function LicensedVideoPlayer({
       window.setTimeout(() => trackVideoProgress(movie, videoProvider, 45, 75, true), 45000),
       window.setTimeout(() => trackVideoComplete(movie, videoProvider, 60, true), 60000)
     ];
-  }
+  }, [movie]);
+
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!src || !section || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting && entry.intersectionRatio >= 0.45)) return;
+      startTracking();
+      observer.disconnect();
+    }, { threshold: [0.45] });
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [src, movie.id, startTracking]);
 
   if (!movie.has_licensed_video || !src || !hasProof || !hasRequiredLicenseFields) return null;
 
   return (
-    <section className="section">
+    <section className="section" ref={sectionRef}>
       <div className="section-head">
         <div>
           <h2>Play Licensed Video</h2>
@@ -66,8 +79,10 @@ export default function LicensedVideoPlayer({
         className="embed"
         src={src}
         title={`${movie.title} licensed video`}
+        onLoad={startTracking}
         onFocus={startTracking}
         onPointerDown={startTracking}
+        onTouchStart={startTracking}
         allow="autoplay; fullscreen; picture-in-picture"
         allowFullScreen
       />

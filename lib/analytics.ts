@@ -8,6 +8,7 @@ export type AnalyticsEventType =
   | "session_start"
   | "session_active"
   | "movie_view"
+  | "trailer_open"
   | "trailer_play"
   | "trailer_pause"
   | "trailer_progress"
@@ -102,7 +103,22 @@ export async function upsertAnalyticsSession(options: { pageView?: boolean; watc
     if (error) {
       const { p_current_page, ...legacyArgs } = args;
       const legacy = await supabase.rpc("record_analytics_session", legacyArgs);
-      if (legacy.error) throw error;
+      if (legacy.error) {
+        const direct = await supabase.from("analytics_sessions").upsert(
+          {
+            anonymous_session_id,
+            user_id,
+            last_seen_at: new Date().toISOString(),
+            page_views: options.pageView ? 1 : 0,
+            total_watch_seconds: Math.max(0, Math.round(options.watchSeconds || 0)),
+            current_page: getCurrentPage(),
+            device_type: getDeviceType(),
+            browser_name: getBrowserName()
+          },
+          { onConflict: "anonymous_session_id" }
+        );
+        if (direct.error) throw error;
+      }
     }
   } catch (error) {
     warnAnalytics(error);
@@ -186,6 +202,15 @@ export function trackWatchLinkClick(movie: Pick<Movie, "id" | "slug">, platformN
 export function trackVideoPlay(movie: Pick<Movie, "id" | "slug">, provider?: string | null, licensed = false) {
   return trackEvent({
     event_type: licensed ? "licensed_video_play" : "trailer_play",
+    movie_id: movie.id,
+    movie_slug: movie.slug,
+    video_provider: provider || null
+  });
+}
+
+export function trackTrailerOpen(movie: Pick<Movie, "id" | "slug">, provider?: string | null) {
+  return trackEvent({
+    event_type: "trailer_open",
     movie_id: movie.id,
     movie_slug: movie.slug,
     video_provider: provider || null

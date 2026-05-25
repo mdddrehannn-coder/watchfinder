@@ -99,6 +99,7 @@ type AnalyticsData = {
     eventsCount: number;
     sessionsCount: number;
     lastEventAt?: string | null;
+    lastEventType?: string | null;
     lastSessionAt?: string | null;
     errors?: string[];
   };
@@ -308,7 +309,7 @@ export default function AdminDashboard({
           current.lastViewedAt = event.created_at;
         }
       }
-      if (event.event_type === "trailer_play") current.trailerPlays += 1;
+      if (event.event_type === "trailer_play" || event.event_type === "trailer_open") current.trailerPlays += 1;
       if (event.event_type === "trailer_complete" || event.event_type === "licensed_video_complete") current.completions += 1;
       if (event.progress_percent !== null && event.progress_percent !== undefined) {
         current.progressEvents += 1;
@@ -934,6 +935,7 @@ export default function AdminDashboard({
                 <AnalyticsMetricCard label="Total events" value={compactNumber(analytics.debug?.eventsCount ?? analytics.events.length)} />
                 <AnalyticsMetricCard label="Total sessions" value={compactNumber(analytics.debug?.sessionsCount ?? analytics.sessions.length)} />
                 <AnalyticsMetricCard label="Last event" value={analytics.debug?.lastEventAt ? formatTimeAgo(analytics.debug.lastEventAt) : "None"} />
+                <AnalyticsMetricCard label="Last event type" value={analytics.debug?.lastEventType || "None"} />
                 <AnalyticsMetricCard label="Last session" value={analytics.debug?.lastSessionAt ? formatTimeAgo(analytics.debug.lastSessionAt) : "None"} />
               </div>
               <div className="chip-row">

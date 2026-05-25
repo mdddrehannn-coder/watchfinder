@@ -469,6 +469,7 @@ export async function getAdminAnalyticsData() {
         eventsCount: 0,
         sessionsCount: 0,
         lastEventAt: null,
+        lastEventType: null,
         lastSessionAt: null,
         errors: ["Supabase environment variables are not configured."]
       }
@@ -478,7 +479,7 @@ export async function getAdminAnalyticsData() {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
   try {
-    const [events, sessions, eventsCount, sessionsCount, lastEvent, lastSession] = await Promise.all([
+      const [events, sessions, eventsCount, sessionsCount, lastEvent, lastSession] = await Promise.all([
       supabase
         .from("analytics_events")
         .select("*")
@@ -496,10 +497,10 @@ export async function getAdminAnalyticsData() {
       supabase
         .from("analytics_sessions")
         .select("id", { count: "exact", head: true }),
-      supabase
-        .from("analytics_events")
-        .select("created_at")
-        .order("created_at", { ascending: false })
+        supabase
+          .from("analytics_events")
+          .select("created_at, event_type")
+          .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
       supabase
@@ -518,10 +519,11 @@ export async function getAdminAnalyticsData() {
       events: events.data ?? [],
       sessions: sessions.data ?? [],
       debug: {
-        eventsCount: eventsCount.count ?? 0,
-        sessionsCount: sessionsCount.count ?? 0,
-        lastEventAt: lastEvent.data?.created_at ?? null,
-        lastSessionAt: lastSession.data?.last_seen_at ?? null,
+          eventsCount: eventsCount.count ?? 0,
+          sessionsCount: sessionsCount.count ?? 0,
+          lastEventAt: lastEvent.data?.created_at ?? null,
+          lastEventType: lastEvent.data?.event_type ?? null,
+          lastSessionAt: lastSession.data?.last_seen_at ?? null,
         errors
       }
     };
@@ -533,6 +535,7 @@ export async function getAdminAnalyticsData() {
         eventsCount: 0,
         sessionsCount: 0,
         lastEventAt: null,
+        lastEventType: null,
         lastSessionAt: null,
         errors: [error instanceof Error ? error.message : "Unknown analytics query failure."]
       }
