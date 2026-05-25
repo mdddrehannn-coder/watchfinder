@@ -9,6 +9,8 @@ export const metadata: Metadata = {
   description: "Browse legal movie listings, Hindi dubbed titles, free legal movies, trailers and official OTT availability."
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function MoviesPage({
   searchParams
 }: {

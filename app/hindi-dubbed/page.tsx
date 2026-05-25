@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   description: "Find South, Hollywood, anime and OTT titles available in Hindi with official trailers and legal watch links."
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function HindiDubbedPage({
   searchParams
 }: {

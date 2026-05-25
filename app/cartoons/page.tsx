@@ -10,6 +10,8 @@ export const metadata: Metadata = {
   description: "Browse cartoons by channel, kids network, and official availability on WatchFinder."
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function CartoonsPage() {
   const [dbChannels, cartoonUploads] = await Promise.all([
     getContentChannels("cartoon"),

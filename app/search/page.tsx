@@ -16,6 +16,8 @@ export const metadata: Metadata = {
   description: "Search movies, web series, anime, genres and streaming platforms on WatchFinder."
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function SearchPage({
   searchParams
 }: {

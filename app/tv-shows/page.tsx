@@ -10,6 +10,8 @@ export const metadata: Metadata = {
   description: "Browse TV shows by channel, network, and official availability on WatchFinder."
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function TvShowsPage() {
   const [dbChannels, tvUploads] = await Promise.all([
     getContentChannels("tv_show"),

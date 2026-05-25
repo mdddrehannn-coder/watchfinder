@@ -6,6 +6,7 @@ import { Eye, Save } from "lucide-react";
 import { getMovieSaveVisibilityMessage, getMovieVisibilityCheck } from "@/lib/admin-visibility";
 import { slugify } from "@/lib/format";
 import { joinLanguages, WATCHFINDER_LANGUAGES } from "@/lib/languages";
+import { isOptionalMovieRelationError, movieSelect, movieSelectWithoutChannels } from "@/lib/movie-select";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { uploadBanner, uploadLicenseDocumentWithPath, uploadPoster } from "@/lib/storage";
 import type { CastMember, ContentChannel, Genre, Movie, Platform } from "@/types/watchfinder";
@@ -49,6 +50,64 @@ function splitStoredValues(value?: string | null) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizeConfirmedMovie(row: any): Movie {
+  return {
+    ...row,
+    genres: (row.movie_genres ?? []).map((item: any) => item.genres).filter(Boolean),
+    cast_members: (row.movie_cast ?? []).map((item: any) => item.cast_members).filter(Boolean),
+    movie_platform_links: row.movie_platform_links ?? [],
+    content_channel_items: row.content_channel_items ?? [],
+    content_channels: (row.content_channel_items ?? []).map((item: any) => item.content_channels).filter(Boolean)
+  } as Movie;
+}
+
+async function fetchConfirmedMovie(supabase: any, movieId: string) {
+  const primary = await supabase
+    .from("movies")
+    .select(movieSelect)
+    .eq("id", movieId)
+    .maybeSingle();
+
+  if (!primary.error) return primary.data;
+  if (!isOptionalMovieRelationError(primary.error)) throw primary.error;
+
+  const fallback = await supabase
+    .from("movies")
+    .select(movieSelectWithoutChannels)
+    .eq("id", movieId)
+    .maybeSingle();
+
+  if (fallback.error) throw fallback.error;
+  return fallback.data;
+}
+
+function getSaveDebugText(movie: Movie) {
+  const check = getMovieVisibilityCheck(movie);
+  return [
+    `Confirmed from Supabase.`,
+    `ID: ${movie.id}.`,
+    `Slug: ${movie.slug}.`,
+    `Status: ${movie.status || "draft"}.`,
+    `Public: ${check.visibleOnPublicPages ? "yes" : `no (${check.publicReasons.join(", ")})`}.`,
+    `Homepage: ${check.visibleOnHomepageSlider ? "yes" : `no (${check.homepageReasons.join(", ")})`}.`,
+    check.warnings.length ? `Warnings: ${check.warnings.join(", ")}.` : ""
+  ].filter(Boolean).join(" ");
+}
+
+function formatSaveError(error: unknown) {
+  const message = error instanceof Error ? error.message : "Movie save failed.";
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
+  if (
+    code === "PGRST204" ||
+    message.toLowerCase().includes("schema cache") ||
+    message.toLowerCase().includes("could not find") ||
+    message.toLowerCase().includes("column")
+  ) {
+    return `${message} Schema mismatch detected. Apply the latest Supabase migration, then try saving again.`;
+  }
+  return message;
 }
 
 function FormSection({
@@ -328,6 +387,8 @@ export default function AdminMovieForm({
     setChannelSortOrder("");
     setVideoProvider("");
     setLicenseType("");
+    setIsTrending(false);
+    setIsFeatured(false);
     setSelectedPositioning([]);
     setHelperMessage(null);
     try {
@@ -364,6 +425,7 @@ export default function AdminMovieForm({
     const formElement = event.currentTarget;
     setMessage({ type: "info", text: "Saving movie..." });
     setSavedMovieSlug(null);
+    let persistedMovieId: string | null = null;
 
     try {
       const form = new FormData(formElement);
@@ -435,6 +497,7 @@ export default function AdminMovieForm({
       if (error || !movie) {
         throw error || new Error("Movie save failed.");
       }
+      persistedMovieId = movie.id;
 
       const poster = form.get("poster") as File;
       const banner = form.get("banner") as File;
@@ -530,49 +593,28 @@ export default function AdminMovieForm({
         if (licenseError) throw licenseError;
       }
 
-      const savedMovie = {
-        ...(initialMovie || {}),
-        ...payload,
-        ...updatePayload,
-        id: movie.id,
-        slug: movie.slug,
-        genres: genres.filter((genre) => selectedGenres.includes(genre.id)),
-        cast_members: castMembers.filter((member) => selectedCast.includes(member.id)),
-        movie_platform_links: platformId && watchUrl ? [{
-          id: firstPlatformLink?.id || `local-${movie.id}-platform`,
-          movie_id: movie.id,
-          platform_id: platformId,
-          watch_url: watchUrl,
-          availability_type: availabilityType,
-          language: joinLanguages(selectedWatchLanguages) || null,
-          quality: selectedQualities.join(", ") || null,
-          is_official: true,
-          is_active: true,
-          platforms: platforms.find((platform) => platform.id === platformId) ?? null
-        }] : [],
-        content_channels: contentChannels.filter((channel) => selectedChannelIds.includes(channel.id)),
-        content_channel_items: selectedChannelIds.map((channel_id) => ({
-          id: `local-${movie.id}-${channel_id}`,
-          movie_id: movie.id,
-          channel_id,
-          season_number: channelSeasonNumber ? Number(channelSeasonNumber) : null,
-          episode_number: channelEpisodeNumber ? Number(channelEpisodeNumber) : null,
-          episode_title: channelEpisodeTitle.trim() || null,
-          playlist_group: channelPlaylistGroup.trim() || null,
-          sort_order: channelSortOrder ? Number(channelSortOrder) : 0,
-          content_channels: contentChannels.find((channel) => channel.id === channel_id) ?? null
-        }))
-      } as Movie;
+      const confirmedRow = await fetchConfirmedMovie(supabase, movie.id);
+      if (!confirmedRow) {
+        throw new Error("Movie save confirmation failed. Movie was not found after saving.");
+      }
+
+      const savedMovie = normalizeConfirmedMovie(confirmedRow);
 
       setMessage({
         type: "success",
-        text: `${wasUpdate ? "Movie updated successfully." : "Movie saved successfully."} ${getMovieSaveVisibilityMessage(savedMovie)}`
+        text: `${wasUpdate ? "Movie updated successfully." : "Movie saved successfully."} ${getMovieSaveVisibilityMessage(savedMovie)} ${getSaveDebugText(savedMovie)}`
       });
-      setSavedMovieSlug(movie.slug);
+      setSavedMovieSlug(savedMovie.slug);
       onSaved?.(savedMovie);
       if (!wasUpdate) resetFormState(formElement);
     } catch (error) {
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "Movie save failed." });
+      const message = formatSaveError(error);
+      setMessage({
+        type: "error",
+        text: persistedMovieId
+          ? `Movie row was saved, but confirmation or related data failed: ${message}`
+          : message
+      });
     } finally {
       savingRef.current = false;
       setSaving(false);

@@ -11,6 +11,8 @@ export const metadata: Metadata = {
   description: "Track new movies and web series available on legal streaming platforms with Hindi and South release guides."
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function OttReleasesPage() {
   const [platforms, latest, allMovies, posts] = await Promise.all([
     getPlatforms(),

@@ -9,6 +9,8 @@ export const metadata: Metadata = {
   description: "Find legally available free movies, public-domain classics, official YouTube titles and licensed videos on WatchFinder."
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function FreeMoviesPage({
   searchParams
 }: {

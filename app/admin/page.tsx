@@ -16,6 +16,8 @@ export const metadata: Metadata = {
   description: "WatchFinder protected admin dashboard."
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminPage() {
   const { user, profile, isAdmin } = await requireAdminProfile();
 

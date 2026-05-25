@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient, createSupabaseAnonServerClient, createSupabaseServerClient } from "@/lib/supabase-server";
 import { isActiveWindow } from "@/lib/format";
+import { isOptionalMovieRelationError, movieSelect, movieSelectWithoutChannels } from "@/lib/movie-select";
 import type {
   AdSlot,
   BlogPost,
@@ -15,14 +16,6 @@ import type {
   Promotion
 } from "@/types/watchfinder";
 
-const movieSelect = `
-  *,
-  movie_genres(genres(*)),
-  movie_cast(cast_members(*)),
-  movie_platform_links(*, platforms(*)),
-  content_channel_items(*, content_channels(*))
-`;
-
 function normalizeMovie(row: any): Movie {
   return {
     ...row,
@@ -32,6 +25,15 @@ function normalizeMovie(row: any): Movie {
     content_channel_items: row.content_channel_items ?? [],
     content_channels: (row.content_channel_items ?? []).map((item: any) => item.content_channels).filter(Boolean)
   };
+}
+
+async function runMovieQuery(
+  supabase: any,
+  buildQuery: (select: string) => any
+): Promise<{ data: any[] | null; error: any | null }> {
+  const result = await buildQuery(movieSelect);
+  if (!result.error || !isOptionalMovieRelationError(result.error)) return result;
+  return buildQuery(movieSelectWithoutChannels);
 }
 
 export async function getCurrentUserAndProfile() {
@@ -77,24 +79,26 @@ export async function getMovies(options: {
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return [] as Movie[];
 
-  let query = supabase
-    .from("movies")
-    .select(movieSelect)
-    .eq("status", "published")
-    .order(options.topRated ? "rating" : "popularity_score", { ascending: false, nullsFirst: false })
-    .limit(options.limit ?? 24);
+  const { data, error } = await runMovieQuery(supabase, (select) => {
+    let query = supabase
+      .from("movies")
+      .select(select)
+      .eq("status", "published")
+      .order(options.topRated ? "rating" : "popularity_score", { ascending: false, nullsFirst: false })
+      .limit(options.limit ?? 24);
 
-  if (options.type) query = query.eq("type", options.type);
-  if (options.language) query = query.ilike("language", `%${options.language}%`);
-  if (options.year) query = query.eq("release_year", Number(options.year));
-  if (options.trending) query = query.eq("is_trending", true);
-  if (options.latest) query = query.eq("is_latest", true);
-  if (options.featured) query = query.eq("is_featured", true);
-  if (options.search) {
-    query = query.or(`title.ilike.%${options.search}%,description.ilike.%${options.search}%,language.ilike.%${options.search}%`);
-  }
+    if (options.type) query = query.eq("type", options.type);
+    if (options.language) query = query.ilike("language", `%${options.language}%`);
+    if (options.year) query = query.eq("release_year", Number(options.year));
+    if (options.trending) query = query.eq("is_trending", true);
+    if (options.latest) query = query.eq("is_latest", true);
+    if (options.featured) query = query.eq("is_featured", true);
+    if (options.search) {
+      query = query.or(`title.ilike.%${options.search}%,description.ilike.%${options.search}%,language.ilike.%${options.search}%`);
+    }
 
-  const { data, error } = await query;
+    return query;
+  });
   if (error || !data) return [];
 
   let movies = data.map(normalizeMovie);
@@ -128,12 +132,14 @@ export async function getHomepageHeroMovies() {
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return [] as Movie[];
 
-  const { data, error } = await supabase
-    .from("movies")
-    .select(movieSelect)
-    .eq("status", "published")
-    .order("created_at", { ascending: false, nullsFirst: false })
-    .limit(80);
+  const { data, error } = await runMovieQuery(supabase, (select) =>
+    supabase
+      .from("movies")
+      .select(select)
+      .eq("status", "published")
+      .order("created_at", { ascending: false, nullsFirst: false })
+      .limit(80)
+  );
 
   if (error || !data) return [];
 
@@ -148,7 +154,7 @@ export async function getHomepageHeroMovies() {
     return new Date(movie.updated_at || movie.created_at || 0).getTime() || 0;
   }
 
-  return data
+  const movies = data
     .map(normalizeMovie)
     .sort((a, b) => {
       const priorityDiff = priority(a) - priority(b);
@@ -156,20 +162,24 @@ export async function getHomepageHeroMovies() {
       const popularityDiff = (b.popularity_score || 0) - (a.popularity_score || 0);
       if (popularityDiff !== 0) return popularityDiff;
       return timestamp(b) - timestamp(a);
-    })
-    .slice(0, 6);
+    });
+
+  const flaggedMovies = movies.filter((movie) => movie.is_featured || movie.is_latest || movie.is_trending);
+  return (flaggedMovies.length ? flaggedMovies : movies).slice(0, 6);
 }
 
 export async function getMovieBySlug(slug: string) {
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return null;
 
-  const { data, error } = await supabase
-    .from("movies")
-    .select(movieSelect)
-    .eq("slug", slug)
-    .eq("status", "published")
-    .maybeSingle();
+  const { data, error } = await runMovieQuery(supabase, (select) =>
+    supabase
+      .from("movies")
+      .select(select)
+      .eq("slug", slug)
+      .eq("status", "published")
+      .maybeSingle()
+  );
 
   if (error || !data) return null;
   return normalizeMovie(data);
@@ -178,7 +188,9 @@ export async function getMovieBySlug(slug: string) {
 export async function getAllAdminMovies() {
   const supabase = createSupabaseAdminClient() ?? (await createSupabaseServerClient());
   if (!supabase) return [] as Movie[];
-  const { data } = await supabase.from("movies").select(movieSelect).order("created_at", { ascending: false });
+  const { data } = await runMovieQuery(supabase, (select) =>
+    supabase.from("movies").select(select).order("created_at", { ascending: false })
+  );
   return (data ?? []).map(normalizeMovie);
 }
 

@@ -15,6 +15,8 @@ import {
 } from "@/lib/data";
 import { filterDiscoveryMovies, hasOfficialYouTube, isHindiFriendly } from "@/lib/discovery";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const [
     middlePromotions,
