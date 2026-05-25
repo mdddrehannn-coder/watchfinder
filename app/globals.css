@@ -1243,6 +1243,19 @@ html.theme-light .ad-slot {
   border-radius: 1.25rem;
   overflow: hidden;
   background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  position: relative;
+}
+
+.detail-banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(2, 4, 9, 0.05), rgba(2, 4, 9, 0.36)),
+    radial-gradient(circle at 70% 20%, transparent, rgba(2, 4, 9, 0.28));
 }
 
 .detail-banner img {
@@ -1250,6 +1263,7 @@ html.theme-light .ad-slot {
   height: 100%;
   min-height: inherit;
   object-fit: cover;
+  display: block;
 }
 
 .detail-layout {
@@ -1448,6 +1462,27 @@ html.theme-light .positioning-chip {
   border: 1px solid var(--line);
 }
 
+.watch-trailer-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.detail-action-trigger {
+  cursor: pointer;
+}
+
+.detail-poster-static {
+  background: var(--panel);
+}
+
+.detail-poster-static img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .detail-media-trigger {
   position: relative;
   display: block;
@@ -1522,7 +1557,7 @@ html.theme-light .positioning-chip {
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgba(2, 4, 9, 0.78);
+  background: rgba(0, 0, 0, 0.86);
   backdrop-filter: blur(16px);
 }
 
@@ -1540,6 +1575,13 @@ html.theme-light .positioning-chip {
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
 }
 
+.trailer-modal-player-shell {
+  display: grid;
+  gap: 0.7rem;
+  background: #000;
+  border-radius: 0.85rem;
+}
+
 .trailer-modal-close {
   position: absolute;
   top: -0.65rem;
@@ -1550,6 +1592,12 @@ html.theme-light .positioning-chip {
   border-color: rgba(255, 255, 255, 0.22);
 }
 
+.trailer-fullscreen-button {
+  justify-self: end;
+  min-height: 2.65rem;
+  padding: 0.55rem 0.8rem;
+}
+
 .trailer-modal-frame {
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -1558,6 +1606,13 @@ html.theme-light .positioning-chip {
   border: 0;
   border-radius: 0.75rem;
   background: #000;
+}
+
+.trailer-modal-hint {
+  margin: 0 0 0.2rem;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.9rem;
+  text-align: center;
 }
 
 .trailer-modal-official-link {
@@ -3429,14 +3484,20 @@ html.theme-light .first-load-splash {
   }
 
   .trailer-modal-backdrop {
-    padding: 0.55rem;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    place-items: center;
   }
 
   .trailer-modal {
-    width: calc(100vw - 1.1rem);
-    max-height: 88dvh;
-    border-radius: 0.85rem;
-    padding: 0.6rem;
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    padding: max(0.7rem, env(safe-area-inset-top)) max(0.7rem, env(safe-area-inset-right)) max(0.7rem, env(safe-area-inset-bottom)) max(0.7rem, env(safe-area-inset-left));
+    display: grid;
+    align-content: center;
+    background: #000;
   }
 
   .trailer-modal-close {
@@ -3448,8 +3509,11 @@ html.theme-light .first-load-splash {
   }
 
   .trailer-modal-frame {
-    margin-top: 2.2rem;
-    max-height: calc(88dvh - 3.5rem);
+    max-height: min(56.25vw, calc(100dvh - 7rem));
+  }
+
+  .trailer-modal-player-shell {
+    margin-top: 2rem;
   }
 
   .trailer-modal-official-link {

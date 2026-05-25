@@ -83,6 +83,7 @@ export default function TrailerModalTrigger({
   title,
   className,
   showUnavailableMessage = false,
+  buttonLabel,
   children
 }: {
   trailerUrl?: string | null;
@@ -97,6 +98,7 @@ export default function TrailerModalTrigger({
   title: string;
   className?: string;
   showUnavailableMessage?: boolean;
+  buttonLabel?: string;
   children: React.ReactNode;
 }) {
   const source = resolveModalSource({ videoEmbedUrl, trailerUrl, officialWatchUrl, officialPlatformName, officialActionLabel, officialNote, title });
@@ -171,6 +173,7 @@ export default function TrailerModalTrigger({
   useEffect(() => clearTimers, [clearTimers]);
 
   if (!source) {
+    if (buttonLabel) return null;
     return (
       <div className={cx(className, "detail-media-trigger-no-trailer")}>
         {children}
@@ -181,13 +184,15 @@ export default function TrailerModalTrigger({
 
   return (
     <>
-      <button className={cx(className, "detail-media-trigger")} type="button" onClick={openModal} aria-label={`Watch ${title}`}>
+      <button className={buttonLabel ? cx(className, "detail-action-trigger") : cx(className, "detail-media-trigger")} type="button" onClick={openModal} aria-label={buttonLabel || `Watch ${title}`}>
         {children}
-        <span className="detail-play-overlay" aria-hidden="true">
-          <span className="detail-play-button">
-            <Play size={28} fill="currentColor" />
+        {!buttonLabel ? (
+          <span className="detail-play-overlay" aria-hidden="true">
+            <span className="detail-play-button">
+              <Play size={28} fill="currentColor" />
+            </span>
           </span>
-        </span>
+        ) : null}
       </button>
       <TrailerModal open={open} onClose={closeModal} source={source} movie={{ id: movieId, slug: movieSlug }} />
     </>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import AdSlot from "@/components/AdSlot";
+import { Play } from "lucide-react";
 import FavoriteButton from "@/components/FavoriteButton";
 import LicensedVideoPlayer from "@/components/LicensedVideoPlayer";
 import LanguageTags from "@/components/LanguageTags";
@@ -20,8 +21,8 @@ import {
   getSimilarMovies
 } from "@/lib/data";
 import { movieAvailabilityTypes, movieQualities, movieSmartBadges, readableAvailability } from "@/lib/discovery";
-import { formatDuration, formatType } from "@/lib/format";
-import { resolveWatchLinkTarget } from "@/lib/watch-links";
+import { formatDuration, formatType, getYouTubeEmbedUrl } from "@/lib/format";
+import { isKnownExternalWatchPageUrl } from "@/lib/watch-links";
 
 export async function generateMetadata({
   params
@@ -69,9 +70,11 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
   const qualities = movieQualities(movie);
   const availabilityTypes = movieAvailabilityTypes(movie);
   const allBadges = movieSmartBadges(movie);
-  const primaryOfficialLink = movie.movie_platform_links?.find((link) => link.is_active !== false && link.is_official !== false);
-  const primaryWatchTarget = primaryOfficialLink ? resolveWatchLinkTarget(primaryOfficialLink, movie.title) : null;
   const modalProvider = movie.video_provider || movie.trailer_provider || "youtube";
+  const hasPlayableModalSource = Boolean(
+    (movie.video_embed_url && !isKnownExternalWatchPageUrl(movie.video_embed_url)) ||
+      getYouTubeEmbedUrl(movie.trailer_url)
+  );
 
   return (
     <main className="page-inner">
@@ -81,38 +84,27 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
       <AdSlot slot={topAds[0]} />
 
       <section className="detail-hero section">
-        <TrailerModalTrigger
-          className="detail-banner"
-          trailerUrl={movie.trailer_url}
-          videoEmbedUrl={movie.video_embed_url}
-          officialWatchUrl={primaryWatchTarget?.url}
-          officialPlatformName={primaryWatchTarget?.platformName}
-          officialActionLabel={primaryWatchTarget?.label}
-          officialNote={primaryWatchTarget?.note}
-          movieId={movie.id}
-          movieSlug={movie.slug}
-          provider={modalProvider}
-          title={movie.title}
-          showUnavailableMessage
-        >
+        <div className="detail-banner" aria-label={`${movie.title} banner`}>
           {movie.banner_url || movie.poster_url ? <img src={movie.banner_url || movie.poster_url || ""} alt={movie.title} /> : null}
-        </TrailerModalTrigger>
+        </div>
         <div className="detail-layout">
-          <TrailerModalTrigger
-            className="detail-poster"
-            trailerUrl={movie.trailer_url}
-            videoEmbedUrl={movie.video_embed_url}
-            officialWatchUrl={primaryWatchTarget?.url}
-            officialPlatformName={primaryWatchTarget?.platformName}
-            officialActionLabel={primaryWatchTarget?.label}
-            officialNote={primaryWatchTarget?.note}
-            movieId={movie.id}
-            movieSlug={movie.slug}
-            provider={modalProvider}
-            title={movie.title}
-          >
-            {movie.poster_url ? <img src={movie.poster_url} alt={`${movie.title} poster`} /> : null}
-          </TrailerModalTrigger>
+          {hasPlayableModalSource ? (
+            <TrailerModalTrigger
+              className="detail-poster"
+              trailerUrl={movie.trailer_url}
+              videoEmbedUrl={movie.video_embed_url}
+              movieId={movie.id}
+              movieSlug={movie.slug}
+              provider={modalProvider}
+              title={movie.title}
+            >
+              {movie.poster_url ? <img src={movie.poster_url} alt={`${movie.title} poster`} /> : null}
+            </TrailerModalTrigger>
+          ) : (
+            <div className="detail-poster detail-poster-static">
+              {movie.poster_url ? <img src={movie.poster_url} alt={`${movie.title} poster`} /> : null}
+            </div>
+          )}
           <div>
             <div className="meta-line">
               <span className="rating-badge">{formatType(movie.type)}</span>
@@ -148,6 +140,21 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
             <p><strong>Director:</strong> {movie.director || "Not listed"}</p>
             <p><strong>Cast:</strong> {movie.cast_members?.map((member) => member.name).join(", ") || "Not listed"}</p>
             <div className="chip-row">
+              {hasPlayableModalSource ? (
+                <TrailerModalTrigger
+                  className="button primary watch-trailer-action"
+                  trailerUrl={movie.trailer_url}
+                  videoEmbedUrl={movie.video_embed_url}
+                  movieId={movie.id}
+                  movieSlug={movie.slug}
+                  provider={modalProvider}
+                  title={movie.title}
+                  buttonLabel="Watch Trailer"
+                >
+                  <Play size={18} fill="currentColor" />
+                  Watch Trailer
+                </TrailerModalTrigger>
+              ) : null}
               <FavoriteButton movieId={movie.id} />
               <ShareButton title={movie.title} />
             </div>

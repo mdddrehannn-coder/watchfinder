@@ -68,7 +68,16 @@ export default function TrailerPlayer({
     };
   }, [embedUrl, markTrailerOpened, movieId, movieSlug, startTracking]);
 
-  if (!embedUrl) return null;
+  if (!embedUrl) {
+    return (
+      <section className="section" id="trailer">
+        <div className="section-head">
+          <h2>Official Trailer</h2>
+        </div>
+        <div className="empty">No official trailer available yet.</div>
+      </section>
+    );
+  }
 
   return (
     <section className="section" id="trailer" ref={sectionRef}>
@@ -83,7 +92,7 @@ export default function TrailerPlayer({
         onFocus={startTracking}
         onPointerDown={startTracking}
         onTouchStart={startTracking}
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
         allowFullScreen
       />
     </section>
