@@ -79,6 +79,7 @@ export type Movie = {
   cast_members?: CastMember[];
   movie_platform_links?: MoviePlatformLink[];
   content_channels?: ContentChannel[];
+  content_channel_items?: ContentChannelItem[];
 };
 
 export type ContentChannelType = "cartoon" | "tv_show";
@@ -96,6 +97,20 @@ export type ContentChannel = {
   created_at?: string | null;
   updated_at?: string | null;
   item_count?: number;
+};
+
+export type ContentChannelItem = {
+  id: string;
+  channel_id: string;
+  movie_id: string;
+  season_number?: number | null;
+  episode_number?: number | null;
+  episode_title?: string | null;
+  playlist_group?: string | null;
+  sort_order?: number | null;
+  created_at?: string | null;
+  content_channels?: ContentChannel | null;
+  movies?: Movie | null;
 };
 
 export type MoviePlatformLink = {

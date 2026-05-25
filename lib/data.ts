@@ -5,6 +5,7 @@ import type {
   BlogPost,
   CastMember,
   ContentChannel,
+  ContentChannelItem,
   ContentChannelType,
   Genre,
   LicenseDocument,
@@ -19,7 +20,7 @@ const movieSelect = `
   movie_genres(genres(*)),
   movie_cast(cast_members(*)),
   movie_platform_links(*, platforms(*)),
-  content_channel_items(content_channels(*))
+  content_channel_items(*, content_channels(*))
 `;
 
 function normalizeMovie(row: any): Movie {
@@ -28,6 +29,7 @@ function normalizeMovie(row: any): Movie {
     genres: (row.movie_genres ?? []).map((item: any) => item.genres).filter(Boolean),
     cast_members: (row.movie_cast ?? []).map((item: any) => item.cast_members).filter(Boolean),
     movie_platform_links: row.movie_platform_links ?? [],
+    content_channel_items: row.content_channel_items ?? [],
     content_channels: (row.content_channel_items ?? []).map((item: any) => item.content_channels).filter(Boolean)
   };
 }
@@ -266,19 +268,38 @@ export async function getContentChannelBySlug(channelType: ContentChannelType | 
 }
 
 export async function getMoviesForContentChannel(channelId: string) {
-  const supabase = createSupabaseAnonServerClient();
-  if (!supabase) return [] as Movie[];
+  const items = await getContentChannelItems(channelId);
+  return items.map((item) => item.movies).filter(Boolean) as Movie[];
+}
 
-  const { data } = await supabase
+export async function getContentChannelItems(channelId: string) {
+  const supabase = createSupabaseAnonServerClient();
+  if (!supabase) return [] as ContentChannelItem[];
+
+  const { data, error } = await supabase
     .from("content_channel_items")
-    .select(`movies(${movieSelect})`)
+    .select(`*, movies(${movieSelect})`)
     .eq("channel_id", channelId)
+    .order("sort_order", { ascending: true, nullsFirst: false })
+    .order("season_number", { ascending: true, nullsFirst: false })
+    .order("episode_number", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
 
+  if (error || !data) {
+    const fallback = await supabase
+      .from("content_channel_items")
+      .select(`*, movies(${movieSelect})`)
+      .eq("channel_id", channelId)
+      .order("created_at", { ascending: false });
+
+    return (fallback.data ?? [])
+      .map((item: any) => ({ ...item, movies: item.movies ? normalizeMovie(item.movies) : null }))
+      .filter((item: any) => item.movies?.status === "published") as ContentChannelItem[];
+  }
+
   return (data ?? [])
-    .map((item: any) => item.movies)
-    .filter((movie: any) => movie?.status === "published")
-    .map(normalizeMovie);
+    .map((item: any) => ({ ...item, movies: item.movies ? normalizeMovie(item.movies) : null }))
+    .filter((item: any) => item.movies?.status === "published") as ContentChannelItem[];
 }
 
 export async function getChannelLinkedMovies(channelType: ContentChannelType | string, limit = 12) {

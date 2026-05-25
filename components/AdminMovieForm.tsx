@@ -101,6 +101,7 @@ export default function AdminMovieForm({
 }) {
   const isEditMode = Boolean(initialMovie?.id);
   const firstPlatformLink = initialMovie?.movie_platform_links?.[0] ?? null;
+  const firstChannelItem = initialMovie?.content_channel_items?.[0] ?? null;
   const [title, setTitle] = useState(initialMovie?.title ?? "");
   const [slug, setSlug] = useState(initialMovie?.slug ?? "");
   const [selectedType, setSelectedType] = useState(initialMovie?.type ?? "movie");
@@ -123,6 +124,11 @@ export default function AdminMovieForm({
     firstChannelType === "cartoon" || firstChannelType === "tv_show" ? firstChannelType : ""
   );
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>((initialMovie?.content_channels ?? []).map((channel) => channel.id));
+  const [channelSeasonNumber, setChannelSeasonNumber] = useState(firstChannelItem?.season_number ? String(firstChannelItem.season_number) : "");
+  const [channelEpisodeNumber, setChannelEpisodeNumber] = useState(firstChannelItem?.episode_number ? String(firstChannelItem.episode_number) : "");
+  const [channelEpisodeTitle, setChannelEpisodeTitle] = useState(firstChannelItem?.episode_title ?? "");
+  const [channelPlaylistGroup, setChannelPlaylistGroup] = useState(firstChannelItem?.playlist_group ?? "");
+  const [channelSortOrder, setChannelSortOrder] = useState(firstChannelItem?.sort_order ? String(firstChannelItem.sort_order) : "");
   const [videoProvider, setVideoProvider] = useState(initialMovie?.video_provider ?? "");
   const [licenseType, setLicenseType] = useState(initialMovie?.license_type ?? "");
   const [message, setMessage] = useState<Message | null>(null);
@@ -158,6 +164,12 @@ export default function AdminMovieForm({
     const nextChannelType = initialMovie?.content_channels?.[0]?.channel_type;
     setSelectedChannelType(nextChannelType === "cartoon" || nextChannelType === "tv_show" ? nextChannelType : "");
     setSelectedChannelIds((initialMovie?.content_channels ?? []).map((channel) => channel.id));
+    const nextChannelItem = initialMovie?.content_channel_items?.[0] ?? null;
+    setChannelSeasonNumber(nextChannelItem?.season_number ? String(nextChannelItem.season_number) : "");
+    setChannelEpisodeNumber(nextChannelItem?.episode_number ? String(nextChannelItem.episode_number) : "");
+    setChannelEpisodeTitle(nextChannelItem?.episode_title ?? "");
+    setChannelPlaylistGroup(nextChannelItem?.playlist_group ?? "");
+    setChannelSortOrder(nextChannelItem?.sort_order ? String(nextChannelItem.sort_order) : "");
     setVideoProvider(initialMovie?.video_provider ?? "");
     setLicenseType(initialMovie?.license_type ?? "");
     setMessage(null);
@@ -309,6 +321,11 @@ export default function AdminMovieForm({
     setAvailabilityType("subscription");
     setSelectedChannelType("");
     setSelectedChannelIds([]);
+    setChannelSeasonNumber("");
+    setChannelEpisodeNumber("");
+    setChannelEpisodeTitle("");
+    setChannelPlaylistGroup("");
+    setChannelSortOrder("");
     setVideoProvider("");
     setLicenseType("");
     setSelectedPositioning([]);
@@ -484,9 +501,16 @@ export default function AdminMovieForm({
       }
 
       if (selectedChannelIds.length) {
+        const channelMeta = {
+          season_number: channelSeasonNumber ? Number(channelSeasonNumber) : null,
+          episode_number: channelEpisodeNumber ? Number(channelEpisodeNumber) : null,
+          episode_title: channelEpisodeTitle.trim() || null,
+          playlist_group: channelPlaylistGroup.trim() || null,
+          sort_order: channelSortOrder ? Number(channelSortOrder) : 0
+        };
         const { error: channelLinkError } = await supabase
           .from("content_channel_items")
-          .insert(selectedChannelIds.map((channel_id) => ({ movie_id: movie.id, channel_id })));
+          .insert(selectedChannelIds.map((channel_id) => ({ movie_id: movie.id, channel_id, ...channelMeta })));
         if (channelLinkError) throw channelLinkError;
       }
 
@@ -526,7 +550,18 @@ export default function AdminMovieForm({
           is_active: true,
           platforms: platforms.find((platform) => platform.id === platformId) ?? null
         }] : [],
-        content_channels: contentChannels.filter((channel) => selectedChannelIds.includes(channel.id))
+        content_channels: contentChannels.filter((channel) => selectedChannelIds.includes(channel.id)),
+        content_channel_items: selectedChannelIds.map((channel_id) => ({
+          id: `local-${movie.id}-${channel_id}`,
+          movie_id: movie.id,
+          channel_id,
+          season_number: channelSeasonNumber ? Number(channelSeasonNumber) : null,
+          episode_number: channelEpisodeNumber ? Number(channelEpisodeNumber) : null,
+          episode_title: channelEpisodeTitle.trim() || null,
+          playlist_group: channelPlaylistGroup.trim() || null,
+          sort_order: channelSortOrder ? Number(channelSortOrder) : 0,
+          content_channels: contentChannels.find((channel) => channel.id === channel_id) ?? null
+        }))
       } as Movie;
 
       setMessage({
@@ -691,27 +726,36 @@ export default function AdminMovieForm({
         ) : null}
       </FormSection>
 
-      <FormSection title="Cartoon / TV Channel" helper="Optional. Link this title to one or more cartoon or TV channels for the public channel pages.">
+      <FormSection title="Cartoon / TV Channel Linking" helper="Optional. Link this title to cartoon or TV channels. Episode fields are saved on the channel link.">
         <div className="option-group compact-options">
           <label className="option-card"><input checked={selectedChannelType === ""} onChange={() => updateChannelType("")} type="radio" name="channel_type_ui" /> <span>None</span></label>
           <label className="option-card"><input checked={selectedChannelType === "cartoon"} onChange={() => updateChannelType("cartoon")} type="radio" name="channel_type_ui" /> <span>Cartoon</span></label>
           <label className="option-card"><input checked={selectedChannelType === "tv_show"} onChange={() => updateChannelType("tv_show")} type="radio" name="channel_type_ui" /> <span>TV Show</span></label>
         </div>
         {selectedChannelType ? (
-          <div className="relation-chip-grid">
-            {contentChannels
-              .filter((channel) => channel.channel_type === selectedChannelType)
-              .map((channel) => (
-                <button
-                  className={selectedChannelIds.includes(channel.id) ? "relation-chip selected" : "relation-chip"}
-                  key={channel.id}
-                  onClick={() => toggleItem(channel.id, setSelectedChannelIds)}
-                  type="button"
-                >
-                  {channel.name}
-                </button>
-              ))}
-          </div>
+          <>
+            <div className="relation-chip-grid">
+              {contentChannels
+                .filter((channel) => channel.channel_type === selectedChannelType)
+                .map((channel) => (
+                  <button
+                    className={selectedChannelIds.includes(channel.id) ? "relation-chip selected" : "relation-chip"}
+                    key={channel.id}
+                    onClick={() => toggleItem(channel.id, setSelectedChannelIds)}
+                    type="button"
+                  >
+                    {channel.name}
+                  </button>
+                ))}
+            </div>
+            <div className="form-grid two">
+              <div className="field"><label>Season Number</label><input inputMode="numeric" value={channelSeasonNumber} onChange={(event) => setChannelSeasonNumber(event.target.value)} placeholder="1" /></div>
+              <div className="field"><label>Episode Number</label><input inputMode="numeric" value={channelEpisodeNumber} onChange={(event) => setChannelEpisodeNumber(event.target.value)} placeholder="1" /></div>
+              <div className="field"><label>Episode Title</label><input value={channelEpisodeTitle} onChange={(event) => setChannelEpisodeTitle(event.target.value)} placeholder="Optional episode title" /></div>
+              <div className="field"><label>Playlist Group</label><input value={channelPlaylistGroup} onChange={(event) => setChannelPlaylistGroup(event.target.value)} placeholder="Season 1, Clips, Specials" /></div>
+              <div className="field"><label>Sort Order</label><input inputMode="numeric" value={channelSortOrder} onChange={(event) => setChannelSortOrder(event.target.value)} placeholder="0" /></div>
+            </div>
+          </>
         ) : (
           <p className="muted">No channel link selected.</p>
         )}

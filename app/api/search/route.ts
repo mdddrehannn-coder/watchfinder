@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     .slice(0, 6)
     .map((movie) => ({
       id: movie.id,
-      kind: "movie",
+      kind: movie.type === "cartoon" ? "cartoon" : movie.type === "tv_show" ? "tv_show" : "movie",
       title: movie.title,
       slug: movie.slug,
       href: `/movie/${movie.slug}`,

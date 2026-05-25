@@ -1021,6 +1021,13 @@ html.theme-light .blog-card {
   font-weight: 1000;
 }
 
+.channel-logo.large {
+  width: 4.75rem;
+  height: 4.75rem;
+  border-radius: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
 .channel-logo img {
   width: 100%;
   height: 100%;
@@ -1032,6 +1039,103 @@ html.theme-light .blog-card {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.channel-detail-hero {
+  border: 1px solid var(--line);
+  border-radius: 1.1rem;
+  padding: clamp(1.25rem, 5vw, 2.5rem);
+  background:
+    linear-gradient(135deg, rgba(244, 63, 94, 0.14), rgba(34, 211, 238, 0.08)),
+    rgba(255, 255, 255, 0.055);
+  box-shadow: var(--shadow);
+}
+
+html.theme-light .channel-detail-hero {
+  background:
+    linear-gradient(135deg, rgba(244, 63, 94, 0.11), rgba(14, 116, 144, 0.07)),
+    rgba(255, 255, 255, 0.9);
+}
+
+.channel-detail-hero h1 {
+  margin: 0.75rem 0;
+  font-size: clamp(2rem, 6vw, 3.7rem);
+  line-height: 1;
+}
+
+.channel-search-form {
+  margin-bottom: 0.9rem;
+}
+
+.channel-content-grid {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.channel-content-card {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 0.95rem;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+html.theme-light .channel-content-card {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.channel-content-poster {
+  aspect-ratio: 2 / 3;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--panel-2);
+  font-weight: 900;
+}
+
+.channel-content-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.channel-content-copy {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
+}
+
+.channel-content-copy h3,
+.channel-content-copy p {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.channel-content-copy h3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.channel-content-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.2rem;
+}
+
+.playlist-stack,
+.playlist-group {
+  display: grid;
+  gap: 1rem;
 }
 
 .platform-logo {

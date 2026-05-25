@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import MovieGrid from "@/components/MovieGrid";
-import { getContentChannelBySlug, getMoviesForContentChannel } from "@/lib/data";
+import Link from "next/link";
+import ChannelContentGrid from "@/components/ChannelContentGrid";
+import { hasOfficialYouTube, isLegalFreeMovie } from "@/lib/discovery";
+import { getContentChannelBySlug, getContentChannelItems } from "@/lib/data";
 import { getFallbackChannelBySlug } from "@/lib/default-content-channels";
+import type { ContentChannelItem } from "@/types/watchfinder";
 
 export async function generateMetadata({
   params
@@ -18,27 +21,71 @@ export async function generateMetadata({
   };
 }
 
-export default async function CartoonChannelPage({ params }: { params: Promise<{ channelSlug: string }> }) {
+function filterItems(items: ContentChannelItem[], query: string, tab: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  return items.filter((item) => {
+    const movie = item.movies;
+    if (!movie) return false;
+    const searchable = `${movie.title} ${movie.language || ""} ${item.episode_title || ""} ${item.season_number || ""} ${item.episode_number || ""}`.toLowerCase();
+    if (normalizedQuery && !searchable.includes(normalizedQuery)) return false;
+    if (tab === "episodes") return Boolean(item.episode_number || item.season_number);
+    if (tab === "clips") return String(movie.type).includes("short") || Boolean(item.episode_title?.toLowerCase().includes("clip"));
+    if (tab === "movies") return movie.type === "movie";
+    if (tab === "youtube") return hasOfficialYouTube(movie);
+    if (tab === "free") return isLegalFreeMovie(movie);
+    return true;
+  });
+}
+
+export default async function CartoonChannelPage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ channelSlug: string }>;
+  searchParams: Promise<{ q?: string; tab?: string }>;
+}) {
   const { channelSlug } = await params;
+  const filters = await searchParams;
   const channel = (await getContentChannelBySlug("cartoon", channelSlug)) ?? getFallbackChannelBySlug("cartoon", channelSlug);
   if (!channel) notFound();
 
-  const movies = channel.id.startsWith("fallback-") ? [] : await getMoviesForContentChannel(channel.id);
+  const items = channel.id.startsWith("fallback-") ? [] : await getContentChannelItems(channel.id);
+  const activeTab = filters.tab || "all";
+  const filteredItems = filterItems(items, filters.q || "", activeTab);
+  const tabs = [
+    ["All", "all"],
+    ["Episodes", "episodes"],
+    ["Clips", "clips"],
+    ["Movies", "movies"],
+    ["Official YouTube", "youtube"],
+    ["Free Legal", "free"]
+  ];
 
   return (
     <main className="page-inner">
-      <section className="discover-hero">
+      <section className="channel-detail-hero">
+        <span className="channel-logo large">
+          {channel.logo_url ? <img src={channel.logo_url} alt="" /> : <span>{channel.name.slice(0, 2).toUpperCase()}</span>}
+        </span>
         <p className="rating-badge">Cartoon Channel</p>
         <h1>{channel.name}</h1>
         <p className="muted">{channel.description || "Cartoon shows and official links."}</p>
         {channel.official_url ? <a className="button" href={channel.official_url} target="_blank" rel="noreferrer">Official channel</a> : null}
       </section>
       <section className="section">
-        <MovieGrid
-          movies={movies}
-          emptyTitle="No cartoons added for this channel yet"
-          emptyMessage="Add cartoons from the admin panel and link them to this channel."
-        />
+        <form className="simple-search-form channel-search-form">
+          <input name="q" defaultValue={filters.q || ""} placeholder="Search cartoons in this channel..." />
+          <input name="tab" type="hidden" value={activeTab} />
+          <button className="button primary" type="submit">Search</button>
+        </form>
+        <div className="chip-row">
+          {tabs.map(([label, value]) => (
+            <Link className={activeTab === value ? "chip active" : "chip"} href={`/cartoons/${channel.slug}?tab=${value}${filters.q ? `&q=${encodeURIComponent(filters.q)}` : ""}`} key={value}>
+              {label}
+            </Link>
+          ))}
+        </div>
+        <ChannelContentGrid items={filteredItems} emptyTitle="No cartoons added for this channel yet." />
       </section>
     </main>
   );
