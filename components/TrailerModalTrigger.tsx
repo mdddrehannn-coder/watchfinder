@@ -102,6 +102,7 @@ export default function TrailerModalTrigger({
   const source = resolveModalSource({ videoEmbedUrl, trailerUrl, officialWatchUrl, officialPlatformName, officialActionLabel, officialNote, title });
   const hasEmbedSource = source?.kind === "embed";
   const [open, setOpen] = useState(false);
+  const modalOpenTrackedRef = useRef(false);
   const trackingStartedRef = useRef(false);
   const timersRef = useRef<number[]>([]);
 
@@ -110,14 +111,24 @@ export default function TrailerModalTrigger({
     timersRef.current = [];
   }, []);
 
+  const trackModalOpen = useCallback(function trackModalOpen() {
+    if (modalOpenTrackedRef.current || !source) return;
+    modalOpenTrackedRef.current = true;
+    const movie = { id: movieId, slug: movieSlug };
+    const videoProvider = source.kind === "official_link" ? source.platformName : provider || "youtube";
+    trackTrailerOpen(movie, videoProvider);
+    if (source.kind === "embed") {
+      trackWatchLinkClick(movie, videoEmbedUrl ? "Official video" : "Official trailer");
+    }
+  }, [movieId, movieSlug, provider, source, videoEmbedUrl]);
+
   const startTracking = useCallback(function startTracking() {
     if (trackingStartedRef.current) return;
     if (!hasEmbedSource) return;
     trackingStartedRef.current = true;
+    trackModalOpen();
     const movie = { id: movieId, slug: movieSlug };
     const videoProvider = provider || "youtube";
-    trackTrailerOpen(movie, videoProvider);
-    trackWatchLinkClick(movie, videoEmbedUrl ? "Official video" : "Official trailer");
     trackVideoPlay(movie, videoProvider);
     timersRef.current = [
       window.setTimeout(() => trackVideoProgress(movie, videoProvider, 15, 25), 15000),
@@ -125,17 +136,19 @@ export default function TrailerModalTrigger({
       window.setTimeout(() => trackVideoProgress(movie, videoProvider, 45, 75), 45000),
       window.setTimeout(() => trackVideoComplete(movie, videoProvider, 60), 60000)
     ];
-  }, [hasEmbedSource, movieId, movieSlug, provider, videoEmbedUrl]);
+  }, [hasEmbedSource, movieId, movieSlug, provider, trackModalOpen]);
 
   function openModal() {
     if (!source) return;
     setOpen(true);
-    startTracking();
+    trackModalOpen();
+    if (hasEmbedSource) startTracking();
   }
 
   const closeModal = useCallback(function closeModal() {
     setOpen(false);
     clearTimers();
+    modalOpenTrackedRef.current = false;
     trackingStartedRef.current = false;
   }, [clearTimers]);
 

@@ -41,13 +41,21 @@ const SESSION_KEY = "watchfinder_anon_session_id";
 
 export function getAnonymousSessionId() {
   if (typeof window === "undefined") return "";
-  const existing = localStorage.getItem(SESSION_KEY);
-  if (existing) return existing;
+  try {
+    const existing = localStorage.getItem(SESSION_KEY);
+    if (existing) return existing;
+  } catch {
+    // Storage can be blocked in private or restricted browser modes.
+  }
   const next =
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  localStorage.setItem(SESSION_KEY, next);
+  try {
+    localStorage.setItem(SESSION_KEY, next);
+  } catch {
+    // Keep the in-memory value for this call even if persistence is blocked.
+  }
   return next;
 }
 
@@ -76,13 +84,63 @@ function getCurrentPage() {
 }
 
 function warnAnalytics(error: unknown) {
-  if (process.env.NODE_ENV === "development") console.warn("WatchFinder analytics failed", error);
+  console.warn("WatchFinder analytics failed", error);
 }
 
 async function currentUserId() {
+  try {
+    const supabase = createSupabaseBrowserClient();
+    const { data } = await supabase.auth.getUser();
+    return data.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function upsertSessionDirect({
+  anonymous_session_id,
+  user_id,
+  pageView,
+  watchSeconds
+}: {
+  anonymous_session_id: string;
+  user_id: string | null;
+  pageView?: boolean;
+  watchSeconds?: number;
+}) {
   const supabase = createSupabaseBrowserClient();
-  const { data } = await supabase.auth.getUser();
-  return data.user?.id ?? null;
+  const payload = {
+    anonymous_session_id,
+    user_id,
+    last_seen_at: new Date().toISOString(),
+    page_views: pageView ? 1 : 0,
+    total_watch_seconds: Math.max(0, Math.round(watchSeconds || 0)),
+    current_page: getCurrentPage(),
+    device_type: getDeviceType(),
+    browser_name: getBrowserName()
+  };
+
+  const upsert = await supabase
+    .from("analytics_sessions")
+    .upsert(payload, { onConflict: "anonymous_session_id", ignoreDuplicates: false });
+
+  if (!upsert.error) return;
+
+  const insert = await supabase.from("analytics_sessions").insert(payload);
+  if (!insert.error) return;
+
+  const update = await supabase
+    .from("analytics_sessions")
+    .update({
+      user_id,
+      last_seen_at: payload.last_seen_at,
+      current_page: payload.current_page,
+      device_type: payload.device_type,
+      browser_name: payload.browser_name
+    })
+    .eq("anonymous_session_id", anonymous_session_id);
+
+  if (update.error) throw update.error;
 }
 
 export async function upsertAnalyticsSession(options: { pageView?: boolean; watchSeconds?: number } = {}) {
@@ -104,20 +162,12 @@ export async function upsertAnalyticsSession(options: { pageView?: boolean; watc
       const { p_current_page, ...legacyArgs } = args;
       const legacy = await supabase.rpc("record_analytics_session", legacyArgs);
       if (legacy.error) {
-        const direct = await supabase.from("analytics_sessions").upsert(
-          {
-            anonymous_session_id,
-            user_id,
-            last_seen_at: new Date().toISOString(),
-            page_views: options.pageView ? 1 : 0,
-            total_watch_seconds: Math.max(0, Math.round(options.watchSeconds || 0)),
-            current_page: getCurrentPage(),
-            device_type: getDeviceType(),
-            browser_name: getBrowserName()
-          },
-          { onConflict: "anonymous_session_id" }
-        );
-        if (direct.error) throw error;
+        await upsertSessionDirect({
+          anonymous_session_id,
+          user_id,
+          pageView: options.pageView,
+          watchSeconds: options.watchSeconds
+        });
       }
     }
   } catch (error) {
@@ -167,10 +217,14 @@ export async function trackEvent(payload: AnalyticsPayload) {
 
 function cooldown(key: string, ms = 30000) {
   if (typeof sessionStorage === "undefined") return false;
-  const now = Date.now();
-  const previous = Number(sessionStorage.getItem(key) || 0);
-  if (previous && now - previous < ms) return true;
-  sessionStorage.setItem(key, String(now));
+  try {
+    const now = Date.now();
+    const previous = Number(sessionStorage.getItem(key) || 0);
+    if (previous && now - previous < ms) return true;
+    sessionStorage.setItem(key, String(now));
+  } catch {
+    return false;
+  }
   return false;
 }
 
