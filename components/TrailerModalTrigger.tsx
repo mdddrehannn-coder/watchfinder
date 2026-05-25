@@ -1,0 +1,121 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Play, X } from "lucide-react";
+import { trackTrailerOpen, trackVideoComplete, trackVideoPlay, trackVideoProgress, trackWatchLinkClick } from "@/lib/analytics";
+import { cx, getYouTubeEmbedUrl } from "@/lib/format";
+
+export default function TrailerModalTrigger({
+  trailerUrl,
+  movieId,
+  movieSlug,
+  provider = "youtube",
+  title,
+  className,
+  children
+}: {
+  trailerUrl?: string | null;
+  movieId: string;
+  movieSlug: string;
+  provider?: string | null;
+  title: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const embedUrl = getYouTubeEmbedUrl(trailerUrl);
+  const [open, setOpen] = useState(false);
+  const trackingStartedRef = useRef(false);
+  const timersRef = useRef<number[]>([]);
+
+  const clearTimers = useCallback(function clearTimers() {
+    timersRef.current.forEach((timer) => window.clearTimeout(timer));
+    timersRef.current = [];
+  }, []);
+
+  const startTracking = useCallback(function startTracking() {
+    if (trackingStartedRef.current) return;
+    trackingStartedRef.current = true;
+    const movie = { id: movieId, slug: movieSlug };
+    const videoProvider = provider || "youtube";
+    trackTrailerOpen(movie, videoProvider);
+    trackWatchLinkClick(movie, "Official trailer");
+    trackVideoPlay(movie, videoProvider);
+    timersRef.current = [
+      window.setTimeout(() => trackVideoProgress(movie, videoProvider, 15, 25), 15000),
+      window.setTimeout(() => trackVideoProgress(movie, videoProvider, 30, 50), 30000),
+      window.setTimeout(() => trackVideoProgress(movie, videoProvider, 45, 75), 45000),
+      window.setTimeout(() => trackVideoComplete(movie, videoProvider, 60), 60000)
+    ];
+  }, [movieId, movieSlug, provider]);
+
+  function openModal() {
+    if (!embedUrl) return;
+    setOpen(true);
+    startTracking();
+  }
+
+  const closeModal = useCallback(function closeModal() {
+    setOpen(false);
+    clearTimers();
+    trackingStartedRef.current = false;
+  }, [clearTimers]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeModal();
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeModal, open]);
+
+  useEffect(() => clearTimers, [clearTimers]);
+
+  if (!embedUrl) {
+    return <div className={cx(className, "detail-media-trigger-no-trailer")}>{children}</div>;
+  }
+
+  const modalSrc = `${embedUrl}${embedUrl.includes("?") ? "&" : "?"}autoplay=1&rel=0&modestbranding=1`;
+
+  return (
+    <>
+      <button className={cx(className, "detail-media-trigger")} type="button" onClick={openModal} aria-label={`Watch trailer for ${title}`}>
+        {children}
+        <span className="detail-play-overlay" aria-hidden="true">
+          <span className="detail-play-button">
+            <Play size={28} fill="currentColor" />
+          </span>
+        </span>
+      </button>
+      {open ? (
+        <div className="trailer-modal-backdrop" role="presentation" onMouseDown={closeModal}>
+          <div
+            aria-label={`Official trailer for ${title}`}
+            aria-modal="true"
+            className="trailer-modal"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <button className="icon-button trailer-modal-close" type="button" onClick={closeModal} aria-label="Close trailer">
+              <X size={20} />
+            </button>
+            <iframe
+              className="trailer-modal-frame"
+              src={modalSrc}
+              title={`Official trailer for ${title}`}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}

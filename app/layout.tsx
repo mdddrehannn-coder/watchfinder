@@ -104,6 +104,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <PWAInstallBanner />
             <AppUpdateManager />
             {children}
+            <footer className="site-footer">
+              <div className="site-footer-inner">
+                <div className="site-footer-brand">
+                  <BrandLogo variant="header" showText={false} />
+                  <p>Official links, legal trailers, free licensed titles and OTT availability discovery.</p>
+                </div>
+                <nav aria-label="Footer">
+                  <Link href="/about">About</Link>
+                  <Link href="/contact">Contact</Link>
+                  <Link href="/privacy-policy">Privacy Policy</Link>
+                  <Link href="/terms">Terms</Link>
+                  <Link href="/disclaimer">Disclaimer</Link>
+                </nav>
+              </div>
+            </footer>
             <BottomNav />
           </div>
         </PWAInstallManager>

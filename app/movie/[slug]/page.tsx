@@ -8,6 +8,7 @@ import MovieAnalyticsTracker from "@/components/MovieAnalyticsTracker";
 import MovieSlider from "@/components/MovieSlider";
 import PromotionBanner from "@/components/PromotionBanner";
 import ShareButton from "@/components/ShareButton";
+import TrailerModalTrigger from "@/components/TrailerModalTrigger";
 import TrailerPlayer from "@/components/TrailerPlayer";
 import WatchHistoryRecorder from "@/components/WatchHistoryRecorder";
 import WatchLinks from "@/components/WatchLinks";
@@ -76,13 +77,27 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
       <AdSlot slot={topAds[0]} />
 
       <section className="detail-hero section">
-        <div className="detail-banner">
+        <TrailerModalTrigger
+          className="detail-banner"
+          trailerUrl={movie.trailer_url}
+          movieId={movie.id}
+          movieSlug={movie.slug}
+          provider={movie.trailer_provider || "youtube"}
+          title={movie.title}
+        >
           {movie.banner_url || movie.poster_url ? <img src={movie.banner_url || movie.poster_url || ""} alt={movie.title} /> : null}
-        </div>
+        </TrailerModalTrigger>
         <div className="detail-layout">
-          <div className="detail-poster">
+          <TrailerModalTrigger
+            className="detail-poster"
+            trailerUrl={movie.trailer_url}
+            movieId={movie.id}
+            movieSlug={movie.slug}
+            provider={movie.trailer_provider || "youtube"}
+            title={movie.title}
+          >
             {movie.poster_url ? <img src={movie.poster_url} alt={`${movie.title} poster`} /> : null}
-          </div>
+          </TrailerModalTrigger>
           <div>
             <div className="meta-line">
               <span className="rating-badge">{formatType(movie.type)}</span>
