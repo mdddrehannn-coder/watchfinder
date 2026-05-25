@@ -138,7 +138,8 @@ export default function AdminMovieForm({
   onSaved,
   onDuplicateSlug,
   movieAnalytics,
-  contentChannels = []
+  contentChannels = [],
+  contentChannelsError = null
 }: {
   genres: Genre[];
   castMembers: CastMember[];
@@ -149,6 +150,7 @@ export default function AdminMovieForm({
   onSaved?: (movie: Movie) => void;
   onDuplicateSlug?: (movieId: string) => void;
   contentChannels?: ContentChannel[];
+  contentChannelsError?: string | null;
   movieAnalytics?: {
     views: number;
     todayViews: number;
@@ -769,6 +771,12 @@ export default function AdminMovieForm({
       </FormSection>
 
       <FormSection title="Cartoon / TV Channel Linking" helper="Optional. Link this title to cartoon or TV channels. Episode fields are saved on the channel link.">
+        {contentChannelsError ? (
+          <div className="notice-card error">
+            <strong>Cartoon/TV Show tables are missing.</strong>
+            <p>{contentChannelsError}</p>
+          </div>
+        ) : null}
         <div className="option-group compact-options">
           <label className="option-card"><input checked={selectedChannelType === ""} onChange={() => updateChannelType("")} type="radio" name="channel_type_ui" /> <span>None</span></label>
           <label className="option-card"><input checked={selectedChannelType === "cartoon"} onChange={() => updateChannelType("cartoon")} type="radio" name="channel_type_ui" /> <span>Cartoon</span></label>

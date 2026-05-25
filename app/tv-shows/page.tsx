@@ -3,7 +3,6 @@ import ChannelCard from "@/components/ChannelCard";
 import MovieSlider from "@/components/MovieSlider";
 import { hasOfficialYouTube } from "@/lib/discovery";
 import { getChannelLinkedMovies, getContentChannels } from "@/lib/data";
-import { fallbackTvShowChannels } from "@/lib/default-content-channels";
 
 export const metadata: Metadata = {
   title: "TV Shows",
@@ -17,7 +16,7 @@ export default async function TvShowsPage() {
     getContentChannels("tv_show"),
     getChannelLinkedMovies("tv_show", 24)
   ]);
-  const channels = dbChannels.length ? dbChannels : fallbackTvShowChannels;
+  const channels = dbChannels;
   const trendingShows = tvUploads.filter((movie) => movie.is_trending).slice(0, 12);
   const fullEpisodes = tvUploads.filter((movie) => movie.has_licensed_video || movie.content_channel_items?.some((item) => item.episode_number || item.season_number)).slice(0, 12);
   const officialShows = tvUploads.filter(hasOfficialYouTube).slice(0, 12);

@@ -23,11 +23,13 @@ function emptyChannel(channelType: ContentChannelType): ContentChannel {
 export default function AdminChannelManager({
   initialChannels,
   channelType,
-  title
+  title,
+  tableError
 }: {
   initialChannels: ContentChannel[];
   channelType: ContentChannelType;
   title: string;
+  tableError?: string | null;
 }) {
   const [channels, setChannels] = useState(initialChannels.filter((channel) => channel.channel_type === channelType));
   const [editing, setEditing] = useState<ContentChannel>(emptyChannel(channelType));
@@ -87,6 +89,12 @@ export default function AdminChannelManager({
         <h2>{title}</h2>
         <p className="muted">Create and edit channel cards used by public discovery pages.</p>
       </div>
+      {tableError ? (
+        <div className="notice-card error">
+          <strong>Cartoon/TV Show tables are missing.</strong>
+          <p>{tableError}</p>
+        </div>
+      ) : null}
       {message ? <p className="form-message info">{message}</p> : null}
       <form className="panel form-grid" onSubmit={saveChannel}>
         <div className="form-grid two">

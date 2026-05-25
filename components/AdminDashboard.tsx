@@ -25,6 +25,7 @@ type AdminSection =
   | "cast-members"
   | "cartoon-channels"
   | "tv-show-channels"
+  | "channel-links"
   | "promotions"
   | "ad-slots"
   | "blog-posts"
@@ -42,6 +43,7 @@ const sections: Array<{ id: AdminSection; label: string }> = [
   { id: "cast-members", label: "Cast Members" },
   { id: "cartoon-channels", label: "Cartoon Channels" },
   { id: "tv-show-channels", label: "TV Show Channels" },
+  { id: "channel-links", label: "Manage Channel Links" },
   { id: "promotions", label: "Promotions" },
   { id: "ad-slots", label: "Ad Slots" },
   { id: "blog-posts", label: "Blog Posts" },
@@ -245,6 +247,8 @@ export default function AdminDashboard({
   const [analyticsRange, setAnalyticsRange] = useState<AnalyticsRange>("today");
   const [movieSort, setMovieSort] = useState<MovieSort>("views");
   const [analyticsTestMessage, setAnalyticsTestMessage] = useState<string | null>(null);
+  const contentChannels = (collections.contentChannels ?? []) as ContentChannel[];
+  const contentChannelsError = typeof collections.contentChannelsError === "string" ? collections.contentChannelsError : null;
 
   const filteredMovies = useMemo(() => {
     const query = movieSearch.trim().toLowerCase();
@@ -480,7 +484,7 @@ export default function AdminDashboard({
       movies,
       genres,
       platforms,
-      contentChannels: collections.contentChannels ?? []
+      contentChannels
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -961,7 +965,8 @@ export default function AdminDashboard({
               onBackToMovies={() => setActiveSection("movies")}
               onAddNew={showAddMovie}
               movieAnalytics={editingMovie ? analyticsStats.movieStatsById.get(editingMovie.id) : undefined}
-              contentChannels={(collections.contentChannels ?? []) as ContentChannel[]}
+              contentChannels={contentChannels}
+              contentChannelsError={contentChannelsError}
             />
           </section>
         ) : null}
@@ -969,8 +974,89 @@ export default function AdminDashboard({
         {activeSection === "genres" ? <section className="section"><h2>Genres</h2><div className="chip-row">{genres.map((genre) => <span className="chip" key={genre.id}>{genre.name}</span>)}</div></section> : null}
         {activeSection === "platforms" ? <section className="section"><h2>Platforms</h2><div className="chip-row">{platforms.map((platform) => <span className="chip" key={platform.id}>{platform.name}</span>)}</div></section> : null}
         {activeSection === "cast-members" ? <section className="section"><h2>Cast Members</h2><div className="chip-row">{castMembers.map((member) => <span className="chip" key={member.id}>{member.name}</span>)}</div></section> : null}
-        {activeSection === "cartoon-channels" ? <section className="section"><AdminChannelManager initialChannels={collections.contentChannels ?? []} channelType="cartoon" title="Cartoon Channels" /></section> : null}
-        {activeSection === "tv-show-channels" ? <section className="section"><AdminChannelManager initialChannels={collections.contentChannels ?? []} channelType="tv_show" title="TV Show Channels" /></section> : null}
+        {activeSection === "cartoon-channels" ? <section className="section"><AdminChannelManager initialChannels={contentChannels} channelType="cartoon" title="Cartoon Channels" tableError={contentChannelsError} /></section> : null}
+        {activeSection === "tv-show-channels" ? <section className="section"><AdminChannelManager initialChannels={contentChannels} channelType="tv_show" title="TV Show Channels" tableError={contentChannelsError} /></section> : null}
+        {activeSection === "channel-links" ? (
+          <section className="section">
+            <div className="section-head">
+              <div>
+                <h2>Manage Channel Links</h2>
+                <p className="muted">Channel links are stored in Supabase content_channel_items. Open a movie editor to connect cartoons and TV shows to one or more channels.</p>
+              </div>
+              <button className="button primary" type="button" onClick={showAddMovie}>
+                <Plus size={18} /> Add Movie
+              </button>
+            </div>
+            {contentChannelsError ? (
+              <div className="notice-card error">
+                <strong>Cartoon/TV Show tables are missing.</strong>
+                <p>{contentChannelsError}</p>
+              </div>
+            ) : null}
+            <div className="form-grid two">
+              <div className="panel">
+                <h3>Supabase Channels</h3>
+                <div className="admin-movie-list compact-list">
+                  {contentChannels.map((channel) => (
+                    <article className="admin-movie-row" key={channel.id}>
+                      <div className="admin-movie-thumb">
+                        {channel.logo_url ? <img src={channel.logo_url} alt="" /> : <span>{channel.name.slice(0, 1)}</span>}
+                      </div>
+                      <div className="admin-movie-main">
+                        <strong>{channel.name}</strong>
+                        <p className="muted">{channel.slug}</p>
+                        <div className="meta-line">
+                          <span>{channel.channel_type === "cartoon" ? "Cartoon" : "TV Show"}</span>
+                          <span>{channel.item_count || 0} linked titles</span>
+                          <span>{channel.is_active === false ? "inactive" : "active"}</span>
+                        </div>
+                      </div>
+                      <div className="admin-row-actions">
+                        <button
+                          className="button"
+                          type="button"
+                          onClick={() => setActiveSection(channel.channel_type === "cartoon" ? "cartoon-channels" : "tv-show-channels")}
+                        >
+                          Edit Channel
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                  {!contentChannels.length && !contentChannelsError ? <div className="empty">No Supabase channels yet. Run the migration or add a channel.</div> : null}
+                </div>
+              </div>
+              <div className="panel">
+                <h3>Linked Movies</h3>
+                <div className="admin-movie-list compact-list">
+                  {movies
+                    .filter((movie) => movie.content_channels?.length)
+                    .map((movie) => (
+                      <article className="admin-movie-row" key={movie.id}>
+                        <div className="admin-movie-thumb">
+                          {movie.poster_url ? <img src={movie.poster_url} alt="" /> : <span>{movie.title.slice(0, 1)}</span>}
+                        </div>
+                        <div className="admin-movie-main">
+                          <strong>{movie.title}</strong>
+                          <p className="muted">{movie.slug}</p>
+                          <div className="meta-line">
+                            <span>{movie.content_channels?.map((channel) => channel.name).join(", ")}</span>
+                          </div>
+                        </div>
+                        <div className="admin-row-actions">
+                          <button className="button" type="button" onClick={() => showEditMovie(movie)}>
+                            <Edit3 size={16} /> Edit Links
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  {!movies.some((movie) => movie.content_channels?.length) ? (
+                    <div className="empty">No movie is linked to a cartoon or TV channel yet. Edit a movie and use the Cartoon / TV Show Channel section.</div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : null}
         {activeSection === "promotions" ? <section className="section"><h2>Promotions</h2><AdminPromotionForm /><div className="form-grid section">{collections.promotions.map((item: any) => <div className="panel" key={item.id}><strong>{item.title}</strong><p className="muted">{item.placement} - {item.is_active ? "active" : "inactive"}</p></div>)}</div></section> : null}
         {activeSection === "ad-slots" ? <section className="section"><h2>Ad Slots</h2><AdminAdSlotForm /><div className="form-grid section">{collections.adSlots.map((item: any) => <div className="panel" key={item.id}><strong>{item.slot_name}</strong><p className="muted">{item.placement} - {item.is_active ? "active" : "inactive"}</p></div>)}</div></section> : null}
         {activeSection === "blog-posts" ? <section className="section"><h2>Blog Posts</h2><AdminBlogForm /><div className="form-grid section">{collections.blogPosts.map((item: any) => <div className="panel" key={item.id}><strong>{item.title}</strong><p className="muted">{item.status} - {item.category}</p></div>)}</div></section> : null}

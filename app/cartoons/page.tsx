@@ -3,7 +3,6 @@ import ChannelCard from "@/components/ChannelCard";
 import MovieSlider from "@/components/MovieSlider";
 import { hasOfficialYouTube } from "@/lib/discovery";
 import { getChannelLinkedMovies, getContentChannels } from "@/lib/data";
-import { fallbackCartoonChannels } from "@/lib/default-content-channels";
 
 export const metadata: Metadata = {
   title: "Cartoons",
@@ -17,7 +16,7 @@ export default async function CartoonsPage() {
     getContentChannels("cartoon"),
     getChannelLinkedMovies("cartoon", 24)
   ]);
-  const channels = dbChannels.length ? dbChannels : fallbackCartoonChannels;
+  const channels = dbChannels;
   const trendingCartoons = cartoonUploads.filter((movie) => movie.is_trending).slice(0, 12);
   const officialCartoons = cartoonUploads.filter(hasOfficialYouTube).slice(0, 12);
   const cartoonEpisodes = cartoonUploads.filter((movie) => movie.content_channel_items?.some((item) => item.episode_number || item.season_number)).slice(0, 12);

@@ -4,7 +4,6 @@ import Link from "next/link";
 import ChannelContentGrid from "@/components/ChannelContentGrid";
 import { hasOfficialYouTube, isLegalFreeMovie } from "@/lib/discovery";
 import { getContentChannelBySlug, getContentChannelItems } from "@/lib/data";
-import { getFallbackChannelBySlug } from "@/lib/default-content-channels";
 import type { ContentChannelItem } from "@/types/watchfinder";
 
 export async function generateMetadata({
@@ -13,7 +12,7 @@ export async function generateMetadata({
   params: Promise<{ channelSlug: string }>;
 }): Promise<Metadata> {
   const { channelSlug } = await params;
-  const channel = (await getContentChannelBySlug("cartoon", channelSlug)) ?? getFallbackChannelBySlug("cartoon", channelSlug);
+  const channel = await getContentChannelBySlug("cartoon", channelSlug);
   if (!channel) return { title: "Cartoon Channel" };
   return {
     title: `${channel.name} Cartoons`,
@@ -46,10 +45,10 @@ export default async function CartoonChannelPage({
 }) {
   const { channelSlug } = await params;
   const filters = await searchParams;
-  const channel = (await getContentChannelBySlug("cartoon", channelSlug)) ?? getFallbackChannelBySlug("cartoon", channelSlug);
+  const channel = await getContentChannelBySlug("cartoon", channelSlug);
   if (!channel) notFound();
 
-  const items = channel.id.startsWith("fallback-") ? [] : await getContentChannelItems(channel.id);
+  const items = await getContentChannelItems(channel.id);
   const activeTab = filters.tab || "all";
   const filteredItems = filterItems(items, filters.q || "", activeTab);
   const tabs = [

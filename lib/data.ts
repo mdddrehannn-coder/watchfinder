@@ -27,6 +27,22 @@ function normalizeMovie(row: any): Movie {
   };
 }
 
+function contentChannelTableErrorMessage(error: any) {
+  if (!error) return null;
+  const message = String(error.message || "");
+  const code = String(error.code || "");
+  if (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    message.toLowerCase().includes("content_channels") ||
+    message.toLowerCase().includes("content_channel_items") ||
+    message.toLowerCase().includes("schema cache")
+  ) {
+    return "Cartoon/TV Show tables are missing. Run the Supabase migration.";
+  }
+  return message || "Cartoon/TV Show channel query failed.";
+}
+
 async function runMovieQuery(
   supabase: any,
   buildQuery: (select: string) => any
@@ -257,7 +273,11 @@ export async function getContentChannels(channelType?: ContentChannelType | stri
   if (channelType) query = query.eq("channel_type", channelType);
   if (!admin) query = query.eq("is_active", true);
 
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) {
+    console.warn(contentChannelTableErrorMessage(error));
+    return [] as ContentChannel[];
+  }
   return (data ?? []).map((channel: any) => ({
     ...channel,
     item_count: (channel.content_channel_items ?? []).length
@@ -268,13 +288,18 @@ export async function getContentChannelBySlug(channelType: ContentChannelType | 
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return null;
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("content_channels")
     .select("*")
     .eq("channel_type", channelType)
     .eq("slug", slug)
     .eq("is_active", true)
     .maybeSingle();
+
+  if (error) {
+    console.warn(contentChannelTableErrorMessage(error));
+    return null;
+  }
 
   return (data as ContentChannel | null) ?? null;
 }
@@ -431,7 +456,9 @@ export async function getAdminCollections() {
       blogPosts: [],
       feedbackMessages: [],
       licenseDocuments: [],
-      siteSettings: []
+      siteSettings: [],
+      contentChannels: [],
+      contentChannelsError: "Cartoon/TV Show tables are missing. Run the Supabase migration."
     };
   }
 
@@ -455,7 +482,8 @@ export async function getAdminCollections() {
     contentChannels: (contentChannels.data ?? []).map((channel: any) => ({
       ...channel,
       item_count: (channel.content_channel_items ?? []).length
-    }))
+    })),
+    contentChannelsError: contentChannelTableErrorMessage(contentChannels.error)
   };
 }
 
