@@ -21,6 +21,7 @@ import {
 } from "@/lib/data";
 import { movieAvailabilityTypes, movieQualities, movieSmartBadges, readableAvailability } from "@/lib/discovery";
 import { formatDuration, formatType } from "@/lib/format";
+import { resolveWatchLinkTarget } from "@/lib/watch-links";
 
 export async function generateMetadata({
   params
@@ -68,7 +69,8 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
   const qualities = movieQualities(movie);
   const availabilityTypes = movieAvailabilityTypes(movie);
   const allBadges = movieSmartBadges(movie);
-  const primaryOfficialLink = movie.movie_platform_links?.find((link) => link.watch_url && link.is_official !== false);
+  const primaryOfficialLink = movie.movie_platform_links?.find((link) => link.is_active !== false && link.is_official !== false);
+  const primaryWatchTarget = primaryOfficialLink ? resolveWatchLinkTarget(primaryOfficialLink, movie.title) : null;
   const modalProvider = movie.video_provider || movie.trailer_provider || "youtube";
 
   return (
@@ -83,8 +85,10 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
           className="detail-banner"
           trailerUrl={movie.trailer_url}
           videoEmbedUrl={movie.video_embed_url}
-          officialWatchUrl={primaryOfficialLink?.watch_url}
-          officialPlatformName={primaryOfficialLink?.platforms?.name}
+          officialWatchUrl={primaryWatchTarget?.url}
+          officialPlatformName={primaryWatchTarget?.platformName}
+          officialActionLabel={primaryWatchTarget?.label}
+          officialNote={primaryWatchTarget?.note}
           movieId={movie.id}
           movieSlug={movie.slug}
           provider={modalProvider}
@@ -98,8 +102,10 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
             className="detail-poster"
             trailerUrl={movie.trailer_url}
             videoEmbedUrl={movie.video_embed_url}
-            officialWatchUrl={primaryOfficialLink?.watch_url}
-            officialPlatformName={primaryOfficialLink?.platforms?.name}
+            officialWatchUrl={primaryWatchTarget?.url}
+            officialPlatformName={primaryWatchTarget?.platformName}
+            officialActionLabel={primaryWatchTarget?.label}
+            officialNote={primaryWatchTarget?.note}
             movieId={movie.id}
             movieSlug={movie.slug}
             provider={modalProvider}
@@ -165,7 +171,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
         </div>
       </section>
 
-      <WatchLinks links={movie.movie_platform_links} movie={{ id: movie.id, slug: movie.slug }} />
+      <WatchLinks links={movie.movie_platform_links} movie={{ id: movie.id, slug: movie.slug }} title={movie.title} />
       <TrailerPlayer
         trailerUrl={movie.trailer_url}
         movieId={movie.id}

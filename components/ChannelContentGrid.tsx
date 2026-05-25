@@ -1,12 +1,16 @@
+"use client";
+
 import Link from "next/link";
 import { ExternalLink, Play } from "lucide-react";
+import { trackWatchLinkClick } from "@/lib/analytics";
 import { movieQualities, readableAvailability } from "@/lib/discovery";
 import { formatType } from "@/lib/format";
 import { splitLanguages } from "@/lib/languages";
+import { resolveWatchLinkTarget } from "@/lib/watch-links";
 import type { ContentChannelItem } from "@/types/watchfinder";
 
 function firstWatchLink(item: ContentChannelItem) {
-  return item.movies?.movie_platform_links?.find((link) => link.watch_url && link.is_official !== false) ?? null;
+  return item.movies?.movie_platform_links?.find((link) => link.is_active !== false && link.is_official !== false) ?? null;
 }
 
 function episodeLabel(item: ContentChannelItem) {
@@ -64,6 +68,7 @@ function ChannelContentCard({ item }: { item: ContentChannelItem }) {
   const movie = item.movies;
   if (!movie) return null;
   const watchLink = firstWatchLink(item);
+  const watchTarget = watchLink ? resolveWatchLinkTarget(watchLink, movie.title) : null;
   const qualities = movieQualities(movie).slice(0, 2);
   const languages = splitLanguages(movie.language).slice(0, 2);
   const episode = episodeLabel(item);
@@ -88,9 +93,15 @@ function ChannelContentCard({ item }: { item: ContentChannelItem }) {
         </div>
         <div className="channel-content-actions">
           <Link className="button primary" href={`/movie/${movie.slug}`}>View Details</Link>
-          {watchLink?.watch_url ? (
-            <a className="button" href={watchLink.watch_url} target="_blank" rel="noreferrer">
-              <ExternalLink size={16} /> Watch Official Link
+          {watchTarget?.url ? (
+            <a
+              className="button"
+              href={watchTarget.url}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => trackWatchLinkClick({ id: movie.id, slug: movie.slug }, watchTarget.platformName)}
+            >
+              <ExternalLink size={16} /> {watchTarget.label}
             </a>
           ) : movie.trailer_url ? (
             <Link className="button" href={`/movie/${movie.slug}#trailer`}>

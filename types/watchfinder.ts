@@ -118,9 +118,11 @@ export type MoviePlatformLink = {
   movie_id: string;
   platform_id: string;
   watch_url?: string | null;
+  link_type?: string | null;
   availability_type?: string | null;
   language?: string | null;
   quality?: string | null;
+  notes?: string | null;
   is_official?: boolean | null;
   is_active?: boolean | null;
   platforms?: Platform | null;

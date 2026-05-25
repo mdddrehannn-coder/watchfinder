@@ -14,6 +14,8 @@ export type TrailerModalSource =
       url: string;
       platformName: string;
       title: string;
+      actionLabel?: string;
+      note?: string;
     };
 
 export default function TrailerModal({
@@ -53,7 +55,7 @@ export default function TrailerModal({
           <div className="trailer-modal-official-link">
             <p className="rating-badge">Official watch link</p>
             <h2>{source.title}</h2>
-            <p className="muted">This title opens on the official platform. WatchFinder does not host unauthorized movies.</p>
+            <p className="muted">{source.note || "This title opens on the official platform. WatchFinder does not host unauthorized movies."}</p>
             <a
               className="button primary"
               href={source.url}
@@ -61,7 +63,7 @@ export default function TrailerModal({
               target="_blank"
               onClick={() => trackWatchLinkClick(movie, source.platformName)}
             >
-              Watch on {source.platformName} <ExternalLink size={16} />
+              {source.actionLabel || `Watch on ${source.platformName}`} <ExternalLink size={16} />
             </a>
           </div>
         )}

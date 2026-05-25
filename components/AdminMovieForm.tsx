@@ -9,6 +9,7 @@ import { joinLanguages, WATCHFINDER_LANGUAGES } from "@/lib/languages";
 import { isOptionalMovieRelationError, movieSelect, movieSelectWithoutChannels } from "@/lib/movie-select";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { uploadBanner, uploadLicenseDocumentWithPath, uploadPoster } from "@/lib/storage";
+import { WATCH_LINK_TYPES, watchLinkTypeLabels, normalizeWatchLinkType, isExternalOnlyPlatform } from "@/lib/watch-links";
 import type { CastMember, ContentChannel, Genre, Movie, Platform } from "@/types/watchfinder";
 
 type Message = {
@@ -32,7 +33,8 @@ const AVAILABILITY_OPTIONS = [
   { label: "Rent", value: "rent" },
   { label: "Buy", value: "buy" },
   { label: "Free", value: "free" },
-  { label: "Official", value: "official" }
+  { label: "Official", value: "official" },
+  { label: "Unknown", value: "unknown" }
 ];
 
 function toNullableString(value: FormDataEntryValue | null) {
@@ -180,6 +182,8 @@ export default function AdminMovieForm({
   const [selectedQualities, setSelectedQualities] = useState<string[]>(splitStoredValues(firstPlatformLink?.quality));
   const [selectedPlatformId, setSelectedPlatformId] = useState(firstPlatformLink?.platform_id ?? "");
   const [availabilityType, setAvailabilityType] = useState(firstPlatformLink?.availability_type ?? "subscription");
+  const [watchLinkType, setWatchLinkType] = useState(normalizeWatchLinkType(firstPlatformLink?.link_type));
+  const [watchLinkNotes, setWatchLinkNotes] = useState(firstPlatformLink?.notes ?? "");
   const firstChannelType = initialMovie?.content_channels?.[0]?.channel_type;
   const [selectedChannelType, setSelectedChannelType] = useState<"" | "cartoon" | "tv_show">(
     firstChannelType === "cartoon" || firstChannelType === "tv_show" ? firstChannelType : ""
@@ -222,6 +226,8 @@ export default function AdminMovieForm({
     setSelectedQualities(splitStoredValues(link?.quality));
     setSelectedPlatformId(link?.platform_id ?? "");
     setAvailabilityType(link?.availability_type ?? "subscription");
+    setWatchLinkType(normalizeWatchLinkType(link?.link_type));
+    setWatchLinkNotes(link?.notes ?? "");
     const nextChannelType = initialMovie?.content_channels?.[0]?.channel_type;
     setSelectedChannelType(nextChannelType === "cartoon" || nextChannelType === "tv_show" ? nextChannelType : "");
     setSelectedChannelIds((initialMovie?.content_channels ?? []).map((channel) => channel.id));
@@ -278,7 +284,6 @@ export default function AdminMovieForm({
     const watchUrl = toNullableString(form.get("watch_url"));
     const platformId = selectedPlatformId;
     if (watchUrl && !platformId) return "Select an official platform before adding a watch link.";
-    if (platformId && !watchUrl) return "Official watch link is required when a platform is selected.";
 
     if (hasLicensedVideo) {
       if (!videoProvider) return "Video provider is required for licensed video.";
@@ -380,6 +385,8 @@ export default function AdminMovieForm({
     setSelectedQualities([]);
     setSelectedPlatformId("");
     setAvailabilityType("subscription");
+    setWatchLinkType("direct_title_page");
+    setWatchLinkNotes("");
     setSelectedChannelType("");
     setSelectedChannelIds([]);
     setChannelSeasonNumber("");
@@ -416,6 +423,16 @@ export default function AdminMovieForm({
     setSelectedChannelIds([]);
     if (value === "cartoon") setSelectedType("cartoon");
     if (value === "tv_show") setSelectedType("tv_show");
+  }
+
+  function updateOfficialPlatform(platformId: string) {
+    const platform = platforms.find((item) => item.id === platformId) ?? null;
+    setSelectedPlatformId(platformId);
+    if (platform && isExternalOnlyPlatform(platform) && !firstPlatformLink?.watch_url) {
+      setWatchLinkType("platform_search");
+      setHasLicensedVideo(false);
+      setVideoProvider("");
+    }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -543,14 +560,17 @@ export default function AdminMovieForm({
 
       const platformId = selectedPlatformId;
       const watchUrl = toNullableString(form.get("watch_url"));
-      if (platformId && watchUrl) {
+      if (platformId) {
+        const savedWatchLinkType = watchUrl ? watchLinkType : watchLinkType === "direct_title_page" ? "platform_search" : watchLinkType;
         const { error: platformError } = await supabase.from("movie_platform_links").insert({
           movie_id: movie.id,
           platform_id: platformId,
           watch_url: watchUrl,
+          link_type: savedWatchLinkType,
           availability_type: availabilityType,
           language: joinLanguages(selectedWatchLanguages) || null,
           quality: selectedQualities.join(", ") || null,
+          notes: watchLinkNotes.trim() || null,
           is_official: true,
           is_active: true
         });
@@ -630,6 +650,8 @@ export default function AdminMovieForm({
     member.name.toLowerCase().includes(castSearch.toLowerCase())
   );
   const watchMinutes = movieAnalytics ? Math.round(movieAnalytics.watchSeconds / 60) : 0;
+  const selectedPlatform = platforms.find((platform) => platform.id === selectedPlatformId) ?? null;
+  const selectedPlatformIsExternalOnly = isExternalOnlyPlatform(selectedPlatform);
   const draftVisibilityCheck = getMovieVisibilityCheck({
     ...(initialMovie || {}),
     id: initialMovie?.id || "pending",
@@ -872,10 +894,26 @@ export default function AdminMovieForm({
         </div>
       </FormSection>
 
-      <FormSection title="Official Watch Link" helper="Optional. Add only official legal platform links. Movies can be saved without a platform link.">
+      <FormSection title="Official Watch Link" helper="Optional. Add only official legal platform links. OTT platforms like JioHotstar, Netflix, Prime Video may not allow embedded playback. Add an official watch page or platform/search link instead.">
         <div className="form-grid two">
-          <div className="field"><label>Official Platform</label><select name="platform_id" value={selectedPlatformId} onChange={(event) => setSelectedPlatformId(event.target.value)}><option value="">Select platform</option>{platforms.map((platform) => <option value={platform.id} key={platform.id}>{platform.name}</option>)}</select></div>
-          <div className="field"><label>Official Watch Link</label><input name="watch_url" placeholder="https://..." defaultValue={firstPlatformLink?.watch_url ?? ""} /></div>
+          <div className="field"><label>Official Platform</label><select name="platform_id" value={selectedPlatformId} onChange={(event) => updateOfficialPlatform(event.target.value)}><option value="">Select platform</option>{platforms.map((platform) => <option value={platform.id} key={platform.id}>{platform.name}</option>)}</select></div>
+          <div className="field"><label>Watch URL</label><input name="watch_url" placeholder="Optional exact title, search, home, or app link" defaultValue={firstPlatformLink?.watch_url ?? ""} /></div>
+        </div>
+        {selectedPlatformIsExternalOnly ? (
+          <p className="form-message info">
+            {selectedPlatform?.name} is treated as an external legal platform. Keep licensed video off unless you have a legal embeddable URL.
+          </p>
+        ) : null}
+        <div className="field">
+          <label>Link Type</label>
+          <div className="option-group compact-options">
+            {WATCH_LINK_TYPES.map((type) => (
+              <label className="option-card" key={type}>
+                <input checked={watchLinkType === type} onChange={() => setWatchLinkType(type)} name="watch_link_type" type="radio" value={type} />
+                <span>{watchLinkTypeLabels[type]}</span>
+              </label>
+            ))}
+          </div>
         </div>
         <div className="field">
           <label>Availability Type</label>
@@ -887,6 +925,15 @@ export default function AdminMovieForm({
               </label>
             ))}
           </div>
+        </div>
+        <div className="field">
+          <label>Platform Notes</label>
+          <textarea
+            name="watch_link_notes"
+            value={watchLinkNotes}
+            onChange={(event) => setWatchLinkNotes(event.target.value)}
+            placeholder="Example: Exact title link is not available. Search this title on JioHotstar."
+          />
         </div>
         <div className="field">
           <label>Watch Link Language</label>

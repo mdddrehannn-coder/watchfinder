@@ -1866,6 +1866,8 @@ html.theme-light .relation-chip {
   border-radius: 0.9rem;
   padding: 0.9rem;
   background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  text-decoration: none;
 }
 
 html.theme-light .watch-link-card {
@@ -1886,6 +1888,21 @@ html.theme-light .watch-link-card {
 
 .watch-link-title {
   font-weight: 900;
+}
+
+.watch-link-note {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.watch-link-button {
+  justify-self: start;
+}
+
+.watch-link-button.disabled {
+  opacity: 0.8;
+  pointer-events: none;
 }
 
 .image-preview {

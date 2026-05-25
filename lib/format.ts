@@ -39,7 +39,7 @@ export function getYouTubeEmbedUrl(url?: string | null) {
       const videoId = parsed.pathname.split("/").filter(Boolean)[0];
       return videoId ? `https://www.youtube.com/embed/${videoId}` : url;
     }
-    if (!host.endsWith("youtube.com")) return url;
+    if (!host.endsWith("youtube.com")) return null;
     const pathVideoId = parsed.pathname.match(/\/(?:embed|shorts|live)\/([^/?#]+)/)?.[1];
     const videoId = parsed.searchParams.get("v") || pathVideoId;
     return videoId ? `https://www.youtube.com/embed/${videoId}` : url;

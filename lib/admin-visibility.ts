@@ -9,7 +9,7 @@ export type MovieVisibilityCheck = {
 };
 
 function hasWatchLink(movie: Movie) {
-  return Boolean(movie.movie_platform_links?.some((link) => link.watch_url && link.is_active !== false));
+  return Boolean(movie.movie_platform_links?.some((link) => link.is_active !== false && link.is_official !== false));
 }
 
 export function getMovieVisibilityCheck(movie: Movie): MovieVisibilityCheck {

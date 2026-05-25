@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { trackVideoComplete, trackVideoPlay, trackVideoProgress } from "@/lib/analytics";
+import { isKnownExternalWatchPageUrl } from "@/lib/watch-links";
 import type { Movie } from "@/types/watchfinder";
 
 function sourceFor(movie: Movie) {
-  if (movie.video_embed_url) return movie.video_embed_url;
+  if (movie.video_embed_url && !isKnownExternalWatchPageUrl(movie.video_embed_url)) return movie.video_embed_url;
   if (!movie.video_id || !movie.video_provider) return null;
 
   if (movie.video_provider === "cloudflare_stream") {

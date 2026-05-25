@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Play } from "lucide-react";
 import { trackTrailerOpen, trackVideoComplete, trackVideoPlay, trackVideoProgress, trackWatchLinkClick } from "@/lib/analytics";
 import { cx, getYouTubeEmbedUrl } from "@/lib/format";
+import { isKnownExternalWatchPageUrl } from "@/lib/watch-links";
 import TrailerModal, { type TrailerModalSource } from "@/components/TrailerModal";
 
 function appendAutoplay(url: string) {
@@ -23,15 +24,21 @@ function resolveModalSource({
   trailerUrl,
   officialWatchUrl,
   officialPlatformName,
+  officialActionLabel,
+  officialNote,
   title
 }: {
   videoEmbedUrl?: string | null;
   trailerUrl?: string | null;
   officialWatchUrl?: string | null;
   officialPlatformName?: string | null;
+  officialActionLabel?: string | null;
+  officialNote?: string | null;
   title: string;
 }): TrailerModalSource | null {
-  const directEmbed = getYouTubeEmbedUrl(videoEmbedUrl) || videoEmbedUrl;
+  const directEmbed = isKnownExternalWatchPageUrl(videoEmbedUrl)
+    ? null
+    : getYouTubeEmbedUrl(videoEmbedUrl) || videoEmbedUrl;
   if (directEmbed) {
     return {
       kind: "embed",
@@ -54,6 +61,8 @@ function resolveModalSource({
       kind: "official_link",
       url: officialWatchUrl,
       platformName: officialPlatformName || "Official platform",
+      actionLabel: officialActionLabel || undefined,
+      note: officialNote || undefined,
       title
     };
   }
@@ -66,6 +75,8 @@ export default function TrailerModalTrigger({
   videoEmbedUrl,
   officialWatchUrl,
   officialPlatformName,
+  officialActionLabel,
+  officialNote,
   movieId,
   movieSlug,
   provider = "youtube",
@@ -78,6 +89,8 @@ export default function TrailerModalTrigger({
   videoEmbedUrl?: string | null;
   officialWatchUrl?: string | null;
   officialPlatformName?: string | null;
+  officialActionLabel?: string | null;
+  officialNote?: string | null;
   movieId: string;
   movieSlug: string;
   provider?: string | null;
@@ -86,7 +99,7 @@ export default function TrailerModalTrigger({
   showUnavailableMessage?: boolean;
   children: React.ReactNode;
 }) {
-  const source = resolveModalSource({ videoEmbedUrl, trailerUrl, officialWatchUrl, officialPlatformName, title });
+  const source = resolveModalSource({ videoEmbedUrl, trailerUrl, officialWatchUrl, officialPlatformName, officialActionLabel, officialNote, title });
   const hasEmbedSource = source?.kind === "embed";
   const [open, setOpen] = useState(false);
   const trackingStartedRef = useRef(false);
