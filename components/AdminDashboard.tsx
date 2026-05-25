@@ -110,9 +110,38 @@ type MovieAnalyticsSummary = {
   watchSeconds: number;
   trailerPlays: number;
   linkClicks: number;
+  completions: number;
+  progressEvents: number;
+  progressPercentTotal: number;
   todayViews: number;
   lastViewedAt?: string | null;
 };
+
+type AnalyticsRange = "today" | "yesterday" | "7d" | "28d" | "90d" | "all";
+type MovieSort = "views" | "watchTime" | "linkClicks" | "latestViewed";
+
+const analyticsRanges: Array<{ label: string; value: AnalyticsRange }> = [
+  { label: "Today", value: "today" },
+  { label: "Yesterday", value: "yesterday" },
+  { label: "Last 7 days", value: "7d" },
+  { label: "Last 28 days", value: "28d" },
+  { label: "Last 90 days", value: "90d" },
+  { label: "All time", value: "all" }
+];
+
+const movieSortOptions: Array<{ label: string; value: MovieSort }> = [
+  { label: "Views", value: "views" },
+  { label: "Watch time", value: "watchTime" },
+  { label: "Link clicks", value: "linkClicks" },
+  { label: "Latest viewed", value: "latestViewed" }
+];
+
+function compactNumber(value = 0) {
+  return new Intl.NumberFormat("en", {
+    notation: value >= 1000 ? "compact" : "standard",
+    maximumFractionDigits: value >= 1000 ? 1 : 0
+  }).format(value);
+}
 
 function secondsLabel(seconds = 0) {
   if (seconds < 60) return `${seconds}s`;
@@ -128,14 +157,63 @@ function isToday(value?: string | null) {
   return new Date(value).toDateString() === new Date().toDateString();
 }
 
-function eventInRange(event: AnalyticsEvent, range: string) {
+function isYesterday(value?: string | null) {
+  if (!value) return false;
+  const date = new Date(value);
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return date.toDateString() === yesterday.toDateString();
+}
+
+function eventInRange(event: AnalyticsEvent, range: AnalyticsRange) {
   if (range === "all") return true;
   if (!event.created_at) return false;
   const created = new Date(event.created_at).getTime();
   const now = Date.now();
-  const days = range === "today" ? 1 : range === "7d" ? 7 : 30;
   if (range === "today") return isToday(event.created_at);
+  if (range === "yesterday") return isYesterday(event.created_at);
+  const days = range === "7d" ? 7 : range === "28d" ? 28 : 90;
   return created >= now - days * 24 * 60 * 60 * 1000;
+}
+
+function sessionInRange(session: AnalyticsSession, range: AnalyticsRange) {
+  if (range === "all") return true;
+  const seenAt = session.last_seen_at;
+  if (!seenAt) return false;
+  if (range === "today") return isToday(seenAt);
+  if (range === "yesterday") return isYesterday(seenAt);
+  const days = range === "7d" ? 7 : range === "28d" ? 28 : 90;
+  return new Date(seenAt).getTime() >= Date.now() - days * 24 * 60 * 60 * 1000;
+}
+
+function eventSessionKey(event: AnalyticsEvent) {
+  return event.user_id || event.anonymous_session_id || event.id;
+}
+
+function formatTimeAgo(value?: string | null) {
+  if (!value) return "No activity";
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return formatDate(value);
+}
+
+function incrementCount(map: Map<string, number>, key?: string | null) {
+  const cleanKey = key || "Unknown";
+  map.set(cleanKey, (map.get(cleanKey) ?? 0) + 1);
+}
+
+function AnalyticsMetricCard({ label, value, note }: { label: string; value: string | number; note?: string }) {
+  return (
+    <div className="analytics-metric-card">
+      <strong>{value}</strong>
+      <span>{label}</span>
+      {note ? <small>{note}</small> : null}
+    </div>
+  );
 }
 
 export default function AdminDashboard({
@@ -163,7 +241,8 @@ export default function AdminDashboard({
   const [languageFilter, setLanguageFilter] = useState("");
   const [flagFilter, setFlagFilter] = useState("");
   const [movieMessage, setMovieMessage] = useState<string | null>(null);
-  const [analyticsRange, setAnalyticsRange] = useState("today");
+  const [analyticsRange, setAnalyticsRange] = useState<AnalyticsRange>("today");
+  const [movieSort, setMovieSort] = useState<MovieSort>("views");
   const [analyticsTestMessage, setAnalyticsTestMessage] = useState<string | null>(null);
 
   const filteredMovies = useMemo(() => {
@@ -182,13 +261,29 @@ export default function AdminDashboard({
   }, [movies, movieSearch, statusFilter, typeFilter, languageFilter, flagFilter]);
 
   const analyticsStats = useMemo(() => {
-    const events = (analytics?.events ?? []).filter((event) => eventInRange(event, analyticsRange));
-    const todayEvents = (analytics?.events ?? []).filter((event) => isToday(event.created_at));
+    const allEvents = analytics?.events ?? [];
+    const allSessions = analytics?.sessions ?? [];
+    const events = allEvents.filter((event) => eventInRange(event, analyticsRange));
+    const todayEvents = allEvents.filter((event) => isToday(event.created_at));
+    const yesterdayEvents = allEvents.filter((event) => isYesterday(event.created_at));
+    const rangeSessions = allSessions.filter((session) => sessionInRange(session, analyticsRange));
     const activeCutoff = Date.now() - 5 * 60 * 1000;
-    const activeSessions = (analytics?.sessions ?? []).filter((session) => {
+    const activeSessions = allSessions.filter((session) => {
       if (!session.last_seen_at) return false;
       return new Date(session.last_seen_at).getTime() >= activeCutoff;
     });
+    const totalVisitorKeys = new Set([
+      ...allSessions.map((session) => session.user_id || session.anonymous_session_id).filter(Boolean),
+      ...allEvents.map(eventSessionKey).filter(Boolean)
+    ]);
+    const rangeVisitorKeys = new Set([
+      ...rangeSessions.map((session) => session.user_id || session.anonymous_session_id).filter(Boolean),
+      ...events.map(eventSessionKey).filter(Boolean)
+    ]);
+    const todayVisitorKeys = new Set([
+      ...allSessions.filter((session) => isToday(session.last_seen_at)).map((session) => session.user_id || session.anonymous_session_id).filter(Boolean),
+      ...todayEvents.map(eventSessionKey).filter(Boolean)
+    ]);
 
     const movieMap = new Map<string, MovieAnalyticsSummary>();
     for (const event of events) {
@@ -200,6 +295,9 @@ export default function AdminDashboard({
         watchSeconds: 0,
         trailerPlays: 0,
         linkClicks: 0,
+        completions: 0,
+        progressEvents: 0,
+        progressPercentTotal: 0,
         todayViews: 0,
         lastViewedAt: null
       };
@@ -211,6 +309,11 @@ export default function AdminDashboard({
         }
       }
       if (event.event_type === "trailer_play") current.trailerPlays += 1;
+      if (event.event_type === "trailer_complete" || event.event_type === "licensed_video_complete") current.completions += 1;
+      if (event.progress_percent !== null && event.progress_percent !== undefined) {
+        current.progressEvents += 1;
+        current.progressPercentTotal += event.progress_percent;
+      }
       if (event.event_type === "watch_link_click") current.linkClicks += 1;
       if (event.watch_seconds) current.watchSeconds += event.watch_seconds;
       movieMap.set(key, current);
@@ -232,13 +335,20 @@ export default function AdminDashboard({
       if (summary) movieStatsById.set(movie.id, summary);
     }
 
-    const topMovies = Array.from(movieStatsById.entries())
+    const topMoviesBase = Array.from(movieStatsById.entries())
       .map(([movieId, summary]) => ({ movie: movies.find((item) => item.id === movieId), summary }))
-      .filter((item) => item.movie)
-      .sort((a, b) => b.summary.views - a.summary.views)
+      .filter((item) => item.movie);
+
+    const topMovies = [...topMoviesBase]
+      .sort((a, b) => {
+        if (movieSort === "watchTime") return b.summary.watchSeconds - a.summary.watchSeconds;
+        if (movieSort === "linkClicks") return b.summary.linkClicks - a.summary.linkClicks;
+        if (movieSort === "latestViewed") return new Date(b.summary.lastViewedAt || 0).getTime() - new Date(a.summary.lastViewedAt || 0).getTime();
+        return b.summary.views - a.summary.views;
+      })
       .slice(0, 10);
 
-    const topWatchTime = [...topMovies].sort((a, b) => b.summary.watchSeconds - a.summary.watchSeconds).slice(0, 10);
+    const topWatchTime = [...topMoviesBase].sort((a, b) => b.summary.watchSeconds - a.summary.watchSeconds).slice(0, 10);
 
     const searches = new Map<string, { query: string; count: number; last: string | null }>();
     for (const event of events.filter((item) => item.event_type === "search" && item.search_query)) {
@@ -249,39 +359,101 @@ export default function AdminDashboard({
       searches.set(key, current);
     }
 
-    const platformClicks = new Map<string, number>();
+    const platformClicks = new Map<string, { platform: string; clicks: number; last: string | null; movies: Set<string> }>();
     for (const event of events.filter((item) => item.event_type === "watch_link_click")) {
       const key = event.platform_name || "Official link";
-      platformClicks.set(key, (platformClicks.get(key) ?? 0) + 1);
+      const current = platformClicks.get(key) ?? { platform: key, clicks: 0, last: null, movies: new Set<string>() };
+      current.clicks += 1;
+      if (event.movie_slug) current.movies.add(event.movie_slug);
+      if (!current.last || new Date(event.created_at || 0) > new Date(current.last)) current.last = event.created_at || null;
+      platformClicks.set(key, current);
     }
 
-    const dailyMap = new Map<string, { date: string; pageViews: number; movieViews: number; watchSeconds: number; searches: number }>();
+    const dailyMap = new Map<string, { date: string; pageViews: number; movieViews: number; watchSeconds: number; searches: number; linkClicks: number }>();
     for (const event of events) {
       const date = (event.created_at || "").slice(0, 10) || "Unknown";
-      const current = dailyMap.get(date) ?? { date, pageViews: 0, movieViews: 0, watchSeconds: 0, searches: 0 };
+      const current = dailyMap.get(date) ?? { date, pageViews: 0, movieViews: 0, watchSeconds: 0, searches: 0, linkClicks: 0 };
       if (event.event_type === "page_view") current.pageViews += 1;
       if (event.event_type === "movie_view") current.movieViews += 1;
       if (event.event_type === "search") current.searches += 1;
+      if (event.event_type === "watch_link_click") current.linkClicks += 1;
       if (event.watch_seconds) current.watchSeconds += event.watch_seconds;
       dailyMap.set(date, current);
     }
 
+    const pageMap = new Map<string, { path: string; views: number; sessions: Set<string>; last: string | null }>();
+    for (const event of events.filter((item) => item.event_type === "page_view" && item.page_path)) {
+      const key = event.page_path || "/";
+      const current = pageMap.get(key) ?? { path: key, views: 0, sessions: new Set<string>(), last: null };
+      current.views += 1;
+      current.sessions.add(eventSessionKey(event));
+      if (!current.last || new Date(event.created_at || 0) > new Date(current.last)) current.last = event.created_at || null;
+      pageMap.set(key, current);
+    }
+
+    const deviceMap = new Map<string, number>();
+    const browserMap = new Map<string, number>();
+    for (const session of rangeSessions) {
+      incrementCount(deviceMap, session.device_type || "Unknown");
+      incrementCount(browserMap, session.browser_name || "Unknown");
+    }
+    if (!rangeSessions.length) {
+      for (const event of events) {
+        incrementCount(deviceMap, event.device_type || "Unknown");
+        incrementCount(browserMap, event.browser_name || "Unknown");
+      }
+    }
+
+    const loggedInVisitors = new Set(events.filter((event) => event.user_id).map((event) => event.user_id));
+    const guestVisitors = new Set(events.filter((event) => !event.user_id).map((event) => event.anonymous_session_id).filter(Boolean));
+    const selectedRangeLabel = analyticsRanges.find((range) => range.value === analyticsRange)?.label || "Selected range";
+    const todayPageViews = todayEvents.filter((event) => event.event_type === "page_view").length;
+    const yesterdayPageViews = yesterdayEvents.filter((event) => event.event_type === "page_view").length;
+    const pageViewCompare = yesterdayPageViews
+      ? `${Math.round(((todayPageViews - yesterdayPageViews) / yesterdayPageViews) * 100)}% vs yesterday`
+      : "vs yesterday";
+
+    const dailyTrend = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date)).slice(-14);
+
     return {
       events,
       activeSessions,
-      pageViewsToday: todayEvents.filter((event) => event.event_type === "page_view").length,
+      selectedRangeLabel,
+      todayVisitors: todayVisitorKeys.size,
+      rangeVisitors: rangeVisitorKeys.size,
+      totalVisitors: totalVisitorKeys.size,
+      pageViewsToday: todayPageViews,
       movieViewsToday: todayEvents.filter((event) => event.event_type === "movie_view").length,
       watchSecondsToday: todayEvents.reduce((total, event) => total + (event.watch_seconds || 0), 0),
       watchLinkClicksToday: todayEvents.filter((event) => event.event_type === "watch_link_click").length,
       searchesToday: todayEvents.filter((event) => event.event_type === "search").length,
+      rangePageViews: events.filter((event) => event.event_type === "page_view").length,
+      rangeMovieViews: events.filter((event) => event.event_type === "movie_view").length,
+      rangeWatchSeconds: events.reduce((total, event) => total + (event.watch_seconds || 0), 0),
+      rangeWatchLinkClicks: events.filter((event) => event.event_type === "watch_link_click").length,
+      rangeSearches: events.filter((event) => event.event_type === "search").length,
+      totalWatchSeconds: allEvents.reduce((total, event) => total + (event.watch_seconds || 0), 0),
+      pageViewCompare,
       movieStatsById,
       topMovies,
       topWatchTime,
       topSearches: Array.from(searches.values()).sort((a, b) => b.count - a.count).slice(0, 10),
-      platformClicks: Array.from(platformClicks.entries()).map(([platform, clicks]) => ({ platform, clicks })).sort((a, b) => b.clicks - a.clicks).slice(0, 10),
-      dailyTrend: Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date)).slice(-14)
+      platformClicks: Array.from(platformClicks.values())
+        .map((item) => ({ platform: item.platform, clicks: item.clicks, last: item.last, movies: Array.from(item.movies).slice(0, 3) }))
+        .sort((a, b) => b.clicks - a.clicks)
+        .slice(0, 10),
+      dailyTrend,
+      maxDailyMetric: Math.max(1, ...dailyTrend.map((day) => Math.max(day.pageViews, day.movieViews, day.searches, day.linkClicks))),
+      topPages: Array.from(pageMap.values())
+        .map((item) => ({ path: item.path, views: item.views, uniqueSessions: item.sessions.size, last: item.last }))
+        .sort((a, b) => b.views - a.views)
+        .slice(0, 10),
+      deviceBreakdown: Array.from(deviceMap.entries()).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count),
+      browserBreakdown: Array.from(browserMap.entries()).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count),
+      loggedInVisitors: loggedInVisitors.size,
+      guestVisitors: guestVisitors.size
     };
-  }, [analytics, analyticsRange, movies]);
+  }, [analytics, analyticsRange, movieSort, movies]);
 
   function showAddMovie() {
     setEditingMovie(null);
@@ -492,19 +664,15 @@ export default function AdminDashboard({
         ) : null}
 
         {activeSection === "analytics" ? (
-          <section className="section">
-            <div className="section-head">
+          <section className="section analytics-dashboard">
+            <div className="section-head analytics-hero-head">
               <div>
+                <p className="rating-badge">Studio analytics</p>
                 <h2>Analytics</h2>
                 <p className="muted">Privacy-friendly audience, content, search and platform performance. WatchFinder does not store raw IP addresses.</p>
               </div>
-              <div className="chip-row">
-                {[
-                  { label: "Today", value: "today" },
-                  { label: "Last 7 days", value: "7d" },
-                  { label: "Last 30 days", value: "30d" },
-                  { label: "All time", value: "all" }
-                ].map((range) => (
+              <div className="chip-row analytics-range-tabs">
+                {analyticsRanges.map((range) => (
                   <button
                     className={analyticsRange === range.value ? "chip active" : "chip"}
                     key={range.value}
@@ -520,7 +688,7 @@ export default function AdminDashboard({
             {analytics.debug?.errors?.length ? (
               <div className="notice-card error">
                 <strong>Analytics query failed.</strong>
-                <p>Check Supabase analytics tables, RLS policies, and admin role access.</p>
+                <p>Analytics query failed. Check Supabase RLS or analytics table policies.</p>
                 <div className="meta-line">
                   {analytics.debug.errors.map((error) => (
                     <span key={error}>{error}</span>
@@ -529,97 +697,195 @@ export default function AdminDashboard({
               </div>
             ) : null}
 
-            <div className="grid">
-              <div className="admin-card"><strong>{analyticsStats.activeSessions.length}</strong><p className="muted">Active users now</p></div>
-              <div className="admin-card"><strong>{analyticsStats.pageViewsToday}</strong><p className="muted">Page views today</p></div>
-              <div className="admin-card"><strong>{analyticsStats.movieViewsToday}</strong><p className="muted">Movie views today</p></div>
-              <div className="admin-card"><strong>{secondsLabel(analyticsStats.watchSecondsToday)}</strong><p className="muted">Watch time today</p></div>
-              <div className="admin-card"><strong>{analyticsStats.watchLinkClicksToday}</strong><p className="muted">Watch link clicks today</p></div>
-              <div className="admin-card"><strong>{analyticsStats.searchesToday}</strong><p className="muted">Searches today</p></div>
-            </div>
-
-            <div className="panel analytics-debug-panel">
-              <div>
-                <h3>Analytics debug</h3>
-                <p className="muted">Use this to confirm inserts and admin reads are working.</p>
-              </div>
-              <div className="grid">
-                <div className="admin-card"><strong>{analytics.debug?.eventsCount ?? analytics.events.length}</strong><p className="muted">Total events</p></div>
-                <div className="admin-card"><strong>{analytics.debug?.sessionsCount ?? analytics.sessions.length}</strong><p className="muted">Total sessions</p></div>
-                <div className="admin-card"><strong>{analytics.debug?.lastEventAt ? formatDate(analytics.debug.lastEventAt) : "None"}</strong><p className="muted">Last event</p></div>
-                <div className="admin-card"><strong>{analytics.debug?.lastSessionAt ? formatDate(analytics.debug.lastSessionAt) : "None"}</strong><p className="muted">Last session</p></div>
-              </div>
-              <div className="chip-row">
+            {!analyticsStats.events.length && !analyticsStats.activeSessions.length ? (
+              <div className="notice-card analytics-empty-state">
+                <strong>No analytics data yet.</strong>
+                <p>Open the public site, search a movie, view a movie page, or click a trailer to start collecting analytics.</p>
                 <button className="button primary" type="button" onClick={sendTestAnalyticsEvent}>
-                  <Activity size={16} /> Send test analytics event
+                  <Activity size={16} /> Send Test Analytics Event
                 </button>
                 {analyticsTestMessage ? <span className="chip active">{analyticsTestMessage}</span> : null}
               </div>
+            ) : null}
+
+            <div className="analytics-metric-grid">
+              <AnalyticsMetricCard label="Active Users Now" value={compactNumber(analyticsStats.activeSessions.length)} note="Last 5 minutes" />
+              <AnalyticsMetricCard label="Today's Visitors" value={compactNumber(analyticsStats.todayVisitors)} note="Unique sessions today" />
+              <AnalyticsMetricCard label="Total Visitors" value={compactNumber(analyticsStats.totalVisitors)} note="All time unique sessions" />
+              <AnalyticsMetricCard label="Page Views" value={compactNumber(analyticsStats.rangePageViews)} note={analyticsStats.pageViewCompare} />
+              <AnalyticsMetricCard label="Movie Views" value={compactNumber(analyticsStats.rangeMovieViews)} note={analyticsStats.selectedRangeLabel} />
+              <AnalyticsMetricCard label="Watch Time" value={secondsLabel(analyticsStats.rangeWatchSeconds)} note={analyticsStats.selectedRangeLabel} />
+              <AnalyticsMetricCard label="Total Watch Time" value={secondsLabel(analyticsStats.totalWatchSeconds)} note="All time" />
+              <AnalyticsMetricCard label="Searches" value={compactNumber(analyticsStats.rangeSearches)} note={analyticsStats.selectedRangeLabel} />
+              <AnalyticsMetricCard label="Watch Link Clicks" value={compactNumber(analyticsStats.rangeWatchLinkClicks)} note={analyticsStats.selectedRangeLabel} />
+            </div>
+
+            <div className="panel analytics-performance-panel">
+              <div className="section-head">
+                <div>
+                  <h3>Performance over time</h3>
+                  <p className="muted">Page views, movie views, watch time, searches and official link clicks.</p>
+                </div>
+              </div>
+              <div className="analytics-chart">
+                {analyticsStats.dailyTrend.map((day) => (
+                  <div className="analytics-chart-day" key={day.date}>
+                    <div className="analytics-bars" aria-label={`${day.date} performance`}>
+                      <span style={{ height: `${Math.max(6, (day.pageViews / analyticsStats.maxDailyMetric) * 100)}%` }} title={`${day.pageViews} page views`} />
+                      <span style={{ height: `${Math.max(6, (day.movieViews / analyticsStats.maxDailyMetric) * 100)}%` }} title={`${day.movieViews} movie views`} />
+                      <span style={{ height: `${Math.max(6, (day.searches / analyticsStats.maxDailyMetric) * 100)}%` }} title={`${day.searches} searches`} />
+                      <span style={{ height: `${Math.max(6, (day.linkClicks / analyticsStats.maxDailyMetric) * 100)}%` }} title={`${day.linkClicks} link clicks`} />
+                    </div>
+                    <small>{day.date.slice(5)}</small>
+                  </div>
+                ))}
+              </div>
+              <div className="analytics-legend">
+                <span>Page views</span>
+                <span>Movie views</span>
+                <span>Searches</span>
+                <span>Link clicks</span>
+              </div>
+              <div className="admin-mini-table analytics-table">
+                <div className="admin-mini-row table-head">
+                  <strong>Date</strong>
+                  <span>Page Views</span>
+                  <span>Movie Views</span>
+                  <span>Watch Time</span>
+                  <span>Searches</span>
+                  <span>Link Clicks</span>
+                </div>
+                {analyticsStats.dailyTrend.map((day) => (
+                  <div className="admin-mini-row analytics-wide-row" key={day.date}>
+                    <strong>{day.date}</strong>
+                    <span>{compactNumber(day.pageViews)}</span>
+                    <span>{compactNumber(day.movieViews)}</span>
+                    <span>{secondsLabel(day.watchSeconds)}</span>
+                    <span>{compactNumber(day.searches)}</span>
+                    <span>{compactNumber(day.linkClicks)}</span>
+                  </div>
+                ))}
+                {!analyticsStats.dailyTrend.length ? <p className="muted">No daily trend yet.</p> : null}
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="section-head">
+                <div>
+                  <h3>Top Movies</h3>
+                  <p className="muted">YouTube Studio style content performance ranked by the selected metric.</p>
+                </div>
+                <div className="chip-row">
+                  {movieSortOptions.map((option) => (
+                    <button className={movieSort === option.value ? "chip active" : "chip"} key={option.value} onClick={() => setMovieSort(option.value)} type="button">
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="admin-mini-table analytics-table">
+                <div className="admin-mini-row analytics-movie-row table-head">
+                  <strong>Movie</strong>
+                  <span>Views</span>
+                  <span>Watch time</span>
+                  <span>Avg watch</span>
+                  <span>Trailer plays</span>
+                  <span>Link clicks</span>
+                  <span>Last viewed</span>
+                </div>
+                {analyticsStats.topMovies.map(({ movie, summary }) => {
+                  const averageWatch = summary.trailerPlays || summary.views ? Math.round(summary.watchSeconds / Math.max(summary.trailerPlays || summary.views, 1)) : 0;
+                  return (
+                    <div className="admin-mini-row analytics-movie-row" key={movie?.id}>
+                      <strong className="analytics-movie-title">
+                        {movie?.poster_url ? <img src={movie.poster_url} alt="" /> : null}
+                        <span>{movie?.title}</span>
+                      </strong>
+                      <span>{compactNumber(summary.views)}</span>
+                      <span>{secondsLabel(summary.watchSeconds)}</span>
+                      <span>{secondsLabel(averageWatch)}</span>
+                      <span>{compactNumber(summary.trailerPlays)}</span>
+                      <span>{compactNumber(summary.linkClicks)}</span>
+                      <span>{formatTimeAgo(summary.lastViewedAt)}</span>
+                    </div>
+                  );
+                })}
+                {!analyticsStats.topMovies.length ? <p className="muted">No movie analytics yet.</p> : null}
+              </div>
             </div>
 
             <div className="form-grid two section">
               <div className="panel">
-                <h3>Top movies by views</h3>
-                <div className="admin-mini-table">
-                  {analyticsStats.topMovies.map(({ movie, summary }) => (
-                    <div className="admin-mini-row" key={movie?.id}>
-                      <span>{movie?.poster_url ? <img src={movie.poster_url} alt="" /> : null}</span>
-                      <strong>{movie?.title}</strong>
-                      <span>{summary.views} views</span>
-                      <span>{summary.uniqueSessions} unique</span>
-                      <span>{summary.trailerPlays} trailer</span>
-                      <span>{summary.linkClicks} links</span>
-                    </div>
-                  ))}
-                  {!analyticsStats.topMovies.length ? <p className="muted">No movie analytics yet.</p> : null}
-                </div>
-              </div>
-
-              <div className="panel">
-                <h3>Top movies by watch time</h3>
+                <h3>Movie Retention / Engagement</h3>
                 <div className="admin-mini-table">
                   {analyticsStats.topWatchTime.map(({ movie, summary }) => {
-                    const completionRate = summary.trailerPlays ? Math.round((summary.watchSeconds / (summary.trailerPlays * 60)) * 100) : 0;
+                    const averageWatch = summary.trailerPlays || summary.views ? Math.round(summary.watchSeconds / Math.max(summary.trailerPlays || summary.views, 1)) : 0;
+                    const completionRate = summary.trailerPlays ? Math.round((summary.completions / summary.trailerPlays) * 100) : 0;
+                    const dropOff = summary.progressEvents ? Math.max(0, 100 - Math.round(summary.progressPercentTotal / summary.progressEvents)) : null;
                     return (
-                      <div className="admin-mini-row" key={movie?.id}>
+                      <div className="admin-mini-row analytics-engagement-row" key={movie?.id}>
                         <strong>{movie?.title}</strong>
-                        <span>{secondsLabel(summary.watchSeconds)}</span>
-                        <span>Avg {summary.trailerPlays ? secondsLabel(Math.round(summary.watchSeconds / summary.trailerPlays)) : "0s"}</span>
-                        <span>{Math.min(completionRate, 100)}% est.</span>
+                        <span>Total {secondsLabel(summary.watchSeconds)}</span>
+                        <span>Avg {secondsLabel(averageWatch)}</span>
+                        <span>{summary.completions ? `${completionRate}% complete` : "Not enough watch data yet"}</span>
+                        <span>{dropOff !== null ? `${dropOff}% drop-off est.` : "No progress data"}</span>
                       </div>
                     );
                   })}
-                  {!analyticsStats.topWatchTime.length ? <p className="muted">No watch time yet.</p> : null}
+                  {!analyticsStats.topWatchTime.length ? <p className="muted">Not enough watch data yet.</p> : null}
                 </div>
               </div>
-            </div>
 
-            <div className="form-grid two section">
               <div className="panel">
-                <h3>Active sessions</h3>
+                <h3>Live Activity</h3>
                 <div className="admin-mini-table">
+                  <div className="admin-mini-row analytics-live-row table-head">
+                    <strong>User / Guest</strong>
+                    <span>Current Page</span>
+                    <span>Device</span>
+                    <span>Last Seen</span>
+                  </div>
                   {analyticsStats.activeSessions.slice(0, 12).map((session) => (
-                    <div className="admin-mini-row analytics-session-row" key={session.id}>
+                    <div className="admin-mini-row analytics-live-row" key={session.id}>
                       <strong>{session.user_id ? `User ${session.user_id.slice(0, 8)}` : `Guest ${session.anonymous_session_id.slice(0, 8)}`}</strong>
                       <span>{session.current_page || "No page"}</span>
-                      <span>{session.device_type || "device"}</span>
-                      <span>{session.browser_name || "browser"}</span>
-                      <span>{session.page_views || 0} pages</span>
-                      <span>{secondsLabel(session.total_watch_seconds || 0)}</span>
+                      <span>{session.device_type || "device"} · {session.browser_name || "browser"}</span>
+                      <span>{formatTimeAgo(session.last_seen_at)}</span>
                     </div>
                   ))}
                   {!analyticsStats.activeSessions.length ? <p className="muted">No active sessions in the last 5 minutes.</p> : null}
                 </div>
               </div>
+            </div>
+
+            <div className="form-grid two section">
+              <div className="panel">
+                <h3>Audience</h3>
+                <div className="audience-breakdown-grid">
+                  <div>
+                    <strong>Device breakdown</strong>
+                    {analyticsStats.deviceBreakdown.map((item) => <p className="breakdown-row" key={item.label}><span>{item.label}</span><b>{compactNumber(item.count)}</b></p>)}
+                  </div>
+                  <div>
+                    <strong>Browser breakdown</strong>
+                    {analyticsStats.browserBreakdown.map((item) => <p className="breakdown-row" key={item.label}><span>{item.label}</span><b>{compactNumber(item.count)}</b></p>)}
+                  </div>
+                  <div>
+                    <strong>Logged-in vs Guest</strong>
+                    <p className="breakdown-row"><span>Logged-in</span><b>{compactNumber(analyticsStats.loggedInVisitors)}</b></p>
+                    <p className="breakdown-row"><span>Guest</span><b>{compactNumber(analyticsStats.guestVisitors)}</b></p>
+                  </div>
+                </div>
+              </div>
 
               <div className="panel">
-                <h3>Top search queries</h3>
+                <h3>Top Searches</h3>
                 <div className="admin-mini-table">
                   {analyticsStats.topSearches.map((search) => (
-                    <div className="admin-mini-row" key={search.query}>
+                    <div className="admin-mini-row analytics-search-row" key={search.query}>
                       <strong>{search.query}</strong>
-                      <span>{search.count} searches</span>
-                      <span>{formatDate(search.last)}</span>
+                      <span>{compactNumber(search.count)} searches</span>
+                      <span>{formatTimeAgo(search.last)}</span>
                     </div>
                   ))}
                   {!analyticsStats.topSearches.length ? <p className="muted">No searches tracked yet.</p> : null}
@@ -629,12 +895,14 @@ export default function AdminDashboard({
 
             <div className="form-grid two section">
               <div className="panel">
-                <h3>Platform clicks</h3>
+                <h3>Top Watch Platforms</h3>
                 <div className="admin-mini-table">
                   {analyticsStats.platformClicks.map((item) => (
-                    <div className="admin-mini-row" key={item.platform}>
+                    <div className="admin-mini-row analytics-platform-row" key={item.platform}>
                       <strong>{item.platform}</strong>
-                      <span>{item.clicks} clicks</span>
+                      <span>{compactNumber(item.clicks)} clicks</span>
+                      <span>{item.movies.join(", ") || "Multiple titles"}</span>
+                      <span>{formatTimeAgo(item.last)}</span>
                     </div>
                   ))}
                   {!analyticsStats.platformClicks.length ? <p className="muted">No platform clicks yet.</p> : null}
@@ -642,19 +910,37 @@ export default function AdminDashboard({
               </div>
 
               <div className="panel">
-                <h3>Daily trend</h3>
+                <h3>Top Pages</h3>
                 <div className="admin-mini-table">
-                  {analyticsStats.dailyTrend.map((day) => (
-                    <div className="admin-mini-row" key={day.date}>
-                      <strong>{day.date}</strong>
-                      <span>{day.pageViews} page views</span>
-                      <span>{day.movieViews} movie views</span>
-                      <span>{day.searches} searches</span>
-                      <span>{secondsLabel(day.watchSeconds)}</span>
+                  {analyticsStats.topPages.map((page) => (
+                    <div className="admin-mini-row analytics-page-row" key={page.path}>
+                      <strong>{page.path}</strong>
+                      <span>{compactNumber(page.views)} views</span>
+                      <span>{compactNumber(page.uniqueSessions)} unique</span>
+                      <span>{formatTimeAgo(page.last)}</span>
                     </div>
                   ))}
-                  {!analyticsStats.dailyTrend.length ? <p className="muted">No daily trend yet.</p> : null}
+                  {!analyticsStats.topPages.length ? <p className="muted">No page views tracked yet.</p> : null}
                 </div>
+              </div>
+            </div>
+
+            <div className="panel analytics-debug-panel">
+              <div>
+                <h3>Analytics debug</h3>
+                <p className="muted">Use this to confirm inserts and admin reads are working.</p>
+              </div>
+              <div className="analytics-metric-grid compact">
+                <AnalyticsMetricCard label="Total events" value={compactNumber(analytics.debug?.eventsCount ?? analytics.events.length)} />
+                <AnalyticsMetricCard label="Total sessions" value={compactNumber(analytics.debug?.sessionsCount ?? analytics.sessions.length)} />
+                <AnalyticsMetricCard label="Last event" value={analytics.debug?.lastEventAt ? formatTimeAgo(analytics.debug.lastEventAt) : "None"} />
+                <AnalyticsMetricCard label="Last session" value={analytics.debug?.lastSessionAt ? formatTimeAgo(analytics.debug.lastSessionAt) : "None"} />
+              </div>
+              <div className="chip-row">
+                <button className="button primary" type="button" onClick={sendTestAnalyticsEvent}>
+                  <Activity size={16} /> Send Test Analytics Event
+                </button>
+                {analyticsTestMessage ? <span className="chip active">{analyticsTestMessage}</span> : null}
               </div>
             </div>
           </section>

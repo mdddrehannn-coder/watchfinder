@@ -1944,6 +1944,222 @@ html.theme-light .status-hidden {
   gap: 1rem;
 }
 
+.analytics-dashboard {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.analytics-hero-head {
+  align-items: start;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at top left, rgba(244, 63, 94, 0.18), transparent 36%),
+    var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.analytics-range-tabs {
+  justify-content: flex-start;
+}
+
+.analytics-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.analytics-metric-grid.compact {
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+}
+
+.analytics-metric-card {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 7rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.06), transparent),
+    var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.analytics-metric-card strong {
+  color: var(--text);
+  font-size: clamp(1.55rem, 4vw, 2.2rem);
+  line-height: 1;
+}
+
+.analytics-metric-card span {
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.analytics-metric-card small {
+  color: var(--muted);
+}
+
+html.theme-light .analytics-metric-card,
+html.theme-light .analytics-hero-head {
+  background:
+    radial-gradient(circle at top left, rgba(225, 29, 72, 0.1), transparent 34%),
+    var(--panel);
+}
+
+.analytics-empty-state {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.analytics-performance-panel {
+  display: grid;
+  gap: 1rem;
+  overflow: hidden;
+}
+
+.analytics-chart {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(2.1rem, 1fr));
+  gap: 0.55rem;
+  min-height: 11rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--panel-2);
+}
+
+.analytics-chart-day {
+  display: grid;
+  grid-template-rows: minmax(8rem, 1fr) auto;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.analytics-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.22rem;
+  height: 100%;
+}
+
+.analytics-bars span {
+  width: 0.42rem;
+  min-height: 0.35rem;
+  border-radius: 999px 999px 0 0;
+  background: var(--brand);
+}
+
+.analytics-bars span:nth-child(2) {
+  background: #60a5fa;
+}
+
+.analytics-bars span:nth-child(3) {
+  background: #f59e0b;
+}
+
+.analytics-bars span:nth-child(4) {
+  background: #22c55e;
+}
+
+.analytics-chart-day small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.analytics-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.analytics-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.3rem;
+  border-radius: 999px;
+  background: var(--brand);
+}
+
+.analytics-legend span:nth-child(2)::before {
+  background: #60a5fa;
+}
+
+.analytics-legend span:nth-child(3)::before {
+  background: #f59e0b;
+}
+
+.analytics-legend span:nth-child(4)::before {
+  background: #22c55e;
+}
+
+.analytics-table {
+  overflow-x: auto;
+}
+
+.admin-mini-row.table-head {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.analytics-wide-row,
+.admin-mini-row.table-head {
+  grid-template-columns: minmax(7rem, 1fr) repeat(5, minmax(5rem, auto));
+}
+
+.analytics-movie-row {
+  grid-template-columns: minmax(12rem, 1.7fr) repeat(6, minmax(5rem, auto));
+}
+
+.analytics-movie-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.analytics-engagement-row {
+  grid-template-columns: minmax(10rem, 1.2fr) repeat(4, minmax(6rem, auto));
+}
+
+.analytics-live-row,
+.analytics-platform-row,
+.analytics-page-row {
+  grid-template-columns: minmax(8rem, 1.2fr) repeat(3, minmax(6rem, auto));
+}
+
+.analytics-search-row {
+  grid-template-columns: minmax(8rem, 1fr) repeat(2, minmax(6rem, auto));
+}
+
+.audience-breakdown-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+}
+
+.breakdown-row b {
+  color: var(--text);
+}
+
 .notice-card {
   border: 1px solid var(--line);
   border-radius: 1rem;
