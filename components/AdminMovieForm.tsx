@@ -81,8 +81,17 @@ async function fetchConfirmedMovie(supabase: any, movieId: string) {
     .eq("id", movieId)
     .maybeSingle();
 
-  if (fallback.error) throw fallback.error;
-  return fallback.data;
+  if (!fallback.error) return fallback.data;
+  if (!isOptionalMovieRelationError(fallback.error)) throw fallback.error;
+
+  const plain = await supabase
+    .from("movies")
+    .select("*")
+    .eq("id", movieId)
+    .maybeSingle();
+
+  if (plain.error) throw plain.error;
+  return plain.data;
 }
 
 function getSaveDebugText(movie: Movie) {
@@ -98,18 +107,38 @@ function getSaveDebugText(movie: Movie) {
   ].filter(Boolean).join(" ");
 }
 
+function formatSupabaseError(error: unknown) {
+  const fallback = error instanceof Error ? error.message : "Movie save failed.";
+  if (!error || typeof error !== "object") return fallback;
+
+  const details = error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown };
+  return [
+    details.message ? String(details.message) : fallback,
+    details.code ? `Code: ${String(details.code)}` : "",
+    details.details ? `Details: ${String(details.details)}` : "",
+    details.hint ? `Hint: ${String(details.hint)}` : ""
+  ].filter(Boolean).join(" ");
+}
+
 function formatSaveError(error: unknown) {
-  const message = error instanceof Error ? error.message : "Movie save failed.";
+  const message = formatSupabaseError(error);
   const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
+  const normalized = message.toLowerCase();
+  if (normalized.includes("migration hint:")) return message;
   if (
     code === "PGRST204" ||
-    message.toLowerCase().includes("schema cache") ||
-    message.toLowerCase().includes("could not find") ||
-    message.toLowerCase().includes("column")
+    normalized.includes("schema cache") ||
+    normalized.includes("could not find") ||
+    normalized.includes("column") ||
+    normalized.includes("relationship")
   ) {
-    return `${message} Schema mismatch detected. Apply the latest Supabase migration, then try saving again.`;
+    return `${message} Migration hint: run supabase/migrations/202605260001_fix_admin_movie_schema_mismatch.sql, then try saving again.`;
   }
   return message;
+}
+
+function saveStepError(step: string, error: unknown) {
+  return new Error(`${step} failed: ${formatSaveError(error)}`);
 }
 
 function FormSection({
@@ -499,7 +528,7 @@ export default function AdminMovieForm({
           .select("id, slug")
           .eq("slug", payload.slug)
           .maybeSingle();
-        if (existingError) throw existingError;
+        if (existingError) throw saveStepError("Checking duplicate slug", existingError);
         if (existingMovie) {
           setDuplicateMovieId(existingMovie.id);
           setMessage({
@@ -514,7 +543,7 @@ export default function AdminMovieForm({
 
       const { data: movie, error } = await saveQuery.select("id, slug").single();
       if (error || !movie) {
-        throw error || new Error("Movie save failed.");
+        throw error ? saveStepError(isEditMode ? "Updating movie row" : "Creating movie row", error) : new Error("Movie save failed.");
       }
       persistedMovieId = movie.id;
 
@@ -525,29 +554,29 @@ export default function AdminMovieForm({
       if (banner?.size) updatePayload.banner_url = await uploadBanner(movie.id, banner);
       if (Object.keys(updatePayload).length) {
         const { error: imageError } = await supabase.from("movies").update(updatePayload).eq("id", movie.id);
-        if (imageError) throw imageError;
+        if (imageError) throw saveStepError("Saving poster/banner URLs", imageError);
       }
 
       if (wasUpdate) {
         const { error: genreDeleteError } = await supabase.from("movie_genres").delete().eq("movie_id", movie.id);
-        if (genreDeleteError) throw genreDeleteError;
+        if (genreDeleteError) throw saveStepError("Clearing existing genre links", genreDeleteError);
 
         const { error: castDeleteError } = await supabase.from("movie_cast").delete().eq("movie_id", movie.id);
-        if (castDeleteError) throw castDeleteError;
+        if (castDeleteError) throw saveStepError("Clearing existing cast links", castDeleteError);
       }
 
       if (selectedGenres.length) {
         const { error: genreError } = await supabase
           .from("movie_genres")
           .insert(selectedGenres.map((genre_id) => ({ movie_id: movie.id, genre_id })));
-        if (genreError) throw genreError;
+        if (genreError) throw saveStepError("Saving genre links", genreError);
       }
 
       if (selectedCast.length) {
         const { error: castError } = await supabase
           .from("movie_cast")
           .insert(selectedCast.map((cast_member_id) => ({ movie_id: movie.id, cast_member_id })));
-        if (castError) throw castError;
+        if (castError) throw saveStepError("Saving cast links", castError);
       }
 
       if (wasUpdate) {
@@ -555,7 +584,7 @@ export default function AdminMovieForm({
           .from("movie_platform_links")
           .delete()
           .eq("movie_id", movie.id);
-        if (platformDeleteError) throw platformDeleteError;
+        if (platformDeleteError) throw saveStepError("Clearing existing platform links", platformDeleteError);
       }
 
       const platformId = selectedPlatformId;
@@ -574,7 +603,7 @@ export default function AdminMovieForm({
           is_official: true,
           is_active: true
         });
-        if (platformError) throw platformError;
+        if (platformError) throw saveStepError("Saving platform watch link", platformError);
       }
 
       if (wasUpdate) {
@@ -582,7 +611,7 @@ export default function AdminMovieForm({
           .from("content_channel_items")
           .delete()
           .eq("movie_id", movie.id);
-        if (channelDeleteError) throw channelDeleteError;
+        if (channelDeleteError) throw saveStepError("Clearing existing cartoon/TV channel links", channelDeleteError);
       }
 
       if (selectedChannelIds.length) {
@@ -596,7 +625,7 @@ export default function AdminMovieForm({
         const { error: channelLinkError } = await supabase
           .from("content_channel_items")
           .insert(selectedChannelIds.map((channel_id) => ({ movie_id: movie.id, channel_id, ...channelMeta })));
-        if (channelLinkError) throw channelLinkError;
+        if (channelLinkError) throw saveStepError("Saving cartoon/TV channel links", channelLinkError);
       }
 
       const licenseDoc = form.get("license_document") as File;
@@ -612,10 +641,12 @@ export default function AdminMovieForm({
           notes: toNullableString(form.get("license_notes")),
           uploaded_by: auth.user?.id ?? null
         });
-        if (licenseError) throw licenseError;
+        if (licenseError) throw saveStepError("Saving license document record", licenseError);
       }
 
-      const confirmedRow = await fetchConfirmedMovie(supabase, movie.id);
+      const confirmedRow = await fetchConfirmedMovie(supabase, movie.id).catch((confirmError: unknown) => {
+        throw saveStepError("Confirming saved movie row", confirmError);
+      });
       if (!confirmedRow) {
         throw new Error("Movie save confirmation failed. Movie was not found after saving.");
       }
