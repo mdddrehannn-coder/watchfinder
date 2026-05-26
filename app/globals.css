@@ -1467,6 +1467,48 @@ html.theme-light .positioning-chip {
   gap: 0.6rem;
 }
 
+.movie-watch-guide {
+  background:
+    linear-gradient(135deg, rgba(244, 63, 94, 0.12), rgba(34, 211, 238, 0.05)),
+    rgba(255, 255, 255, 0.055);
+}
+
+html.theme-light .movie-watch-guide {
+  background:
+    linear-gradient(135deg, rgba(244, 63, 94, 0.08), rgba(14, 116, 144, 0.05)),
+    rgba(255, 255, 255, 0.9);
+}
+
+.watch-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13.5rem), 1fr));
+  gap: 0.75rem;
+}
+
+.watch-guide-card {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  padding: 0.9rem;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+html.theme-light .watch-guide-card {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.watch-guide-card strong {
+  font-size: 1rem;
+}
+
+.watch-guide-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .detail-poster {
   max-width: 13rem;
   border-radius: 1rem;
@@ -2079,6 +2121,32 @@ html.theme-light .watch-link-card {
 
 .watch-link-card:hover {
   border-color: rgba(244, 63, 94, 0.45);
+}
+
+.watch-link-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.watch-link-head .platform-logo {
+  flex: 0 0 auto;
+  width: 4rem;
+  height: 2.25rem;
+  margin-bottom: 0;
+}
+
+.watch-link-platform-fallback {
+  flex: 0 0 auto;
+  width: 3rem;
+  height: 2.25rem;
+  display: grid;
+  place-items: center;
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, var(--brand-strong), var(--brand));
+  color: #ffffff;
+  font-weight: 900;
 }
 
 .watch-link-title,

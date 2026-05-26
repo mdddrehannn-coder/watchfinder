@@ -1177,14 +1177,14 @@ export default function AdminMovieForm({
         </div>
       </FormSection>
 
-      <FormSection title="Official Watch Link" helper="Optional. Add only official legal platform links. OTT platforms like JioHotstar, Netflix and Prime Video usually do not allow embedded playback. Add the official watch page, app link, home page, or platform/search link instead.">
+      <FormSection title="Official Watch Link" helper="Optional. Add only official legal platform links. OTT services usually do not allow embedded playback. Add official title/search link. Only YouTube/official embed plays inside WatchFinder.">
         <div className="form-grid two">
           <div className="field"><label>Official Platform</label><select name="platform_id" value={selectedPlatformId} onChange={(event) => updateOfficialPlatform(event.target.value)}><option value="">Select platform</option>{platforms.map((platform) => <option value={platform.id} key={platform.id}>{platform.name}</option>)}</select></div>
           <div className="field"><label>Watch URL</label><input name="watch_url" placeholder="Optional exact title, search, home, or app link" defaultValue={firstPlatformLink?.watch_url ?? ""} /></div>
         </div>
         {selectedPlatformIsExternalOnly ? (
           <p className="form-message info">
-            {selectedPlatform?.name} is treated as an external legal platform. Keep licensed video off unless you have a legal embeddable URL.
+            {selectedPlatform?.name} is treated as an external legal platform. Playback should open on the official app/site unless you have a legal embeddable URL.
           </p>
         ) : null}
         <div className="field">

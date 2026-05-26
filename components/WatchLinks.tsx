@@ -1,6 +1,7 @@
 "use client";
 
 import { ExternalLink } from "lucide-react";
+import PlatformLogo from "@/components/PlatformLogo";
 import { trackWatchLinkClick } from "@/lib/analytics";
 import { splitLanguages } from "@/lib/languages";
 import { availabilityLabels, resolveWatchLinkTarget, watchLinkTypeLabels } from "@/lib/watch-links";
@@ -26,17 +27,23 @@ export default function WatchLinks({
   if (!official.length) return null;
 
   return (
-    <section className="section">
+    <section className="section watch-legally-section">
       <div className="section-head">
-        <h2>Where to Watch Legally</h2>
+        <div>
+          <h2>Watch Legally</h2>
+          <p className="muted">Available on official platforms. OTT playback opens on the official app/site, not inside WatchFinder.</p>
+        </div>
       </div>
       <div className="watch-link-grid">
         {official.map((link) => {
           const target = resolveWatchLinkTarget(link, title || movie?.slug || "");
           const content = (
             <>
-              <span className="watch-link-title">
-                {link.platforms?.name || "Official link"} {target.url ? <ExternalLink size={16} /> : null}
+              <span className="watch-link-head">
+                {link.platforms ? <PlatformLogo platform={link.platforms} /> : <span className="watch-link-platform-fallback">W</span>}
+                <span className="watch-link-title">
+                  {link.platforms?.name || "Official link"} {target.url ? <ExternalLink size={16} /> : null}
+                </span>
               </span>
               <span className="watch-link-meta">
                 {link.availability_type ? (

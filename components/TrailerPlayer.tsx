@@ -23,7 +23,7 @@ export default function TrailerPlayer({
     return (
       <section className="section" id="trailer">
         <div className="section-head">
-          <h2>Official Trailer</h2>
+          <h2>Watch Trailer</h2>
         </div>
         <div className="empty">No official trailer available yet.</div>
       </section>
@@ -33,7 +33,10 @@ export default function TrailerPlayer({
   return (
     <section className="section official-trailer-panel" id="trailer">
       <div className="section-head">
-        <h2>Official Trailer</h2>
+        <div>
+          <h2>Watch Trailer</h2>
+          <p className="muted">YouTube and official embeddable trailers play inside WatchFinder.</p>
+        </div>
       </div>
       <TrailerModalTrigger
         className="official-trailer-launch"
@@ -42,16 +45,16 @@ export default function TrailerPlayer({
         movieSlug={movieSlug}
         provider={provider}
         title={title}
-        buttonLabel="Open Official Trailer"
+        buttonLabel="Watch Trailer"
       >
         <span className="official-trailer-launch-icon" aria-hidden="true">
           <Play size={28} fill="currentColor" />
         </span>
         <span className="official-trailer-copy">
-          <strong>Watch Official Trailer</strong>
+          <strong>Watch Trailer</strong>
           <span>Open the fullscreen WatchFinder player.</span>
         </span>
-        <span className="official-trailer-cta">Play</span>
+        <span className="official-trailer-cta">Open</span>
       </TrailerModalTrigger>
     </section>
   );

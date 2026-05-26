@@ -60,16 +60,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
   const hasProof = licenseDocuments.length > 0;
   const hasExternalOttLink = Boolean(movie.movie_platform_links?.some((link) => link.is_active !== false && isExternalOnlyPlatform(link.platforms)));
   const legalEmbedUrl = movie.video_embed_url && !isKnownExternalWatchPageUrl(movie.video_embed_url) ? movie.video_embed_url : null;
-  const legalVideoSource = legalEmbedUrl || movie.video_id;
   const playableVideoProvider = movie.video_provider === "external_ott_link" ? null : movie.video_provider;
-  const canShowLicensedVideo = Boolean(
-    movie.has_licensed_video &&
-      legalVideoSource &&
-      hasProof &&
-      playableVideoProvider &&
-      movie.license_type &&
-      movie.license_owner_name
-  );
   const qualities = movieQualities(movie);
   const availabilityTypes = movieAvailabilityTypes(movie);
   const allBadges = movieSmartBadges(movie);
@@ -78,6 +69,12 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
     (playableVideoProvider && legalEmbedUrl) ||
       getYouTubeEmbedUrl(movie.trailer_url)
   );
+  const officialWatchLinks = (movie.movie_platform_links || []).filter((link) => link.is_active !== false && link.is_official !== false);
+  const platformNames = officialWatchLinks.map((link) => link.platforms?.name).filter(Boolean) as string[];
+  const platformSummary = platformNames.length ? platformNames.slice(0, 3).join(", ") : "No official platform added yet";
+  const languageSummary = movie.language || "Audio/subtitle details not listed";
+  const qualitySummary = qualities.length ? qualities.join(", ") : "Quality varies by platform";
+  const availabilitySummary = availabilityTypes.length ? availabilityTypes.map((availability) => readableAvailability(availability)).join(", ") : "Availability varies by platform";
 
   return (
     <main className="page-inner">
@@ -165,22 +162,35 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
         </div>
       </section>
 
-      <section className="section panel legal-watch-panel">
-        <div>
-          <h2>{canShowLicensedVideo ? "Watch Free Legally" : "Where to Watch Legally"}</h2>
-          {canShowLicensedVideo ? (
-            <div className="language-tags">
-              <span className="legal-badge">Licensed / Permission Verified</span>
-              <span className="platform-badge">{movie.license_type?.replaceAll("_", " ")}</span>
-              <span className="platform-badge">{movie.video_provider?.replaceAll("_", " ")}</span>
-              {movie.license_owner_name ? <span className="platform-badge">{movie.license_owner_name}</span> : null}
-            </div>
-          ) : (
-            <p className="muted">
-              Trailer-only listing. WatchFinder does not host unauthorized movies. Use official links below.
-              {hasExternalOttLink ? " OTT playback opens on the official app/site; WatchFinder does not embed JioHotstar, Netflix, Prime Video, or other DRM OTT videos." : ""}
-            </p>
-          )}
+      <section className="section panel legal-watch-panel movie-watch-guide">
+        <div className="section-head">
+          <div>
+            <p className="rating-badge">Legal discovery</p>
+            <h2>Watch guide</h2>
+            <p className="muted">WatchFinder does not host unauthorized movies. We help you find official trailers and legal platform availability.</p>
+          </div>
+        </div>
+        <div className="watch-guide-grid">
+          <article className="watch-guide-card">
+            <strong>Watch Trailer</strong>
+            <p>{hasPlayableModalSource ? "Official trailer or embeddable video is available in the WatchFinder player." : "No official trailer or embeddable video is available yet."}</p>
+            <span className={hasPlayableModalSource ? "legal-badge" : "status-badge status-draft"}>{hasPlayableModalSource ? "Internal player available" : "No internal player"}</span>
+          </article>
+          <article className="watch-guide-card">
+            <strong>Watch Legally</strong>
+            <p>{officialWatchLinks.length ? `Available on: ${platformSummary}${platformNames.length > 3 ? " and more" : ""}.` : "Official platform links have not been added yet."}</p>
+            <span className="platform-badge">{availabilitySummary}</span>
+          </article>
+          <article className="watch-guide-card">
+            <strong>Hindi dubbed info</strong>
+            <p>{languageSummary}</p>
+            <span className="platform-badge">{qualitySummary}</span>
+          </article>
+          <article className="watch-guide-card">
+            <strong>Platform playback</strong>
+            <p>{hasExternalOttLink ? "OTT playback opens on the official platform. WatchFinder does not embed JioHotstar, Netflix, Prime Video, Zee5, SonyLIV, or other DRM OTT videos." : "Official links open the source platform when available."}</p>
+            <span className="legal-badge">Official links only</span>
+          </article>
         </div>
       </section>
 
@@ -197,7 +207,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
       <PromotionBanner promotion={middlePromos[0]} />
       <AdSlot slot={middleAds[0]} />
       <LicensedVideoPlayer movie={movie} hasProof={hasProof} />
-      <MovieSlider title="Similar Movies" movies={similar} />
+      <MovieSlider title="Similar Legal Titles" movies={similar} />
     </main>
   );
 }
