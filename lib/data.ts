@@ -148,40 +148,47 @@ export async function getHomepageHeroMovies() {
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return [] as Movie[];
 
-  const { data, error } = await runMovieQuery(supabase, (select) =>
+  const { data: eligibleData, error: eligibleError } = await runMovieQuery(supabase, (select) =>
+    supabase
+      .from("movies")
+      .select(select)
+      .eq("status", "published")
+      .or("is_featured.eq.true,is_latest.eq.true,is_trending.eq.true")
+      .order("created_at", { ascending: false, nullsFirst: false })
+      .limit(6)
+  );
+
+  if (eligibleError) {
+    if (process.env.NODE_ENV !== "production") console.warn("Homepage hero eligible query failed:", eligibleError);
+    return [];
+  }
+
+  const heroMovies = (eligibleData ?? []).map(normalizeMovie);
+  if (heroMovies.length >= 6) return heroMovies.slice(0, 6);
+
+  const { data: fallbackData, error: fallbackError } = await runMovieQuery(supabase, (select) =>
     supabase
       .from("movies")
       .select(select)
       .eq("status", "published")
       .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(80)
+      .limit(12)
   );
 
-  if (error || !data) return [];
-
-  function priority(movie: Movie) {
-    if (movie.is_featured) return 0;
-    if (movie.is_latest) return 1;
-    if (movie.is_trending) return 2;
-    return 3;
+  if (fallbackError) {
+    if (process.env.NODE_ENV !== "production") console.warn("Homepage hero fallback query failed:", fallbackError);
+    return heroMovies.slice(0, 6);
   }
 
-  function timestamp(movie: Movie) {
-    return new Date(movie.updated_at || movie.created_at || 0).getTime() || 0;
+  const seen = new Set(heroMovies.map((movie) => movie.id));
+  for (const movie of (fallbackData ?? []).map(normalizeMovie)) {
+    if (seen.has(movie.id)) continue;
+    heroMovies.push(movie);
+    seen.add(movie.id);
+    if (heroMovies.length === 6) break;
   }
 
-  const movies = data
-    .map(normalizeMovie)
-    .sort((a, b) => {
-      const priorityDiff = priority(a) - priority(b);
-      if (priorityDiff !== 0) return priorityDiff;
-      const popularityDiff = (b.popularity_score || 0) - (a.popularity_score || 0);
-      if (popularityDiff !== 0) return popularityDiff;
-      return timestamp(b) - timestamp(a);
-    });
-
-  const flaggedMovies = movies.filter((movie) => movie.is_featured || movie.is_latest || movie.is_trending);
-  return (flaggedMovies.length ? flaggedMovies : movies).slice(0, 6);
+  return heroMovies.slice(0, 6);
 }
 
 export async function getMovieBySlug(slug: string) {

@@ -80,9 +80,13 @@ export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
     if (paused || slides.length <= 1) return;
     const timer = window.setInterval(() => {
       setActive((current) => (current + 1) % slides.length);
-    }, 5000);
+    }, 3000);
     return () => window.clearInterval(timer);
   }, [paused, slides.length]);
+
+  useEffect(() => {
+    if (slides.length && active >= slides.length) setActive(0);
+  }, [active, slides.length]);
 
   useEffect(() => {
     setPreviewReady(false);
@@ -113,7 +117,7 @@ export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
     return (
       <section className="home-movie-hero empty-home-hero">
         <p className="rating-badge">Featured Updates</p>
-        <p>Add Published + Featured/Latest/Trending movies from admin panel to show homepage slider.</p>
+        <p>Add published movies from admin panel to show homepage slider.</p>
       </section>
     );
   }
