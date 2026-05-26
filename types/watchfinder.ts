@@ -118,7 +118,11 @@ export type MoviePlatformLink = {
   movie_id: string;
   platform_id: string;
   watch_url?: string | null;
+  platform_home_url?: string | null;
+  platform_search_url?: string | null;
+  app_deeplink?: string | null;
   link_type?: string | null;
+  open_mode?: string | null;
   availability_type?: string | null;
   language?: string | null;
   quality?: string | null;

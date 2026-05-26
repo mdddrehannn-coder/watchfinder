@@ -1,4 +1,5 @@
 import type { MoviePlatformLink, Platform } from "@/types/watchfinder";
+import { shouldUseInAppBrowser } from "@/lib/platformBehavior";
 
 export const WATCH_LINK_TYPES = [
   "direct_title_page",
@@ -154,44 +155,50 @@ export function isKnownExternalWatchPageUrl(url?: string | null) {
 export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
   const platformName = link.platforms?.name || "Official platform";
   const linkType = normalizeWatchLinkType(link.link_type);
-  const exactUrl = link.watch_url?.trim();
+  const exactUrl = (linkType === "app_deeplink" ? link.app_deeplink || link.watch_url : link.watch_url)?.trim();
   const externalOnly = isExternalOnlyPlatform(link.platforms);
+  const openMode = linkType === "app_deeplink"
+    ? "external"
+    : shouldUseInAppBrowser(link.platforms, link.open_mode) ? "in_app_browser" : "external";
 
   if (exactUrl) {
     return {
       url: exactUrl,
-      label: linkType === "app_deeplink" ? `Open in ${platformName}` : `Watch on ${platformName}`,
+      label: openMode === "in_app_browser" ? "Open in WatchFinder" : linkType === "app_deeplink" ? `Open in ${platformName}` : `Watch on ${platformName}`,
       note: link.notes || (externalOnly
         ? `${platformName} playback opens on the official app/site. WatchFinder does not host or embed OTT videos.`
         : "Opens the official title page or app link."),
       type: linkType,
       platformName,
-      externalOnly
+      externalOnly,
+      openMode
     };
   }
 
-  const searchUrl = getPlatformSearchUrl(link.platforms, title);
-  const homeUrl = getPlatformHomeUrl(link.platforms);
+  const searchUrl = link.platform_search_url || getPlatformSearchUrl(link.platforms, title);
+  const homeUrl = link.platform_home_url || getPlatformHomeUrl(link.platforms);
 
   if (linkType === "platform_search" && searchUrl) {
     return {
       url: searchUrl,
-      label: externalOnly ? `Open ${platformName}` : `Search on ${platformName}`,
+      label: openMode === "in_app_browser" ? "Open in WatchFinder" : externalOnly ? `Open ${platformName}` : `Search on ${platformName}`,
       note: link.notes || `Search this title on ${platformName}. Exact title link is not available.`,
       type: linkType,
       platformName,
-      externalOnly
+      externalOnly,
+      openMode
     };
   }
 
   if (homeUrl) {
     return {
       url: homeUrl,
-      label: `Open ${platformName}`,
+      label: openMode === "in_app_browser" ? "Open in WatchFinder" : `Open ${platformName}`,
       note: link.notes || `Search this title on ${platformName}. Exact title link is not available.`,
       type: "platform_home" as WatchLinkType,
       platformName,
-      externalOnly
+      externalOnly,
+      openMode
     };
   }
 
@@ -201,6 +208,7 @@ export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
     note: link.notes || `Exact title link is not available. Search this title on ${platformName}.`,
     type: linkType,
     platformName,
-    externalOnly
+    externalOnly,
+    openMode
   };
 }

@@ -46,6 +46,12 @@ const AVAILABILITY_OPTIONS = [
   { label: "Unknown", value: "unknown" }
 ];
 
+const OPEN_MODE_OPTIONS = [
+  { label: "Trailer modal", value: "trailer_modal" },
+  { label: "In-app browser", value: "in_app_browser" },
+  { label: "External", value: "external" }
+];
+
 function toNullableString(value: FormDataEntryValue | null) {
   const stringValue = String(value || "").trim();
   return stringValue || null;
@@ -389,6 +395,7 @@ export default function AdminMovieForm({
   const [selectedPlatformId, setSelectedPlatformId] = useState(firstPlatformLink?.platform_id ?? "");
   const [availabilityType, setAvailabilityType] = useState(firstPlatformLink?.availability_type ?? "subscription");
   const [watchLinkType, setWatchLinkType] = useState(normalizeWatchLinkType(firstPlatformLink?.link_type));
+  const [openMode, setOpenMode] = useState(firstPlatformLink?.open_mode ?? "in_app_browser");
   const [watchLinkNotes, setWatchLinkNotes] = useState(firstPlatformLink?.notes ?? "");
   const firstChannelType = initialMovie?.content_channels?.[0]?.channel_type;
   const [selectedChannelType, setSelectedChannelType] = useState<"" | "cartoon" | "tv_show">(
@@ -437,6 +444,7 @@ export default function AdminMovieForm({
     setSelectedPlatformId(link?.platform_id ?? "");
     setAvailabilityType(link?.availability_type ?? "subscription");
     setWatchLinkType(normalizeWatchLinkType(link?.link_type));
+    setOpenMode(link?.open_mode ?? "in_app_browser");
     setWatchLinkNotes(link?.notes ?? "");
     const nextChannelType = initialMovie?.content_channels?.[0]?.channel_type;
     setSelectedChannelType(nextChannelType === "cartoon" || nextChannelType === "tv_show" ? nextChannelType : "");
@@ -599,6 +607,7 @@ export default function AdminMovieForm({
     setSelectedPlatformId("");
     setAvailabilityType("subscription");
     setWatchLinkType("direct_title_page");
+    setOpenMode("in_app_browser");
     setWatchLinkNotes("");
     setSelectedChannelType("");
     setSelectedChannelIds([]);
@@ -662,6 +671,7 @@ export default function AdminMovieForm({
     setSelectedPlatformId(platformId);
     if (platform && isExternalOnlyPlatform(platform) && !firstPlatformLink?.watch_url) {
       setWatchLinkType("platform_search");
+      setOpenMode("in_app_browser");
       setHasLicensedVideo(false);
       setVideoProvider("external_ott_link");
     } else if (videoProvider === "external_ott_link") {
@@ -836,7 +846,11 @@ export default function AdminMovieForm({
           movie_id: movie.id,
           platform_id: platformId,
           watch_url: watchUrl,
+          platform_home_url: toNullableString(form.get("platform_home_url")),
+          platform_search_url: toNullableString(form.get("platform_search_url")),
+          app_deeplink: toNullableString(form.get("app_deeplink")),
           link_type: savedWatchLinkType,
+          open_mode: openMode,
           availability_type: availabilityType,
           language: joinLanguages(selectedWatchLanguages) || null,
           quality: selectedQualities.join(", ") || null,
@@ -1181,10 +1195,14 @@ export default function AdminMovieForm({
         <div className="form-grid two">
           <div className="field"><label>Official Platform</label><select name="platform_id" value={selectedPlatformId} onChange={(event) => updateOfficialPlatform(event.target.value)}><option value="">Select platform</option>{platforms.map((platform) => <option value={platform.id} key={platform.id}>{platform.name}</option>)}</select></div>
           <div className="field"><label>Watch URL</label><input name="watch_url" placeholder="Optional exact title, search, home, or app link" defaultValue={firstPlatformLink?.watch_url ?? ""} /></div>
+          <div className="field"><label>Platform Home URL</label><input name="platform_home_url" placeholder="Optional official home page fallback" defaultValue={firstPlatformLink?.platform_home_url ?? ""} /></div>
+          <div className="field"><label>Platform Search URL</label><input name="platform_search_url" placeholder="Optional official search result URL" defaultValue={firstPlatformLink?.platform_search_url ?? ""} /></div>
+          <div className="field"><label>App Deeplink</label><input name="app_deeplink" placeholder="Optional official app deeplink" defaultValue={firstPlatformLink?.app_deeplink ?? ""} /></div>
+          <div className="field"><label>Open Mode</label><select name="open_mode" value={openMode} onChange={(event) => setOpenMode(event.target.value)}>{OPEN_MODE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
         </div>
         {selectedPlatformIsExternalOnly ? (
           <p className="form-message info">
-            {selectedPlatform?.name} is treated as an external legal platform. Playback should open on the official app/site unless you have a legal embeddable URL.
+            {selectedPlatform?.name} is treated as an external legal platform. OTT platforms may block embedded playback. WatchFinder opens the official page inside an in-app browser when possible, with fallback to official app/site.
           </p>
         ) : null}
         <div className="field">

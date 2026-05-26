@@ -4,6 +4,7 @@ import { ExternalLink } from "lucide-react";
 import PlatformLogo from "@/components/PlatformLogo";
 import { trackWatchLinkClick } from "@/lib/analytics";
 import { splitLanguages } from "@/lib/languages";
+import { buildInAppBrowserHref } from "@/lib/platformBehavior";
 import { availabilityLabels, resolveWatchLinkTarget, watchLinkTypeLabels } from "@/lib/watch-links";
 import type { MoviePlatformLink } from "@/types/watchfinder";
 
@@ -12,6 +13,10 @@ function splitCsv(value?: string | null) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function isDangerousHref(value?: string | null) {
+  return /^(javascript|data|vbscript):/i.test((value || "").trim());
 }
 
 export default function WatchLinks({
@@ -37,6 +42,15 @@ export default function WatchLinks({
       <div className="watch-link-grid">
         {official.map((link) => {
           const target = resolveWatchLinkTarget(link, title || movie?.slug || "");
+          const href = target.url && !isDangerousHref(target.url) && target.openMode === "in_app_browser"
+            ? buildInAppBrowserHref({
+              platform: link.platforms,
+              platformName: target.platformName,
+              title: title || movie?.slug || "Official title",
+              url: target.url,
+              movieSlug: movie?.slug
+            })
+            : target.url && !isDangerousHref(target.url) ? target.url : null;
           const content = (
             <>
               <span className="watch-link-head">
@@ -60,25 +74,25 @@ export default function WatchLinks({
               <span className="watch-link-note">{target.note}</span>
               {target.externalOnly ? (
                 <span className="watch-link-note ott-external-note">
-                  This opens outside WatchFinder on the official app/site.
+                  Official platform page. Login may be required. Playback is controlled by {target.platformName}.
                 </span>
               ) : null}
-              <span className={target.url ? "button primary watch-link-button" : "button ghost watch-link-button disabled"}>
+              <span className={href ? "button primary watch-link-button" : "button ghost watch-link-button disabled"}>
                 {target.label}
               </span>
             </>
           );
 
-          if (!target.url) {
+          if (!href) {
             return <div className="watch-link-card" key={link.id}>{content}</div>;
           }
 
           return (
             <a
               className="watch-link-card"
-              href={target.url}
-              target="_blank"
-              rel="noreferrer"
+              href={href}
+              target={target.openMode === "in_app_browser" ? undefined : "_blank"}
+              rel={target.openMode === "in_app_browser" ? undefined : "noreferrer"}
               key={link.id}
               onClick={() => {
                 if (movie) trackWatchLinkClick(movie, target.platformName);

@@ -138,7 +138,7 @@ Use the same values from your Supabase project. Redeploy after adding them.
 
 ## Supabase Setup
 
-Use your existing final migration only. This project expects these existing tables:
+Use the safe migrations in `supabase/migrations/` for current schema changes. This project expects these existing tables:
 
 `profiles`, `genres`, `platforms`, `cast_members`, `movies`, `movie_genres`, `movie_cast`, `movie_platform_links`, `promotions`, `ad_slots`, `blog_posts`, `favorites`, `watch_history`, `feedback_messages`, `license_documents`, `site_settings`.
 
@@ -146,7 +146,7 @@ Use your existing buckets:
 
 `movie-posters`, `movie-banners`, `promotion-banners`, `blog-images`, `avatars`, `license-documents`, `licensed-videos-small`.
 
-No new SQL schema is generated in this repo.
+New schema changes must be safe migrations only: `create table if not exists`, `alter table ... add column if not exists`, `create index if not exists`, or admin-only RLS fixes. Never use destructive reset scripts on production.
 
 ## Sign Up
 
@@ -194,10 +194,14 @@ In the admin movie form:
 
 1. Choose an official platform.
 2. Paste the official `watch_url`.
-3. Add a label like `Watch on Netflix`.
+3. Choose the `link_type` and `open_mode`.
 4. Save.
 
-The public movie detail page shows these under **Where to Watch**.
+The public movie detail page shows these under **Watch Legally**. OTT platforms such as JioHotstar, Netflix, Prime Video, Zee5 and SonyLIV should normally use `open_mode = in_app_browser` with external fallback. WatchFinder opens the official page inside a legal in-app browser shell when possible, but many OTT sites block iframe/webview playback with CSP or DRM rules. When blocked, WatchFinder shows an **Open Official Site** fallback.
+
+Never scrape OTT videos, bypass DRM, download videos, inject scripts into platform pages, hide the official platform identity, or create fake login pages. User login must happen directly on the official platform.
+
+For future Android/native app work, use a trusted browser surface such as Capacitor Browser or the platform's official app intent/deep link. DRM playback may still require the official app/browser, and platform terms must be respected.
 
 ## Add Licensed Video
 
