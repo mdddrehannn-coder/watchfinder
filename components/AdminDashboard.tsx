@@ -27,6 +27,7 @@ import AdminChannelManager from "@/components/AdminChannelManager";
 import AdminLicenseForm from "@/components/AdminLicenseForm";
 import AdminMovieForm from "@/components/AdminMovieForm";
 import { getMovieVisibilityCheck } from "@/lib/admin-visibility";
+import { deleteMovieById, updateMovieStatusById, type AdminMovieActionStatus } from "@/lib/admin-movie-actions";
 import AdminPromotionForm from "@/components/AdminPromotionForm";
 import { trackEvent } from "@/lib/analytics";
 import { movieSelect } from "@/lib/movie-select";
@@ -123,6 +124,13 @@ type AnalyticsSession = {
   current_page?: string | null;
   device_type?: string | null;
   browser_name?: string | null;
+};
+
+type PendingMovieAction = {
+  kind: "delete" | "archive" | "draft";
+  movie: Movie;
+  error?: string | null;
+  isSubmitting?: boolean;
 };
 
 type AnalyticsData = {
@@ -352,6 +360,8 @@ export default function AdminDashboard({
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>("overview");
   const [movieSort, setMovieSort] = useState<MovieSort>("views");
   const [analyticsTestMessage, setAnalyticsTestMessage] = useState<string | null>(null);
+  const [pendingMovieAction, setPendingMovieAction] = useState<PendingMovieAction | null>(null);
+  const [movieActionLoadingKey, setMovieActionLoadingKey] = useState<string | null>(null);
   const contentChannels = (collections.contentChannels ?? []) as ContentChannel[];
   const contentChannelsError = typeof collections.contentChannelsError === "string" ? collections.contentChannelsError : null;
 
@@ -694,63 +704,90 @@ export default function AdminDashboard({
     });
   }
 
-  async function updateMovieStatus(movie: Movie, status: "published" | "draft" | "archived" | "hidden") {
-    const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.from("movies").update({ status }).eq("id", movie.id);
-    if (error) {
-      setMovieMessage(error.message);
-      return;
+  async function performMovieStatusUpdate(movie: Movie, status: AdminMovieActionStatus) {
+    const loadingKey = `${movie.id}:${status}`;
+    setMovieActionLoadingKey(loadingKey);
+    setMovieMessage(`${status === "published" ? "Publishing" : `Moving to ${status}`} ${movie.title}...`);
+
+    const result = await updateMovieStatusById(movie.id, status);
+    setMovieActionLoadingKey(null);
+
+    if (!result.ok) {
+      setMovieMessage(result.message);
+      return result;
     }
-    setMovies((current) => current.map((item) => item.id === movie.id ? { ...item, status } : item));
-    setEditingMovie((current) => current?.id === movie.id ? { ...current, status } : current);
-    setMovieMessage(`${movie.title} moved to ${status}.`);
+
+    setMovies((current) => current.map((item) => (
+      item.id === movie.id ? { ...item, status, updated_at: result.updatedAt ?? item.updated_at } : item
+    )));
+    setEditingMovie((current) => current?.id === movie.id ? { ...current, status, updated_at: result.updatedAt ?? current.updated_at } : current);
+    setMovieMessage(`${movie.title} ${status === "published" ? "published" : `moved to ${status}`}.`);
+    router.refresh();
+    return result;
   }
 
-  async function deleteMovie(movie: Movie) {
-    const confirmed = window.confirm(
-      `Delete "${movie.title}"?\n\nThis will delete this movie and related links. This cannot be undone.`
-    );
-    if (!confirmed) return;
+  function requestMovieAction(movie: Movie, kind: PendingMovieAction["kind"]) {
+    setPendingMovieAction({ kind, movie, error: null, isSubmitting: false });
+    setMovieMessage(null);
+  }
 
-    const supabase = createSupabaseBrowserClient();
-    setMovieMessage(`Deleting ${movie.title}...`);
+  async function confirmMovieAction() {
+    if (!pendingMovieAction || pendingMovieAction.isSubmitting) return;
+    const { movie, kind } = pendingMovieAction;
+    setPendingMovieAction({ ...pendingMovieAction, isSubmitting: true, error: null });
 
-    const { error: analyticsError } = await supabase
-      .from("analytics_events")
-      .update({ movie_id: null })
-      .eq("movie_id", movie.id);
-    if (analyticsError && process.env.NODE_ENV !== "production") {
-      console.warn("Could not detach analytics events before movie delete:", analyticsError);
-    }
-
-    const relatedTables = [
-      "movie_genres",
-      "movie_platform_links",
-      "movie_cast",
-      "content_channel_items",
-      "license_documents"
-    ];
-
-    for (const table of relatedTables) {
-      const { error } = await supabase.from(table).delete().eq("movie_id", movie.id);
-      if (error) {
-        setMovieMessage(`Delete failed while clearing ${table}: ${error.message}`);
+    if (kind === "delete") {
+      setMovieMessage(`Deleting ${movie.title}...`);
+      const result = await deleteMovieById(movie.id);
+      if (!result.ok) {
+        setPendingMovieAction({ ...pendingMovieAction, isSubmitting: false, error: result.message });
+        setMovieMessage(`Delete failed: ${result.message}`);
         return;
       }
-    }
 
-    const { error } = await supabase.from("movies").delete().eq("id", movie.id);
-    if (error) {
-      setMovieMessage(`Delete failed: ${error.message}`);
+      setMovies((current) => current.filter((item) => item.id !== movie.id));
+      if (editingMovie?.id === movie.id) {
+        setEditingMovie(null);
+        setActiveSection("movies");
+      }
+      setPendingMovieAction(null);
+      setMovieMessage("Movie deleted successfully.");
+      router.refresh();
       return;
     }
 
-    setMovies((current) => current.filter((item) => item.id !== movie.id));
-    if (editingMovie?.id === movie.id) {
-      setEditingMovie(null);
-      setActiveSection("movies");
+    const nextStatus = kind === "archive" ? "archived" : "draft";
+    const result = await performMovieStatusUpdate(movie, nextStatus);
+    if (!result.ok) {
+      setPendingMovieAction((current) => current ? { ...current, isSubmitting: false, error: result.message } : current);
+      return;
     }
-    setMovieMessage(`${movie.title} was deleted.`);
+    setPendingMovieAction(null);
+  }
+
+  function actionModalCopy(action: PendingMovieAction) {
+    if (action.kind === "delete") {
+      return {
+        title: "Delete this movie?",
+        body: "This will permanently remove this movie and its related links. This cannot be undone.",
+        confirm: "Delete permanently",
+        danger: true
+      };
+    }
+    if (action.kind === "archive") {
+      return {
+        title: "Archive this movie?",
+        body: "This will hide the movie from the public website but keep it in admin.",
+        confirm: "Archive movie",
+        danger: false
+      };
+    }
+    return {
+      title: "Move this movie to draft?",
+      body: "This will hide the movie from the public website while keeping it editable in admin.",
+      confirm: "Move to draft",
+      danger: false
+    };
   }
 
   return (
@@ -881,14 +918,17 @@ export default function AdminDashboard({
                         <Eye size={16} /> View
                       </Link>
                       {movie.status !== "published" ? (
-                        <button className="button" type="button" onClick={() => updateMovieStatus(movie, "published")}>Publish</button>
-                      ) : (
-                        <button className="button ghost" type="button" onClick={() => updateMovieStatus(movie, "draft")}>Move to Draft</button>
-                      )}
-                      {movie.status !== "archived" ? (
-                        <button className="button ghost" type="button" onClick={() => updateMovieStatus(movie, "archived")}>Archive</button>
+                        <button className="button" type="button" disabled={movieActionLoadingKey === `${movie.id}:published`} onClick={() => performMovieStatusUpdate(movie, "published")}>
+                          {movieActionLoadingKey === `${movie.id}:published` ? "Publishing..." : "Publish"}
+                        </button>
                       ) : null}
-                      <button className="button danger" type="button" onClick={() => deleteMovie(movie)}>
+                      {movie.status !== "draft" ? (
+                        <button className="button ghost" type="button" onClick={() => requestMovieAction(movie, "draft")}>Move to Draft</button>
+                      ) : null}
+                      {movie.status !== "archived" ? (
+                        <button className="button ghost" type="button" onClick={() => requestMovieAction(movie, "archive")}>Archive</button>
+                      ) : null}
+                      <button className="button danger" type="button" onClick={() => requestMovieAction(movie, "delete")}>
                         <Trash2 size={16} /> Delete
                       </button>
                     </div>
@@ -1650,8 +1690,8 @@ export default function AdminDashboard({
               initialMovie={editingMovie}
               onSaved={handleSaved}
               onDuplicateSlug={openMovieById}
-              onArchiveMovie={(movie) => updateMovieStatus(movie, "archived")}
-              onDeleteMovie={deleteMovie}
+              onArchiveMovie={(movie) => requestMovieAction(movie, "archive")}
+              onDeleteMovie={(movie) => requestMovieAction(movie, "delete")}
               onBackToMovies={() => setActiveSection("movies")}
               onAddNew={showAddMovie}
               movieAnalytics={editingMovie ? analyticsStats.movieStatsById.get(editingMovie.id) : undefined}
@@ -1754,6 +1794,65 @@ export default function AdminDashboard({
         {activeSection === "license-documents" ? <section className="section"><h2>License Documents</h2><AdminLicenseForm movies={movies} /><div className="form-grid section">{collections.licenseDocuments.map((item: any) => <div className="panel" key={item.id}><strong>{item.license_type || "License"}</strong><p className="muted">{item.movie_id}</p></div>)}</div></section> : null}
         {activeSection === "site-settings" ? <section className="section"><h2>Site Settings</h2><div className="form-grid">{collections.siteSettings.map((item: any) => <div className="panel" key={item.id}><strong>{item.key || item.id}</strong><p className="muted">{String(item.value ?? "")}</p></div>)}</div></section> : null}
       </div>
+      {pendingMovieAction ? (() => {
+        const copy = actionModalCopy(pendingMovieAction);
+        const movie = pendingMovieAction.movie;
+        return (
+          <div className="admin-action-modal-backdrop" role="presentation" onMouseDown={() => !pendingMovieAction.isSubmitting && setPendingMovieAction(null)}>
+            <section
+              aria-labelledby="admin-movie-action-title"
+              aria-modal="true"
+              className="admin-action-modal"
+              onMouseDown={(event) => event.stopPropagation()}
+              role="dialog"
+            >
+              <div className="section-head">
+                <div>
+                  <p className={copy.danger ? "status-badge status-hidden" : "status-badge status-draft"}>{copy.danger ? "Danger action" : "Visibility action"}</p>
+                  <h2 id="admin-movie-action-title">{copy.title}</h2>
+                  <p className="muted">{copy.body}</p>
+                </div>
+              </div>
+              <div className="admin-action-movie-card">
+                <div className="admin-movie-thumb">
+                  {movie.poster_url ? <img src={movie.poster_url} alt="" /> : <span>{movie.title.slice(0, 1)}</span>}
+                </div>
+                <div className="admin-movie-main">
+                  <strong>{movie.title}</strong>
+                  <p className="muted">{movie.slug}</p>
+                  <div className="meta-line">
+                    <span className={statusClass(movie.status)}>{movie.status || "draft"}</span>
+                    <span>ID: {movie.id}</span>
+                  </div>
+                </div>
+              </div>
+              {pendingMovieAction.error ? (
+                <p className="form-message error">{pendingMovieAction.error}</p>
+              ) : null}
+              <div className="admin-action-modal-actions">
+                <button
+                  className="button ghost"
+                  disabled={pendingMovieAction.isSubmitting}
+                  onClick={() => setPendingMovieAction(null)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className={copy.danger ? "button danger" : "button primary"}
+                  disabled={pendingMovieAction.isSubmitting}
+                  onClick={confirmMovieAction}
+                  type="button"
+                >
+                  {pendingMovieAction.isSubmitting ? (
+                    pendingMovieAction.kind === "delete" ? "Deleting..." : "Updating..."
+                  ) : copy.confirm}
+                </button>
+              </div>
+            </section>
+          </div>
+        );
+      })() : null}
     </div>
   );
 }
