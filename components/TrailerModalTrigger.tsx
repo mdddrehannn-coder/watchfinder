@@ -11,11 +11,12 @@ function appendAutoplay(url: string) {
   try {
     const parsed = new URL(url);
     parsed.searchParams.set("autoplay", "1");
+    parsed.searchParams.set("playsinline", "1");
     parsed.searchParams.set("rel", "0");
     parsed.searchParams.set("modestbranding", "1");
     return parsed.toString();
   } catch {
-    return `${url}${url.includes("?") ? "&" : "?"}autoplay=1`;
+    return `${url}${url.includes("?") ? "&" : "?"}autoplay=1&playsinline=1&rel=0&modestbranding=1`;
   }
 }
 
@@ -194,7 +195,7 @@ export default function TrailerModalTrigger({
           </span>
         ) : null}
       </button>
-      <TrailerModal open={open} onClose={closeModal} source={source} movie={{ id: movieId, slug: movieSlug }} />
+      <TrailerModal open={open} onClose={closeModal} source={source} movie={{ id: movieId, slug: movieSlug }} provider={provider} />
     </>
   );
 }

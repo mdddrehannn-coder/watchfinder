@@ -1557,29 +1557,46 @@ html.theme-light .positioning-chip {
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgba(0, 0, 0, 0.86);
+  background: rgba(0, 0, 0, 0.92);
   backdrop-filter: blur(16px);
+  overflow: hidden;
 }
 
 .trailer-modal {
   position: relative;
-  width: min(100%, 58rem);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #000;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
+  color: #ffffff;
+  overflow: hidden;
+}
+
+.trailer-modal-embed {
+  width: min(1100px, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  border-radius: 1rem;
+}
+
+.trailer-modal-link {
+  width: min(100%, 38rem);
   max-height: min(92dvh, 42rem);
   overflow-y: auto;
-  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 1rem;
-  padding: clamp(0.75rem, 2vw, 1rem);
   background:
     linear-gradient(135deg, rgba(244, 63, 94, 0.12), rgba(255, 255, 255, 0.04)),
     #080910;
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
 }
 
 .trailer-modal-player-shell {
-  display: grid;
-  gap: 0.7rem;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   background: #000;
-  border-radius: 0.85rem;
+  overflow: hidden;
+  border-radius: inherit;
 }
 
 .trailer-modal-close {
@@ -1592,27 +1609,83 @@ html.theme-light .positioning-chip {
   border-color: rgba(255, 255, 255, 0.22);
 }
 
-.trailer-fullscreen-button {
-  justify-self: end;
-  min-height: 2.65rem;
-  padding: 0.55rem 0.8rem;
+.trailer-modal-controls {
+  position: absolute;
+  z-index: 4;
+  top: max(0.7rem, env(safe-area-inset-top));
+  left: max(0.7rem, env(safe-area-inset-left));
+  right: max(0.7rem, env(safe-area-inset-right));
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  pointer-events: none;
+}
+
+.trailer-control-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.trailer-control-button {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 0 0.85rem;
+  background: rgba(7, 8, 12, 0.72);
+  color: #ffffff;
+  font-weight: 900;
+  letter-spacing: 0;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(16px);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.trailer-control-button:hover,
+.trailer-control-button:focus-visible {
+  background: rgba(220, 38, 38, 0.86);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.trailer-mode-button {
+  min-width: 4rem;
 }
 
 .trailer-modal-frame {
   width: 100%;
-  aspect-ratio: 16 / 9;
-  max-height: calc(92dvh - 2rem);
+  height: 100%;
+  flex: 0 0 auto;
   display: block;
   border: 0;
-  border-radius: 0.75rem;
+  border-radius: inherit;
   background: #000;
 }
 
-.trailer-modal-hint {
-  margin: 0 0 0.2rem;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 0.9rem;
+.trailer-modal-bottom-hint {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: max(0.8rem, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: min(92vw, 34rem);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
+  background: rgba(7, 8, 12, 0.62);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.84rem;
+  font-weight: 800;
   text-align: center;
+  backdrop-filter: blur(16px);
+  pointer-events: none;
 }
 
 .trailer-modal-official-link {
@@ -1648,6 +1721,69 @@ html.theme-light .positioning-chip {
   width: 100%;
   border-radius: 0.9rem;
   background: #000;
+}
+
+.official-trailer-panel {
+  scroll-margin-top: 6rem;
+}
+
+.official-trailer-launch {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at 12% 20%, rgba(239, 68, 68, 0.22), transparent 32%),
+    var(--panel);
+  color: var(--text);
+  text-align: left;
+  box-shadow: var(--shadow);
+}
+
+.official-trailer-launch:hover,
+.official-trailer-launch:focus-visible {
+  border-color: rgba(239, 68, 68, 0.55);
+  transform: translateY(-1px);
+}
+
+.official-trailer-launch-icon {
+  width: 3.4rem;
+  height: 3.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff2744, #b70018);
+  color: #ffffff;
+  box-shadow: 0 16px 36px rgba(239, 68, 68, 0.35);
+}
+
+.official-trailer-copy {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.official-trailer-copy strong {
+  font-size: 1rem;
+}
+
+.official-trailer-copy span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.official-trailer-cta {
+  border-radius: 999px;
+  padding: 0.62rem 0.9rem;
+  background: var(--button-bg);
+  color: var(--button-text);
+  font-size: 0.9rem;
+  font-weight: 900;
 }
 
 .form-grid {
@@ -3484,36 +3620,68 @@ html.theme-light .first-load-splash {
   }
 
   .trailer-modal-backdrop {
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    padding: 0;
     place-items: center;
+    background: #000;
   }
 
-  .trailer-modal {
+  .trailer-modal-embed {
     width: 100vw;
+    height: 100vh;
     height: 100dvh;
     max-height: 100dvh;
     border: 0;
     border-radius: 0;
-    padding: max(0.7rem, env(safe-area-inset-top)) max(0.7rem, env(safe-area-inset-right)) max(0.7rem, env(safe-area-inset-bottom)) max(0.7rem, env(safe-area-inset-left));
-    display: grid;
-    align-content: center;
     background: #000;
   }
 
-  .trailer-modal-close {
-    top: 0.5rem;
-    right: 0.5rem;
-    width: 2.85rem;
-    height: 2.85rem;
-    background: rgba(2, 4, 9, 0.86);
-  }
-
-  .trailer-modal-frame {
-    max-height: min(56.25vw, calc(100dvh - 7rem));
-  }
-
   .trailer-modal-player-shell {
-    margin-top: 2rem;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    aspect-ratio: auto;
+    border-radius: 0;
+    margin: 0;
+  }
+
+  .trailer-player-fit .trailer-modal-frame {
+    width: min(100vw, calc(100dvh * 16 / 9));
+    height: min(100dvh, calc(100vw * 9 / 16));
+    border-radius: 0;
+  }
+
+  .trailer-player-fill .trailer-modal-frame {
+    width: max(100vw, calc(100dvh * 16 / 9));
+    height: max(100dvh, calc(100vw * 9 / 16));
+    border-radius: 0;
+  }
+
+  .trailer-modal-controls {
+    top: max(0.55rem, env(safe-area-inset-top));
+    left: max(0.55rem, env(safe-area-inset-left));
+    right: max(0.55rem, env(safe-area-inset-right));
+  }
+
+  .trailer-control-button {
+    min-width: 2.9rem;
+    min-height: 2.9rem;
+    padding: 0 0.8rem;
+    background: rgba(2, 4, 9, 0.72);
+  }
+
+  .trailer-modal-bottom-hint {
+    bottom: max(0.7rem, env(safe-area-inset-bottom));
+    max-width: calc(100vw - 1.4rem);
+    font-size: 0.78rem;
+  }
+
+  .official-trailer-launch {
+    grid-template-columns: auto 1fr;
+  }
+
+  .official-trailer-cta {
+    grid-column: 1 / -1;
+    text-align: center;
   }
 
   .trailer-modal-official-link {

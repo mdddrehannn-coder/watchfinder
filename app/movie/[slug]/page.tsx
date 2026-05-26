@@ -184,6 +184,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
         movieId={movie.id}
         movieSlug={movie.slug}
         provider={movie.trailer_provider || "youtube"}
+        title={movie.title}
       />
       <PromotionBanner promotion={middlePromos[0]} />
       <AdSlot slot={middleAds[0]} />

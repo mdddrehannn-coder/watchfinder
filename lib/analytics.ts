@@ -9,6 +9,8 @@ export type AnalyticsEventType =
   | "session_active"
   | "movie_view"
   | "trailer_open"
+  | "trailer_fullscreen_clicked"
+  | "trailer_close"
   | "trailer_play"
   | "trailer_pause"
   | "trailer_progress"
@@ -268,6 +270,25 @@ export function trackTrailerOpen(movie: Pick<Movie, "id" | "slug">, provider?: s
     movie_id: movie.id,
     movie_slug: movie.slug,
     video_provider: provider || null
+  });
+}
+
+export function trackTrailerFullscreenClicked(movie: Pick<Movie, "id" | "slug">, provider?: string | null) {
+  return trackEvent({
+    event_type: "trailer_fullscreen_clicked",
+    movie_id: movie.id,
+    movie_slug: movie.slug,
+    video_provider: provider || null
+  });
+}
+
+export function trackTrailerClose(movie: Pick<Movie, "id" | "slug">, provider?: string | null, seconds = 0) {
+  return trackEvent({
+    event_type: "trailer_close",
+    movie_id: movie.id,
+    movie_slug: movie.slug,
+    video_provider: provider || null,
+    watch_seconds: seconds
   });
 }
 
