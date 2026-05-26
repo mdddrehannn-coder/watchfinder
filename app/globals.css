@@ -454,6 +454,18 @@ html.theme-light .icon-button {
   background: transparent;
 }
 
+.button.danger {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fecaca;
+}
+
+html.theme-light .button.danger {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.28);
+  color: #991b1b;
+}
+
 .icon-button {
   width: 2.75rem;
   height: 2.75rem;

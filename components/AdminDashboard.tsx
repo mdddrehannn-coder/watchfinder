@@ -17,6 +17,7 @@ import {
   Radio,
   Search,
   Smartphone,
+  Trash2,
   TrendingUp,
   Users
 } from "lucide-react";
@@ -28,6 +29,7 @@ import AdminMovieForm from "@/components/AdminMovieForm";
 import { getMovieVisibilityCheck } from "@/lib/admin-visibility";
 import AdminPromotionForm from "@/components/AdminPromotionForm";
 import { trackEvent } from "@/lib/analytics";
+import { movieSelect } from "@/lib/movie-select";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import type { CastMember, ContentChannel, Genre, Movie, Platform } from "@/types/watchfinder";
 
@@ -78,6 +80,17 @@ function statusClass(status?: string | null) {
   if (status === "archived") return "status-badge status-archived";
   if (status === "hidden") return "status-badge status-hidden";
   return "status-badge status-draft";
+}
+
+function normalizeAdminMovie(row: any): Movie {
+  return {
+    ...row,
+    genres: (row.movie_genres ?? []).map((item: any) => item.genres).filter(Boolean),
+    cast_members: (row.movie_cast ?? []).map((item: any) => item.cast_members).filter(Boolean),
+    movie_platform_links: row.movie_platform_links ?? [],
+    content_channel_items: row.content_channel_items ?? [],
+    content_channels: (row.content_channel_items ?? []).map((item: any) => item.content_channels).filter(Boolean)
+  } as Movie;
 }
 
 type AnalyticsEvent = {
@@ -617,9 +630,29 @@ export default function AdminDashboard({
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function openMovieById(movieId: string) {
+  async function openMovieById(movieId: string) {
     const movie = movies.find((item) => item.id === movieId);
-    if (movie) showEditMovie(movie);
+    if (movie) {
+      showEditMovie(movie);
+      return;
+    }
+
+    setMovieMessage("Loading existing movie editor...");
+    const supabase = createSupabaseBrowserClient();
+    const { data, error } = await supabase
+      .from("movies")
+      .select(movieSelect)
+      .eq("id", movieId)
+      .maybeSingle();
+
+    if (error || !data) {
+      setMovieMessage(error?.message || "Existing movie was not found.");
+      return;
+    }
+
+    const loadedMovie = normalizeAdminMovie(data);
+    setMovies((current) => current.some((item) => item.id === loadedMovie.id) ? current : [loadedMovie, ...current]);
+    showEditMovie(loadedMovie);
   }
 
   function exportAdminBackup() {
@@ -665,7 +698,55 @@ export default function AdminDashboard({
       return;
     }
     setMovies((current) => current.map((item) => item.id === movie.id ? { ...item, status } : item));
+    setEditingMovie((current) => current?.id === movie.id ? { ...current, status } : current);
     setMovieMessage(`${movie.title} moved to ${status}.`);
+  }
+
+  async function deleteMovie(movie: Movie) {
+    const confirmed = window.confirm(
+      `Delete "${movie.title}"?\n\nThis will delete this movie and related links. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    const supabase = createSupabaseBrowserClient();
+    setMovieMessage(`Deleting ${movie.title}...`);
+
+    const { error: analyticsError } = await supabase
+      .from("analytics_events")
+      .update({ movie_id: null })
+      .eq("movie_id", movie.id);
+    if (analyticsError && process.env.NODE_ENV !== "production") {
+      console.warn("Could not detach analytics events before movie delete:", analyticsError);
+    }
+
+    const relatedTables = [
+      "movie_genres",
+      "movie_platform_links",
+      "movie_cast",
+      "content_channel_items",
+      "license_documents"
+    ];
+
+    for (const table of relatedTables) {
+      const { error } = await supabase.from(table).delete().eq("movie_id", movie.id);
+      if (error) {
+        setMovieMessage(`Delete failed while clearing ${table}: ${error.message}`);
+        return;
+      }
+    }
+
+    const { error } = await supabase.from("movies").delete().eq("id", movie.id);
+    if (error) {
+      setMovieMessage(`Delete failed: ${error.message}`);
+      return;
+    }
+
+    setMovies((current) => current.filter((item) => item.id !== movie.id));
+    if (editingMovie?.id === movie.id) {
+      setEditingMovie(null);
+      setActiveSection("movies");
+    }
+    setMovieMessage(`${movie.title} was deleted.`);
   }
 
   return (
@@ -803,6 +884,9 @@ export default function AdminDashboard({
                       {movie.status !== "archived" ? (
                         <button className="button ghost" type="button" onClick={() => updateMovieStatus(movie, "archived")}>Archive</button>
                       ) : null}
+                      <button className="button danger" type="button" onClick={() => deleteMovie(movie)}>
+                        <Trash2 size={16} /> Delete
+                      </button>
                     </div>
                   </article>
                 );
@@ -1556,6 +1640,7 @@ export default function AdminDashboard({
 
         {activeSection === "add-movie" ? (
           <section className="section">
+            {movieMessage ? <p className="form-message info">{movieMessage}</p> : null}
             <AdminMovieForm
               key={editingMovie?.id || "new-movie"}
               genres={genres}
@@ -1564,6 +1649,8 @@ export default function AdminDashboard({
               initialMovie={editingMovie}
               onSaved={handleSaved}
               onDuplicateSlug={openMovieById}
+              onArchiveMovie={(movie) => updateMovieStatus(movie, "archived")}
+              onDeleteMovie={deleteMovie}
               onBackToMovies={() => setActiveSection("movies")}
               onAddNew={showAddMovie}
               movieAnalytics={editingMovie ? analyticsStats.movieStatsById.get(editingMovie.id) : undefined}

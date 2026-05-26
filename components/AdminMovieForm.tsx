@@ -17,6 +17,15 @@ type Message = {
   text: string;
 };
 
+type DuplicateAdvisory = {
+  movieId: string;
+  title: string;
+  slug: string;
+  status?: string | null;
+  createdAt?: string | null;
+  reason: "slug" | "exact";
+};
+
 const QUALITY_OPTIONS = [
   "360p",
   "480p",
@@ -141,6 +150,22 @@ function saveStepError(step: string, error: unknown) {
   return new Error(`${step} failed: ${formatSaveError(error)}`);
 }
 
+function toDuplicateAdvisory(movie: any, reason: DuplicateAdvisory["reason"]): DuplicateAdvisory {
+  return {
+    movieId: movie.id,
+    title: movie.title || "Untitled movie",
+    slug: movie.slug || "",
+    status: movie.status || "draft",
+    createdAt: movie.created_at || null,
+    reason
+  };
+}
+
+function formatDuplicateDate(value?: string | null) {
+  if (!value) return "Unknown";
+  return new Date(value).toLocaleDateString();
+}
+
 function normalizeDuplicateValue(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -189,6 +214,20 @@ async function resolveUniqueMovieSlug(supabase: any, requestedSlug: string, excl
   return `${base}-${suffix}`;
 }
 
+async function findMovieBySlug(supabase: any, requestedSlug: string) {
+  const normalizedSlug = slugify(requestedSlug);
+  if (!normalizedSlug) return null;
+
+  const { data, error } = await supabase
+    .from("movies")
+    .select("id, title, slug, status, created_at")
+    .eq("slug", normalizedSlug)
+    .maybeSingle();
+
+  if (error) throw saveStepError("Checking existing slug", error);
+  return data ? toDuplicateAdvisory(data, "slug") : null;
+}
+
 async function insertMovieWithUniqueSlug(supabase: any, payload: Record<string, unknown>) {
   const requestedSlug = String(payload.slug || payload.title || "movie");
   let finalSlug = await resolveUniqueMovieSlug(supabase, requestedSlug);
@@ -222,7 +261,7 @@ async function findExactDuplicateMovie(
 
   const { data: candidates, error } = await supabase
     .from("movies")
-    .select("id, slug, title, release_year, duration_minutes, language, video_provider, trailer_url, video_embed_url, poster_url, banner_url, description")
+    .select("id, slug, title, status, created_at, release_year, duration_minutes, language, video_provider, trailer_url, video_embed_url, poster_url, banner_url, description")
     .eq("title", payload.title)
     .limit(20);
 
@@ -251,7 +290,7 @@ async function findExactDuplicateMovie(
     }
   }
 
-  return (candidates || []).find((movie: any) => {
+  const duplicate = (candidates || []).find((movie: any) => {
     const candidateLinks = linksByMovieId.get(movie.id) || [];
     const watchLinkMatches = watchUrl
       ? candidateLinks.some((existingUrl) => sameExactValue(existingUrl, watchUrl))
@@ -270,7 +309,9 @@ async function findExactDuplicateMovie(
       sameExactValue(movie.description, payload.description) &&
       watchLinkMatches
     );
-  }) || null;
+  });
+
+  return duplicate ? toDuplicateAdvisory(duplicate, "exact") : null;
 }
 
 function FormSection({
@@ -300,6 +341,8 @@ export default function AdminMovieForm({
   onBackToMovies,
   onSaved,
   onDuplicateSlug,
+  onArchiveMovie,
+  onDeleteMovie,
   movieAnalytics,
   contentChannels = [],
   contentChannelsError = null
@@ -312,6 +355,8 @@ export default function AdminMovieForm({
   onBackToMovies?: () => void;
   onSaved?: (movie: Movie) => void;
   onDuplicateSlug?: (movieId: string) => void;
+  onArchiveMovie?: (movie: Movie) => void | Promise<void>;
+  onDeleteMovie?: (movie: Movie) => void | Promise<void>;
   contentChannels?: ContentChannel[];
   contentChannelsError?: string | null;
   movieAnalytics?: {
@@ -358,10 +403,11 @@ export default function AdminMovieForm({
   const [videoProvider, setVideoProvider] = useState(initialMovie?.video_provider ?? "");
   const [licenseType, setLicenseType] = useState(initialMovie?.license_type ?? "");
   const [message, setMessage] = useState<Message | null>(null);
-  const [duplicateAdvisory, setDuplicateAdvisory] = useState<{ movieId: string; slug: string } | null>(null);
+  const [duplicateAdvisory, setDuplicateAdvisory] = useState<DuplicateAdvisory | null>(null);
   const [allowExactDuplicateId, setAllowExactDuplicateId] = useState<string | null>(null);
   const allowExactDuplicateIdRef = useRef<string | null>(null);
   const [partialSaveMovieId, setPartialSaveMovieId] = useState<string | null>(null);
+  const slugInputRef = useRef<HTMLInputElement | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedMovieSlug, setSavedMovieSlug] = useState<string | null>(null);
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
@@ -597,6 +643,12 @@ export default function AdminMovieForm({
     formRef.current?.requestSubmit();
   }
 
+  function changeSlugManually() {
+    setDuplicateAdvisory(null);
+    setMessage({ type: "info", text: "Change the slug field, then save again." });
+    window.setTimeout(() => slugInputRef.current?.focus(), 0);
+  }
+
   function updateChannelType(value: "" | "cartoon" | "tv_show") {
     setSelectedChannelType(value);
     setSelectedChannelIds([]);
@@ -700,6 +752,16 @@ export default function AdminMovieForm({
         }
         movie = data;
       } else {
+        const slugConflict = await findMovieBySlug(supabase, payload.slug);
+        if (slugConflict && allowExactDuplicateIdRef.current !== slugConflict.movieId && allowExactDuplicateId !== slugConflict.movieId) {
+          setDuplicateAdvisory(slugConflict);
+          setMessage({
+            type: "info",
+            text: "Similar slug already exists. Open it, save this as a new listing, or change the slug manually."
+          });
+          return;
+        }
+
         const exactDuplicate = await findExactDuplicateMovie(
           supabase,
           payload,
@@ -708,8 +770,8 @@ export default function AdminMovieForm({
           Boolean(banner?.size)
         );
 
-        if (exactDuplicate && allowExactDuplicateIdRef.current !== exactDuplicate.id && allowExactDuplicateId !== exactDuplicate.id) {
-          setDuplicateAdvisory({ movieId: exactDuplicate.id, slug: exactDuplicate.slug });
+        if (exactDuplicate && allowExactDuplicateIdRef.current !== exactDuplicate.movieId && allowExactDuplicateId !== exactDuplicate.movieId) {
+          setDuplicateAdvisory(exactDuplicate);
           setMessage({
             type: "info",
             text: "This looks like an exact duplicate. You can create it anyway or open the existing movie editor."
@@ -950,7 +1012,7 @@ export default function AdminMovieForm({
         ) : null}
         <div className="form-grid two">
           <div className="field"><label>Title <span className="required">*</span></label><input required value={title} onChange={(e) => updateTitle(e.target.value)} /></div>
-          <div className="field"><label>Slug <span className="required">*</span></label><input required value={slug} onChange={(e) => setSlug(slugify(e.target.value))} /></div>
+          <div className="field"><label>Slug <span className="required">*</span></label><input ref={slugInputRef} required value={slug} onChange={(e) => setSlug(slugify(e.target.value))} /></div>
           <div className="field"><label>Release Year</label><input name="release_year" inputMode="numeric" defaultValue={initialMovie?.release_year ?? ""} /></div>
           <div className="field"><label>Duration Minutes</label><input name="duration_minutes" inputMode="numeric" defaultValue={initialMovie?.duration_minutes ?? ""} /></div>
           <div className="field"><label>Rating</label><input name="rating" inputMode="decimal" defaultValue={initialMovie?.rating ?? ""} /></div>
@@ -1218,6 +1280,23 @@ export default function AdminMovieForm({
         <div className="field"><label>SEO Description</label><textarea name="seo_description" defaultValue={initialMovie?.seo_description ?? ""} /></div>
       </FormSection>
 
+      {isEditMode && initialMovie ? (
+        <FormSection title="Existing Movie Actions" helper="Archive hides this movie from public pages while keeping it in admin. Delete is permanent and asks for confirmation.">
+          <div className="save-actions">
+            {initialMovie.status !== "archived" && onArchiveMovie ? (
+              <button className="button ghost" type="button" onClick={() => onArchiveMovie(initialMovie)}>
+                Archive Movie
+              </button>
+            ) : null}
+            {onDeleteMovie ? (
+              <button className="button danger" type="button" onClick={() => onDeleteMovie(initialMovie)}>
+                Delete Movie
+              </button>
+            ) : null}
+          </div>
+        </FormSection>
+      ) : null}
+
       {message ? <p className={`form-message ${message.type}`}>{message.text}</p> : null}
       {partialSaveMovieId && onDuplicateSlug && !duplicateAdvisory ? (
         <button className="button" type="button" onClick={() => onDuplicateSlug(partialSaveMovieId)}>
@@ -1226,17 +1305,26 @@ export default function AdminMovieForm({
       ) : null}
       {duplicateAdvisory ? (
         <div className="form-message info duplicate-advisory">
-          <p>This looks like an exact duplicate. You can still create it as a separate listing with a unique slug.</p>
+          <strong>{duplicateAdvisory.reason === "slug" ? "Similar slug already exists" : "This looks like an exact duplicate"}</strong>
+          <p>You can open the existing listing, save this upload as a new listing with a unique slug, or change the slug manually.</p>
+          <div className="meta-line">
+            <span>Existing title: {duplicateAdvisory.title}</span>
+            <span>Existing slug: {duplicateAdvisory.slug}</span>
+            <span>Status: {duplicateAdvisory.status || "draft"}</span>
+            <span>Created: {formatDuplicateDate(duplicateAdvisory.createdAt)}</span>
+          </div>
           <div className="save-actions">
             <button className="button primary" type="button" onClick={createExactDuplicateAnyway}>
-              Create anyway
+              Save as new listing anyway
             </button>
             {onDuplicateSlug ? (
               <button className="button" type="button" onClick={() => onDuplicateSlug(duplicateAdvisory.movieId)}>
                 Open existing movie editor
               </button>
             ) : null}
-            <span className="platform-badge">Existing slug: {duplicateAdvisory.slug}</span>
+            <button className="button ghost" type="button" onClick={changeSlugManually}>
+              Change slug manually
+            </button>
           </div>
         </div>
       ) : null}
