@@ -200,9 +200,13 @@ function secondsLabel(seconds = 0) {
 
 function readableEventType(value?: string | null) {
   if (!value) return "Unknown event";
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const labels: Record<string, string> = {
+    test_event: "Test Event",
+    app_install_prompt_shown: "App install prompt shown"
+  };
+  if (labels[value]) return labels[value];
+  const spaced = value.replace(/_/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 function cleanPath(value?: string | null) {
@@ -934,10 +938,7 @@ export default function AdminDashboard({
               <div className="notice-card analytics-empty-state">
                 <strong>No analytics data yet.</strong>
                 <p>Open the public site, search a movie, view a movie page, or click a trailer to start collecting analytics.</p>
-                <button className="button primary" type="button" onClick={sendTestAnalyticsEvent}>
-                  <Activity size={16} /> Send Test Analytics Event
-                </button>
-                {analyticsTestMessage ? <span className="chip active">{analyticsTestMessage}</span> : null}
+                <p className="muted">Use the Debug tab for developer-only test events.</p>
               </div>
             ) : null}
 
@@ -1333,7 +1334,7 @@ export default function AdminDashboard({
                 <div className="panel analytics-debug-panel">
                   <div>
                     <h3>Analytics Debug</h3>
-                    <p className="muted">Technical checks live here so the main dashboard stays clean.</p>
+                    <p className="muted">Admin/developer-only diagnostics. Technical checks live here so the main dashboard stays clean.</p>
                   </div>
                   <div className="analytics-metric-grid compact">
                     <AnalyticsMetricCard icon={<Bug size={17} />} label="Total Events" value={compactNumber(analytics.debug?.eventsCount ?? analytics.events.length)} />
