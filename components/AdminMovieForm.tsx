@@ -141,6 +141,138 @@ function saveStepError(step: string, error: unknown) {
   return new Error(`${step} failed: ${formatSaveError(error)}`);
 }
 
+function normalizeDuplicateValue(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function sameTextValue(left: unknown, right: unknown) {
+  return normalizeDuplicateValue(left).toLowerCase() === normalizeDuplicateValue(right).toLowerCase();
+}
+
+function sameExactValue(left: unknown, right: unknown) {
+  return normalizeDuplicateValue(left) === normalizeDuplicateValue(right);
+}
+
+function sameNullableNumber(left: unknown, right: unknown) {
+  const leftValue = left === null || left === undefined || left === "" ? null : Number(left);
+  const rightValue = right === null || right === undefined || right === "" ? null : Number(right);
+  return leftValue === rightValue;
+}
+
+function isSlugConflictError(error: unknown) {
+  const message = formatSupabaseError(error).toLowerCase();
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
+  return code === "23505" || (message.includes("duplicate") && message.includes("slug"));
+}
+
+async function resolveUniqueMovieSlug(supabase: any, requestedSlug: string, excludeMovieId?: string | null) {
+  const base = slugify(requestedSlug) || `movie-${Date.now().toString(36)}`;
+  const { data, error } = await supabase
+    .from("movies")
+    .select("id, slug")
+    .like("slug", `${base}%`);
+
+  if (error) throw saveStepError("Checking available slug", error);
+
+  const exactSlugPattern = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:-(\\d+))?$`);
+  const existingSlugs = new Set(
+    (data || [])
+      .filter((item: { id?: string | null; slug?: string | null }) => item.id !== excludeMovieId)
+      .map((item: { slug?: string | null }) => item.slug || "")
+      .filter((existingSlug: string) => exactSlugPattern.test(existingSlug))
+  );
+
+  if (!existingSlugs.has(base)) return base;
+
+  let suffix = 2;
+  while (existingSlugs.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+}
+
+async function insertMovieWithUniqueSlug(supabase: any, payload: Record<string, unknown>) {
+  const requestedSlug = String(payload.slug || payload.title || "movie");
+  let finalSlug = await resolveUniqueMovieSlug(supabase, requestedSlug);
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const { data, error } = await supabase
+      .from("movies")
+      .insert({ ...payload, slug: finalSlug })
+      .select("id, slug")
+      .single();
+
+    if (!error && data) return { movie: data, finalSlug };
+    if (!isSlugConflictError(error)) throw saveStepError("Creating movie row", error);
+
+    finalSlug = attempt >= 4
+      ? `${slugify(requestedSlug) || "movie"}-${Date.now().toString(36)}`
+      : await resolveUniqueMovieSlug(supabase, requestedSlug);
+  }
+
+  throw new Error("Creating movie row failed: Could not create a unique slug after multiple attempts.");
+}
+
+async function findExactDuplicateMovie(
+  supabase: any,
+  payload: Record<string, unknown>,
+  watchUrl: string | null,
+  hasNewPoster: boolean,
+  hasNewBanner: boolean
+) {
+  if (hasNewPoster || hasNewBanner) return null;
+
+  const { data: candidates, error } = await supabase
+    .from("movies")
+    .select("id, slug, title, release_year, duration_minutes, language, video_provider, trailer_url, video_embed_url, poster_url, banner_url, description")
+    .eq("title", payload.title)
+    .limit(20);
+
+  if (error) {
+    if (process.env.NODE_ENV !== "production") console.warn("Exact duplicate advisory skipped:", error);
+    return null;
+  }
+
+  const candidateIds = (candidates || []).map((movie: { id: string }) => movie.id);
+  const linksByMovieId = new Map<string, string[]>();
+
+  if (candidateIds.length) {
+    const { data: links, error: linksError } = await supabase
+      .from("movie_platform_links")
+      .select("movie_id, watch_url")
+      .in("movie_id", candidateIds);
+
+    if (!linksError) {
+      (links || []).forEach((link: { movie_id: string; watch_url?: string | null }) => {
+        const current = linksByMovieId.get(link.movie_id) || [];
+        if (link.watch_url) current.push(link.watch_url);
+        linksByMovieId.set(link.movie_id, current);
+      });
+    } else if (process.env.NODE_ENV !== "production") {
+      console.warn("Exact duplicate watch-link advisory skipped:", linksError);
+    }
+  }
+
+  return (candidates || []).find((movie: any) => {
+    const candidateLinks = linksByMovieId.get(movie.id) || [];
+    const watchLinkMatches = watchUrl
+      ? candidateLinks.some((existingUrl) => sameExactValue(existingUrl, watchUrl))
+      : candidateLinks.length === 0;
+
+    return (
+      sameTextValue(movie.title, payload.title) &&
+      sameNullableNumber(movie.release_year, payload.release_year) &&
+      sameNullableNumber(movie.duration_minutes, payload.duration_minutes) &&
+      sameTextValue(movie.language, payload.language) &&
+      sameTextValue(movie.video_provider, payload.video_provider) &&
+      sameExactValue(movie.trailer_url, payload.trailer_url) &&
+      sameExactValue(movie.video_embed_url, payload.video_embed_url) &&
+      sameExactValue(movie.poster_url, null) &&
+      sameExactValue(movie.banner_url, null) &&
+      sameExactValue(movie.description, payload.description) &&
+      watchLinkMatches
+    );
+  }) || null;
+}
+
 function FormSection({
   title,
   helper,
@@ -226,7 +358,10 @@ export default function AdminMovieForm({
   const [videoProvider, setVideoProvider] = useState(initialMovie?.video_provider ?? "");
   const [licenseType, setLicenseType] = useState(initialMovie?.license_type ?? "");
   const [message, setMessage] = useState<Message | null>(null);
-  const [duplicateMovieId, setDuplicateMovieId] = useState<string | null>(null);
+  const [duplicateAdvisory, setDuplicateAdvisory] = useState<{ movieId: string; slug: string } | null>(null);
+  const [allowExactDuplicateId, setAllowExactDuplicateId] = useState<string | null>(null);
+  const allowExactDuplicateIdRef = useRef<string | null>(null);
+  const [partialSaveMovieId, setPartialSaveMovieId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedMovieSlug, setSavedMovieSlug] = useState<string | null>(null);
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
@@ -269,9 +404,11 @@ export default function AdminMovieForm({
     setVideoProvider(initialMovie?.video_provider ?? "");
     setLicenseType(initialMovie?.license_type ?? "");
     setMessage(null);
-    setDuplicateMovieId(null);
+    setDuplicateAdvisory(null);
+    setAllowExactDuplicateId(null);
+    allowExactDuplicateIdRef.current = null;
+    setPartialSaveMovieId(null);
     setSavedMovieSlug(null);
-    setDuplicateMovieId(null);
     setSelectedPositioning([]);
     setHelperMessage(null);
     setPosterPreview(null);
@@ -443,8 +580,21 @@ export default function AdminMovieForm({
     resetFormState(formRef.current);
     setMessage(null);
     setSavedMovieSlug(null);
+    setDuplicateAdvisory(null);
+    setAllowExactDuplicateId(null);
+    allowExactDuplicateIdRef.current = null;
+    setPartialSaveMovieId(null);
     onAddNew?.();
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function createExactDuplicateAnyway() {
+    if (duplicateAdvisory) {
+      allowExactDuplicateIdRef.current = duplicateAdvisory.movieId;
+      setAllowExactDuplicateId(duplicateAdvisory.movieId);
+    }
+    setDuplicateAdvisory(null);
+    formRef.current?.requestSubmit();
   }
 
   function updateChannelType(value: "" | "cartoon" | "tv_show") {
@@ -485,6 +635,9 @@ export default function AdminMovieForm({
 
       const supabase = createSupabaseBrowserClient();
       const { data: auth } = await supabase.auth.getUser();
+      const poster = form.get("poster") as File;
+      const banner = form.get("banner") as File;
+      const watchUrl = toNullableString(form.get("watch_url"));
       const payload = {
         title: title.trim(),
         slug: slug.trim(),
@@ -517,38 +670,62 @@ export default function AdminMovieForm({
         distribution_territory: hasLicensedVideo ? toNullableString(form.get("distribution_territory")) : null
       };
 
-      let wasUpdate = isEditMode;
-      let saveQuery;
+      let wasUpdate = isEditMode || Boolean(partialSaveMovieId);
+      let movie: { id: string; slug: string };
 
       if (isEditMode && initialMovie?.id) {
-        saveQuery = supabase.from("movies").update(payload).eq("id", initialMovie.id);
-      } else {
-        const { data: existingMovie, error: existingError } = await supabase
+        payload.slug = await resolveUniqueMovieSlug(supabase, payload.slug, initialMovie.id);
+        setSlug(payload.slug);
+        const { data, error } = await supabase
           .from("movies")
+          .update(payload)
+          .eq("id", initialMovie.id)
           .select("id, slug")
-          .eq("slug", payload.slug)
-          .maybeSingle();
-        if (existingError) throw saveStepError("Checking duplicate slug", existingError);
-        if (existingMovie) {
-          setDuplicateMovieId(existingMovie.id);
+          .single();
+        if (error || !data) {
+          throw error ? saveStepError("Updating movie row", error) : new Error("Movie update failed.");
+        }
+        movie = data;
+      } else if (partialSaveMovieId) {
+        payload.slug = await resolveUniqueMovieSlug(supabase, payload.slug, partialSaveMovieId);
+        setSlug(payload.slug);
+        const { data, error } = await supabase
+          .from("movies")
+          .update(payload)
+          .eq("id", partialSaveMovieId)
+          .select("id, slug")
+          .single();
+        if (error || !data) {
+          throw error ? saveStepError("Retrying saved movie row", error) : new Error("Movie retry failed.");
+        }
+        movie = data;
+      } else {
+        const exactDuplicate = await findExactDuplicateMovie(
+          supabase,
+          payload,
+          watchUrl,
+          Boolean(poster?.size),
+          Boolean(banner?.size)
+        );
+
+        if (exactDuplicate && allowExactDuplicateIdRef.current !== exactDuplicate.id && allowExactDuplicateId !== exactDuplicate.id) {
+          setDuplicateAdvisory({ movieId: exactDuplicate.id, slug: exactDuplicate.slug });
           setMessage({
-            type: "error",
-            text: "A movie with this slug already exists. Please edit existing movie or use a different slug."
+            type: "info",
+            text: "This looks like an exact duplicate. You can create it anyway or open the existing movie editor."
           });
           return;
         }
+
         wasUpdate = false;
-        saveQuery = supabase.from("movies").insert(payload);
+        const inserted = await insertMovieWithUniqueSlug(supabase, payload);
+        payload.slug = inserted.finalSlug;
+        setSlug(inserted.finalSlug);
+        movie = inserted.movie;
       }
 
-      const { data: movie, error } = await saveQuery.select("id, slug").single();
-      if (error || !movie) {
-        throw error ? saveStepError(isEditMode ? "Updating movie row" : "Creating movie row", error) : new Error("Movie save failed.");
-      }
       persistedMovieId = movie.id;
 
-      const poster = form.get("poster") as File;
-      const banner = form.get("banner") as File;
       const updatePayload: Record<string, string> = {};
       if (poster?.size) updatePayload.poster_url = await uploadPoster(movie.id, poster);
       if (banner?.size) updatePayload.banner_url = await uploadBanner(movie.id, banner);
@@ -588,7 +765,6 @@ export default function AdminMovieForm({
       }
 
       const platformId = selectedPlatformId;
-      const watchUrl = toNullableString(form.get("watch_url"));
       if (platformId) {
         const savedWatchLinkType = watchUrl ? watchLinkType : watchLinkType === "direct_title_page" ? "platform_search" : watchLinkType;
         const { error: platformError } = await supabase.from("movie_platform_links").insert({
@@ -652,20 +828,28 @@ export default function AdminMovieForm({
       }
 
       const savedMovie = normalizeConfirmedMovie(confirmedRow);
+      const slugNote = !isEditMode ? ` Final slug: ${savedMovie.slug}.` : "";
 
       setMessage({
         type: "success",
-        text: `${wasUpdate ? "Movie updated successfully." : "Movie saved successfully."} ${getMovieSaveVisibilityMessage(savedMovie)} ${getSaveDebugText(savedMovie)}`
+        text: `${isEditMode ? "Movie updated successfully." : "Movie saved as new listing."}${slugNote} ${getMovieSaveVisibilityMessage(savedMovie)} ${getSaveDebugText(savedMovie)}`
       });
       setSavedMovieSlug(savedMovie.slug);
+      setDuplicateAdvisory(null);
+      setAllowExactDuplicateId(null);
+      allowExactDuplicateIdRef.current = null;
+      setPartialSaveMovieId(null);
       onSaved?.(savedMovie);
-      if (!wasUpdate) resetFormState(formElement);
+      if (!isEditMode) resetFormState(formElement);
     } catch (error) {
       const message = formatSaveError(error);
+      if (persistedMovieId && !isEditMode) {
+        setPartialSaveMovieId(persistedMovieId);
+      }
       setMessage({
         type: "error",
         text: persistedMovieId
-          ? `Movie row was saved, but confirmation or related data failed: ${message}`
+          ? `Movie row was saved, but confirmation or related data failed: ${message} Press Save again to retry related data on the same saved row, or open the existing movie editor.`
           : message
       });
     } finally {
@@ -761,6 +945,9 @@ export default function AdminMovieForm({
       ) : null}
 
       <FormSection title="Basic Details" helper="Add the core title metadata. Keep status as draft until the listing is ready for the public site.">
+        {!isEditMode ? (
+          <p className="form-helper">Same movie can be added multiple times. WatchFinder will create a unique slug automatically for each new listing.</p>
+        ) : null}
         <div className="form-grid two">
           <div className="field"><label>Title <span className="required">*</span></label><input required value={title} onChange={(e) => updateTitle(e.target.value)} /></div>
           <div className="field"><label>Slug <span className="required">*</span></label><input required value={slug} onChange={(e) => setSlug(slugify(e.target.value))} /></div>
@@ -1032,14 +1219,30 @@ export default function AdminMovieForm({
       </FormSection>
 
       {message ? <p className={`form-message ${message.type}`}>{message.text}</p> : null}
-      {duplicateMovieId && onDuplicateSlug ? (
-        <button className="button" type="button" onClick={() => onDuplicateSlug(duplicateMovieId)}>
+      {partialSaveMovieId && onDuplicateSlug && !duplicateAdvisory ? (
+        <button className="button" type="button" onClick={() => onDuplicateSlug(partialSaveMovieId)}>
           Open existing movie editor
         </button>
       ) : null}
+      {duplicateAdvisory ? (
+        <div className="form-message info duplicate-advisory">
+          <p>This looks like an exact duplicate. You can still create it as a separate listing with a unique slug.</p>
+          <div className="save-actions">
+            <button className="button primary" type="button" onClick={createExactDuplicateAnyway}>
+              Create anyway
+            </button>
+            {onDuplicateSlug ? (
+              <button className="button" type="button" onClick={() => onDuplicateSlug(duplicateAdvisory.movieId)}>
+                Open existing movie editor
+              </button>
+            ) : null}
+            <span className="platform-badge">Existing slug: {duplicateAdvisory.slug}</span>
+          </div>
+        </div>
+      ) : null}
       {savedMovieSlug ? (
         <div className="save-actions">
-          <p className="platform-badge">Saved slug: {savedMovieSlug}</p>
+          <p className="platform-badge">Final slug: {savedMovieSlug}</p>
           <Link className="button" href={`/movie/${savedMovieSlug}`}>
             <Eye size={18} /> View Movie Page
           </Link>
