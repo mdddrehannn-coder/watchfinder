@@ -2,8 +2,24 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { Activity, Download, Edit3, Eye, Plus, Search } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import {
+  Activity,
+  BarChart3,
+  Bug,
+  Download,
+  Edit3,
+  Eye,
+  Film,
+  Link2,
+  MousePointerClick,
+  Plus,
+  Radio,
+  Search,
+  Smartphone,
+  TrendingUp,
+  Users
+} from "lucide-react";
 import AdminAdSlotForm from "@/components/AdminAdSlotForm";
 import AdminBlogForm from "@/components/AdminBlogForm";
 import AdminChannelManager from "@/components/AdminChannelManager";
@@ -79,6 +95,8 @@ type AnalyticsEvent = {
   progress_percent?: number | null;
   device_type?: string | null;
   browser_name?: string | null;
+  referrer?: string | null;
+  metadata?: Record<string, unknown> | null;
   created_at?: string | null;
 };
 
@@ -122,6 +140,7 @@ type MovieAnalyticsSummary = {
 
 type AnalyticsRange = "today" | "yesterday" | "7d" | "28d" | "90d" | "all";
 type MovieSort = "views" | "watchTime" | "linkClicks" | "latestViewed";
+type AnalyticsTab = "overview" | "content" | "audience" | "traffic" | "search" | "platforms" | "live" | "debug";
 
 const analyticsRanges: Array<{ label: string; value: AnalyticsRange }> = [
   { label: "Today", value: "today" },
@@ -139,6 +158,17 @@ const movieSortOptions: Array<{ label: string; value: MovieSort }> = [
   { label: "Latest viewed", value: "latestViewed" }
 ];
 
+const analyticsTabs: Array<{ label: string; value: AnalyticsTab; icon: ReactNode }> = [
+  { label: "Overview", value: "overview", icon: <BarChart3 size={16} /> },
+  { label: "Content", value: "content", icon: <Film size={16} /> },
+  { label: "Audience", value: "audience", icon: <Users size={16} /> },
+  { label: "Traffic", value: "traffic", icon: <TrendingUp size={16} /> },
+  { label: "Search", value: "search", icon: <Search size={16} /> },
+  { label: "Platforms", value: "platforms", icon: <Link2 size={16} /> },
+  { label: "Live", value: "live", icon: <Radio size={16} /> },
+  { label: "Debug", value: "debug", icon: <Bug size={16} /> }
+];
+
 function compactNumber(value = 0) {
   return new Intl.NumberFormat("en", {
     notation: value >= 1000 ? "compact" : "standard",
@@ -153,6 +183,41 @@ function secondsLabel(seconds = 0) {
   if (minutes < 60) return remainingSeconds ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${minutes % 60}m`;
+}
+
+function readableEventType(value?: string | null) {
+  if (!value) return "Unknown event";
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function cleanPath(value?: string | null) {
+  if (!value) return "/";
+  try {
+    const path = value.startsWith("http") ? new URL(value).pathname : value;
+    return path.length > 44 ? `${path.slice(0, 41)}...` : path;
+  } catch {
+    return value.length > 44 ? `${value.slice(0, 41)}...` : value;
+  }
+}
+
+function cleanPlatformName(value?: string | null) {
+  if (!value) return "Official Trailer";
+  const lowered = value.toLowerCase();
+  if (lowered.includes("official trailer") || lowered.includes("trailer")) return "Official Trailer";
+  if (lowered.includes("official video")) return "Official Video";
+  return value;
+}
+
+function shortGuestId(value?: string | null) {
+  if (!value) return "Guest";
+  return `Guest ${value.replace(/-/g, "").slice(0, 6)}`;
+}
+
+function resultCountLabel(metadata?: Record<string, unknown> | null) {
+  const count = metadata?.resultCount ?? metadata?.result_count;
+  return typeof count === "number" ? compactNumber(count) : "Not tracked";
 }
 
 function isToday(value?: string | null) {
@@ -209,12 +274,34 @@ function incrementCount(map: Map<string, number>, key?: string | null) {
   map.set(cleanKey, (map.get(cleanKey) ?? 0) + 1);
 }
 
-function AnalyticsMetricCard({ label, value, note }: { label: string; value: string | number; note?: string }) {
+function AnalyticsMetricCard({
+  label,
+  value,
+  note,
+  icon,
+  trend
+}: {
+  label: string;
+  value: string | number;
+  note?: string;
+  icon?: ReactNode;
+  trend?: string;
+}) {
   return (
     <div className="analytics-metric-card">
+      <div className="analytics-metric-icon" aria-hidden="true">{icon || <Activity size={17} />}</div>
       <strong>{value}</strong>
       <span>{label}</span>
-      {note ? <small>{note}</small> : null}
+      {note || trend ? <small>{trend || note}</small> : null}
+    </div>
+  );
+}
+
+function AnalyticsEmptyState({ children }: { children: ReactNode }) {
+  return (
+    <div className="analytics-empty-inline">
+      <span>No data</span>
+      <p>{children}</p>
     </div>
   );
 }
@@ -245,6 +332,7 @@ export default function AdminDashboard({
   const [flagFilter, setFlagFilter] = useState("");
   const [movieMessage, setMovieMessage] = useState<string | null>(null);
   const [analyticsRange, setAnalyticsRange] = useState<AnalyticsRange>("today");
+  const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>("overview");
   const [movieSort, setMovieSort] = useState<MovieSort>("views");
   const [analyticsTestMessage, setAnalyticsTestMessage] = useState<string | null>(null);
   const contentChannels = (collections.contentChannels ?? []) as ContentChannel[];
@@ -396,6 +484,28 @@ export default function AdminDashboard({
       pageMap.set(key, current);
     }
 
+    const referrerMap = new Map<string, { referrer: string; views: number; last: string | null }>();
+    for (const event of events.filter((item) => item.event_type === "page_view" && item.referrer)) {
+      const key = event.referrer || "Direct";
+      const current = referrerMap.get(key) ?? { referrer: key, views: 0, last: null };
+      current.views += 1;
+      if (!current.last || new Date(event.created_at || 0) > new Date(current.last)) current.last = event.created_at || null;
+      referrerMap.set(key, current);
+    }
+
+    const entryPageMap = new Map<string, AnalyticsEvent>();
+    for (const event of [...events].filter((item) => item.event_type === "page_view" && item.page_path).sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())) {
+      const key = eventSessionKey(event);
+      if (!entryPageMap.has(key)) entryPageMap.set(key, event);
+    }
+    const entryPages = new Map<string, { path: string; entries: number }>();
+    for (const event of entryPageMap.values()) {
+      const key = event.page_path || "/";
+      const current = entryPages.get(key) ?? { path: key, entries: 0 };
+      current.entries += 1;
+      entryPages.set(key, current);
+    }
+
     const deviceMap = new Map<string, number>();
     const browserMap = new Map<string, number>();
     for (const session of rangeSessions) {
@@ -409,8 +519,14 @@ export default function AdminDashboard({
       }
     }
 
-    const loggedInVisitors = new Set(events.filter((event) => event.user_id).map((event) => event.user_id));
-    const guestVisitors = new Set(events.filter((event) => !event.user_id).map((event) => event.anonymous_session_id).filter(Boolean));
+    const loggedInVisitors = new Set([
+      ...events.filter((event) => event.user_id).map((event) => event.user_id),
+      ...rangeSessions.filter((session) => session.user_id).map((session) => session.user_id)
+    ].filter(Boolean));
+    const guestVisitors = new Set([
+      ...events.filter((event) => !event.user_id).map((event) => event.anonymous_session_id),
+      ...rangeSessions.filter((session) => !session.user_id).map((session) => session.anonymous_session_id)
+    ].filter(Boolean));
     const selectedRangeLabel = analyticsRanges.find((range) => range.value === analyticsRange)?.label || "Selected range";
     const todayPageViews = todayEvents.filter((event) => event.event_type === "page_view").length;
     const yesterdayPageViews = yesterdayEvents.filter((event) => event.event_type === "page_view").length;
@@ -419,9 +535,14 @@ export default function AdminDashboard({
       : "vs yesterday";
 
     const dailyTrend = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date)).slice(-14);
+    const activePageMap = new Map<string, number>();
+    for (const session of activeSessions) {
+      incrementCount(activePageMap, session.current_page || "No page");
+    }
 
     return {
       events,
+      rangeSessions,
       activeSessions,
       selectedRangeLabel,
       todayVisitors: todayVisitorKeys.size,
@@ -442,17 +563,40 @@ export default function AdminDashboard({
       movieStatsById,
       topMovies,
       topWatchTime,
+      topVideos: [...topMoviesBase].sort((a, b) => (b.summary.trailerPlays + b.summary.watchSeconds) - (a.summary.trailerPlays + a.summary.watchSeconds)).slice(0, 10),
+      recentMovieActivity: events
+        .filter((event) => event.movie_id || event.movie_slug)
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+        .slice(0, 12),
       topSearches: Array.from(searches.values()).sort((a, b) => b.count - a.count).slice(0, 10),
+      recentSearches: events
+        .filter((event) => event.event_type === "search")
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+        .slice(0, 12),
       platformClicks: Array.from(platformClicks.values())
         .map((item) => ({ platform: item.platform, clicks: item.clicks, last: item.last, movies: Array.from(item.movies).slice(0, 3) }))
         .sort((a, b) => b.clicks - a.clicks)
         .slice(0, 10),
+      recentPlatformClicks: events
+        .filter((event) => event.event_type === "watch_link_click")
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+        .slice(0, 12),
       dailyTrend,
       maxDailyMetric: Math.max(1, ...dailyTrend.map((day) => Math.max(day.pageViews, day.movieViews, day.searches, day.linkClicks))),
       topPages: Array.from(pageMap.values())
         .map((item) => ({ path: item.path, views: item.views, uniqueSessions: item.sessions.size, last: item.last }))
         .sort((a, b) => b.views - a.views)
         .slice(0, 10),
+      recentPageViews: events
+        .filter((event) => event.event_type === "page_view")
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+        .slice(0, 12),
+      topReferrers: Array.from(referrerMap.values()).sort((a, b) => b.views - a.views).slice(0, 10),
+      entryPages: Array.from(entryPages.values()).sort((a, b) => b.entries - a.entries).slice(0, 10),
+      recentEvents: [...events]
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+        .slice(0, 20),
+      activePages: Array.from(activePageMap.entries()).map(([path, count]) => ({ path, count })).sort((a, b) => b.count - a.count).slice(0, 8),
       deviceBreakdown: Array.from(deviceMap.entries()).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count),
       browserBreakdown: Array.from(browserMap.entries()).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count),
       loggedInVisitors: loggedInVisitors.size,
@@ -669,6 +813,464 @@ export default function AdminDashboard({
         ) : null}
 
         {activeSection === "analytics" ? (
+          <section className="section analytics-dashboard analytics-dashboard-v2">
+            <div className="section-head analytics-hero-head">
+              <div>
+                <p className="rating-badge">Studio analytics</p>
+                <h2>Analytics</h2>
+                <p className="muted">Clean performance views for audience, content, search, platforms and live activity. WatchFinder does not store raw IP addresses.</p>
+              </div>
+              <div className="chip-row analytics-range-tabs" aria-label="Analytics time range">
+                {analyticsRanges.map((range) => (
+                  <button
+                    className={analyticsRange === range.value ? "chip active" : "chip"}
+                    key={range.value}
+                    onClick={() => setAnalyticsRange(range.value)}
+                    type="button"
+                  >
+                    {range.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {analytics.debug?.errors?.length ? (
+              <div className="notice-card error">
+                <strong>Analytics query failed.</strong>
+                <p>Analytics query failed. Check Supabase RLS or analytics table policies.</p>
+                <div className="meta-line">
+                  {analytics.debug?.errors?.map((error) => (
+                    <span key={error}>{error}</span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {!analyticsStats.events.length && !analyticsStats.activeSessions.length ? (
+              <div className="notice-card analytics-empty-state">
+                <strong>No analytics data yet.</strong>
+                <p>Open the public site, search a movie, view a movie page, or click a trailer to start collecting analytics.</p>
+                <button className="button primary" type="button" onClick={sendTestAnalyticsEvent}>
+                  <Activity size={16} /> Send Test Analytics Event
+                </button>
+                {analyticsTestMessage ? <span className="chip active">{analyticsTestMessage}</span> : null}
+              </div>
+            ) : null}
+
+            <div className="analytics-tabs" aria-label="Analytics sections">
+              {analyticsTabs.map((tab) => (
+                <button
+                  className={analyticsTab === tab.value ? "analytics-tab active" : "analytics-tab"}
+                  key={tab.value}
+                  onClick={() => setAnalyticsTab(tab.value)}
+                  type="button"
+                >
+                  {tab.icon}
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {analyticsTab === "overview" ? (
+              <div className="analytics-tab-panel">
+                <div className="analytics-metric-grid">
+                  <AnalyticsMetricCard icon={<Radio size={17} />} label="Active Users Now" value={compactNumber(analyticsStats.activeSessions.length)} note="Last 5 minutes" />
+                  <AnalyticsMetricCard icon={<Users size={17} />} label="Today's Visitors" value={compactNumber(analyticsStats.todayVisitors)} note="Unique sessions today" />
+                  <AnalyticsMetricCard icon={<Users size={17} />} label="Total Visitors" value={compactNumber(analyticsStats.totalVisitors)} note="All time unique sessions" />
+                  <AnalyticsMetricCard icon={<BarChart3 size={17} />} label="Page Views" value={compactNumber(analyticsStats.rangePageViews)} trend={analyticsStats.pageViewCompare} />
+                  <AnalyticsMetricCard icon={<Film size={17} />} label="Movie Views" value={compactNumber(analyticsStats.rangeMovieViews)} note={analyticsStats.selectedRangeLabel} />
+                  <AnalyticsMetricCard icon={<Activity size={17} />} label="Watch Time" value={secondsLabel(analyticsStats.rangeWatchSeconds)} note={analyticsStats.selectedRangeLabel} />
+                  <AnalyticsMetricCard icon={<MousePointerClick size={17} />} label="Watch Link Clicks" value={compactNumber(analyticsStats.rangeWatchLinkClicks)} note={analyticsStats.selectedRangeLabel} />
+                  <AnalyticsMetricCard icon={<Search size={17} />} label="Searches" value={compactNumber(analyticsStats.rangeSearches)} note={analyticsStats.selectedRangeLabel} />
+                </div>
+
+                <div className="panel analytics-performance-panel">
+                  <div className="section-head">
+                    <div>
+                      <h3>Performance over time</h3>
+                      <p className="muted">Page views, movie views, watch time, searches and official link clicks.</p>
+                    </div>
+                  </div>
+                  <div className="analytics-chart">
+                    {analyticsStats.dailyTrend.map((day) => (
+                      <div className="analytics-chart-day" key={day.date}>
+                        <div className="analytics-bars" aria-label={`${day.date} performance`}>
+                          <span style={{ height: `${Math.max(6, (day.pageViews / analyticsStats.maxDailyMetric) * 100)}%` }} title={`${day.pageViews} page views`} />
+                          <span style={{ height: `${Math.max(6, (day.movieViews / analyticsStats.maxDailyMetric) * 100)}%` }} title={`${day.movieViews} movie views`} />
+                          <span style={{ height: `${Math.max(6, (day.searches / analyticsStats.maxDailyMetric) * 100)}%` }} title={`${day.searches} searches`} />
+                          <span style={{ height: `${Math.max(6, (day.linkClicks / analyticsStats.maxDailyMetric) * 100)}%` }} title={`${day.linkClicks} link clicks`} />
+                        </div>
+                        <small>{day.date.slice(5)}</small>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="analytics-legend">
+                    <span>Page views</span>
+                    <span>Movie views</span>
+                    <span>Searches</span>
+                    <span>Link clicks</span>
+                  </div>
+                  <div className="analytics-card-list analytics-trend-list">
+                    {analyticsStats.dailyTrend.map((day) => (
+                      <article className="analytics-list-card" key={day.date}>
+                        <strong>{day.date}</strong>
+                        <span>{compactNumber(day.pageViews)} page views</span>
+                        <span>{compactNumber(day.movieViews)} movie views</span>
+                        <span>{secondsLabel(day.watchSeconds)} watch time</span>
+                        <span>{compactNumber(day.searches)} searches</span>
+                        <span>{compactNumber(day.linkClicks)} link clicks</span>
+                      </article>
+                    ))}
+                    {!analyticsStats.dailyTrend.length ? <AnalyticsEmptyState>No daily trend yet.</AnalyticsEmptyState> : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {analyticsTab === "content" ? (
+              <div className="analytics-tab-panel">
+                <div className="panel">
+                  <div className="section-head">
+                    <div>
+                      <h3>Top Movies</h3>
+                      <p className="muted">Ranked by the selected content metric.</p>
+                    </div>
+                    <div className="chip-row">
+                      {movieSortOptions.map((option) => (
+                        <button className={movieSort === option.value ? "chip active" : "chip"} key={option.value} onClick={() => setMovieSort(option.value)} type="button">
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="analytics-card-list">
+                    {analyticsStats.topMovies.map(({ movie, summary }) => {
+                      const averageWatch = summary.trailerPlays || summary.views ? Math.round(summary.watchSeconds / Math.max(summary.trailerPlays || summary.views, 1)) : 0;
+                      return (
+                        <article className="analytics-content-card" key={movie?.id}>
+                          <div className="analytics-title-with-poster">
+                            {movie?.poster_url ? <img src={movie.poster_url} alt="" /> : <span className="analytics-poster-fallback">{movie?.title?.slice(0, 1) || "W"}</span>}
+                            <div>
+                              <strong>{movie?.title}</strong>
+                              <span>{formatTimeAgo(summary.lastViewedAt)}</span>
+                            </div>
+                          </div>
+                          <div className="analytics-stat-strip">
+                            <span><b>{compactNumber(summary.views)}</b> views</span>
+                            <span><b>{compactNumber(summary.uniqueSessions)}</b> viewers</span>
+                            <span><b>{secondsLabel(summary.watchSeconds)}</b> watch</span>
+                            <span><b>{secondsLabel(averageWatch)}</b> avg</span>
+                            <span><b>{compactNumber(summary.trailerPlays)}</b> trailer</span>
+                            <span><b>{compactNumber(summary.linkClicks)}</b> links</span>
+                          </div>
+                        </article>
+                      );
+                    })}
+                    {!analyticsStats.topMovies.length ? <AnalyticsEmptyState>No movie analytics yet.</AnalyticsEmptyState> : null}
+                  </div>
+                </div>
+
+                <div className="form-grid two">
+                  <div className="panel">
+                    <h3>Top Videos / Trailers</h3>
+                    <div className="analytics-card-list compact-list">
+                      {analyticsStats.topVideos.map(({ movie, summary }) => (
+                        <article className="analytics-list-card" key={movie?.id}>
+                          <strong>{movie?.title}</strong>
+                          <span>{compactNumber(summary.trailerPlays)} opens / plays</span>
+                          <span>{secondsLabel(summary.watchSeconds)} watch time</span>
+                          <span>{summary.completions ? `${compactNumber(summary.completions)} completions` : "Not enough completion data"}</span>
+                        </article>
+                      ))}
+                      {!analyticsStats.topVideos.length ? <AnalyticsEmptyState>No trailer data yet.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+
+                  <div className="panel">
+                    <h3>Movie Retention / Engagement</h3>
+                    <div className="analytics-card-list compact-list">
+                      {analyticsStats.topWatchTime.map(({ movie, summary }) => {
+                        const averageWatch = summary.trailerPlays || summary.views ? Math.round(summary.watchSeconds / Math.max(summary.trailerPlays || summary.views, 1)) : 0;
+                        const completionRate = summary.trailerPlays ? Math.round((summary.completions / summary.trailerPlays) * 100) : 0;
+                        const dropOff = summary.progressEvents ? Math.max(0, 100 - Math.round(summary.progressPercentTotal / summary.progressEvents)) : null;
+                        return (
+                          <article className="analytics-list-card" key={movie?.id}>
+                            <strong>{movie?.title}</strong>
+                            <span>Total {secondsLabel(summary.watchSeconds)}</span>
+                            <span>Average {secondsLabel(averageWatch)}</span>
+                            <span>{summary.completions ? `${completionRate}% complete` : "Not enough watch data yet"}</span>
+                            <span>{dropOff !== null ? `${dropOff}% drop-off estimate` : "No progress data"}</span>
+                          </article>
+                        );
+                      })}
+                      {!analyticsStats.topWatchTime.length ? <AnalyticsEmptyState>Not enough watch data yet.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <h3>Recent Movie Activity</h3>
+                  <div className="analytics-card-list compact-list">
+                    {analyticsStats.recentMovieActivity.map((event) => {
+                      const movie = movies.find((item) => item.id === event.movie_id || item.slug === event.movie_slug);
+                      return (
+                        <article className="analytics-list-card" key={event.id}>
+                          <strong>{movie?.title || event.movie_slug || "Unknown movie"}</strong>
+                          <span>{readableEventType(event.event_type)}</span>
+                          <span>{formatTimeAgo(event.created_at)}</span>
+                        </article>
+                      );
+                    })}
+                    {!analyticsStats.recentMovieActivity.length ? <AnalyticsEmptyState>No recent movie activity.</AnalyticsEmptyState> : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {analyticsTab === "audience" ? (
+              <div className="analytics-tab-panel">
+                <div className="analytics-metric-grid compact">
+                  <AnalyticsMetricCard icon={<Users size={17} />} label="Logged-in Users" value={compactNumber(analyticsStats.loggedInVisitors)} note={analyticsStats.selectedRangeLabel} />
+                  <AnalyticsMetricCard icon={<Users size={17} />} label="Guest Users" value={compactNumber(analyticsStats.guestVisitors)} note={analyticsStats.selectedRangeLabel} />
+                  <AnalyticsMetricCard icon={<Smartphone size={17} />} label="Active Sessions" value={compactNumber(analyticsStats.activeSessions.length)} note="Last 5 minutes" />
+                  <AnalyticsMetricCard icon={<Activity size={17} />} label="Total Watch Time" value={secondsLabel(analyticsStats.totalWatchSeconds)} note="All time" />
+                </div>
+                <div className="form-grid two">
+                  <div className="panel">
+                    <h3>Device breakdown</h3>
+                    <div className="audience-breakdown-grid">
+                      {analyticsStats.deviceBreakdown.map((item) => <p className="breakdown-row" key={item.label}><span>{item.label}</span><b>{compactNumber(item.count)}</b></p>)}
+                      {!analyticsStats.deviceBreakdown.length ? <AnalyticsEmptyState>No device data yet.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                  <div className="panel">
+                    <h3>Browser breakdown</h3>
+                    <div className="audience-breakdown-grid">
+                      {analyticsStats.browserBreakdown.map((item) => <p className="breakdown-row" key={item.label}><span>{item.label}</span><b>{compactNumber(item.count)}</b></p>)}
+                      {!analyticsStats.browserBreakdown.length ? <AnalyticsEmptyState>No browser data yet.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="panel">
+                  <h3>Active sessions</h3>
+                  <div className="analytics-card-list">
+                    {analyticsStats.activeSessions.slice(0, 12).map((session) => (
+                      <article className="analytics-list-card" key={session.id}>
+                        <strong>{session.user_id ? `User ${session.user_id.slice(0, 8)}` : shortGuestId(session.anonymous_session_id)}</strong>
+                        <span className="analytics-path">{cleanPath(session.current_page)}</span>
+                        <span>{session.device_type || "device"} / {session.browser_name || "browser"}</span>
+                        <span>{formatTimeAgo(session.last_seen_at)}</span>
+                      </article>
+                    ))}
+                    {!analyticsStats.activeSessions.length ? <AnalyticsEmptyState>No active sessions in the last 5 minutes.</AnalyticsEmptyState> : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {analyticsTab === "traffic" ? (
+              <div className="analytics-tab-panel">
+                <div className="form-grid two">
+                  <div className="panel">
+                    <h3>Top Pages</h3>
+                    <div className="analytics-card-list compact-list">
+                      {analyticsStats.topPages.map((page) => (
+                        <article className="analytics-list-card" key={page.path}>
+                          <strong className="analytics-path">{cleanPath(page.path)}</strong>
+                          <span>{compactNumber(page.views)} views</span>
+                          <span>{compactNumber(page.uniqueSessions)} unique sessions</span>
+                          <span>{formatTimeAgo(page.last)}</span>
+                        </article>
+                      ))}
+                      {!analyticsStats.topPages.length ? <AnalyticsEmptyState>No page views tracked yet.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                  <div className="panel">
+                    <h3>Recent Page Views</h3>
+                    <div className="analytics-card-list compact-list">
+                      {analyticsStats.recentPageViews.map((event) => (
+                        <article className="analytics-list-card" key={event.id}>
+                          <strong className="analytics-path">{cleanPath(event.page_path)}</strong>
+                          <span>{event.device_type || "device"} / {event.browser_name || "browser"}</span>
+                          <span>{formatTimeAgo(event.created_at)}</span>
+                        </article>
+                      ))}
+                      {!analyticsStats.recentPageViews.length ? <AnalyticsEmptyState>No recent page views.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="form-grid two">
+                  <div className="panel">
+                    <h3>Referrers</h3>
+                    <div className="analytics-card-list compact-list">
+                      {analyticsStats.topReferrers.map((item) => (
+                        <article className="analytics-list-card" key={item.referrer}>
+                          <strong className="analytics-path">{cleanPath(item.referrer)}</strong>
+                          <span>{compactNumber(item.views)} referred views</span>
+                          <span>{formatTimeAgo(item.last)}</span>
+                        </article>
+                      ))}
+                      {!analyticsStats.topReferrers.length ? <AnalyticsEmptyState>No referrers tracked yet.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                  <div className="panel">
+                    <h3>Entry Pages</h3>
+                    <div className="analytics-card-list compact-list">
+                      {analyticsStats.entryPages.map((page) => (
+                        <article className="analytics-list-card" key={page.path}>
+                          <strong className="analytics-path">{cleanPath(page.path)}</strong>
+                          <span>{compactNumber(page.entries)} entries</span>
+                        </article>
+                      ))}
+                      {!analyticsStats.entryPages.length ? <AnalyticsEmptyState>No entry page data yet.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {analyticsTab === "search" ? (
+              <div className="analytics-tab-panel">
+                <div className="form-grid two">
+                  <div className="panel">
+                    <h3>Top Search Queries</h3>
+                    <div className="analytics-card-list compact-list">
+                      {analyticsStats.topSearches.map((search) => (
+                        <article className="analytics-list-card" key={search.query}>
+                          <strong>{search.query}</strong>
+                          <span>{compactNumber(search.count)} searches</span>
+                          <span>{formatTimeAgo(search.last)}</span>
+                        </article>
+                      ))}
+                      {!analyticsStats.topSearches.length ? <AnalyticsEmptyState>No searches tracked yet. Try searching from the public site.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                  <div className="panel">
+                    <h3>Recent Searches</h3>
+                    <div className="analytics-card-list compact-list">
+                      {analyticsStats.recentSearches.map((event) => (
+                        <article className="analytics-list-card" key={event.id}>
+                          <strong>{event.search_query || "Unknown search"}</strong>
+                          <span>{resultCountLabel(event.metadata)} results</span>
+                          <span>{formatTimeAgo(event.created_at)}</span>
+                        </article>
+                      ))}
+                      {!analyticsStats.recentSearches.length ? <AnalyticsEmptyState>No recent searches.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {analyticsTab === "platforms" ? (
+              <div className="analytics-tab-panel">
+                <div className="form-grid two">
+                  <div className="panel">
+                    <h3>Top Watch Platforms</h3>
+                    <div className="analytics-card-list compact-list">
+                      {analyticsStats.platformClicks.map((item) => (
+                        <article className="analytics-list-card" key={item.platform}>
+                          <strong>{cleanPlatformName(item.platform)}</strong>
+                          <span>{compactNumber(item.clicks)} clicks</span>
+                          <span>{item.movies.join(", ") || "Multiple titles"}</span>
+                          <span>{formatTimeAgo(item.last)}</span>
+                        </article>
+                      ))}
+                      {!analyticsStats.platformClicks.length ? <AnalyticsEmptyState>No platform clicks yet.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                  <div className="panel">
+                    <h3>Recent Link Clicks</h3>
+                    <div className="analytics-card-list compact-list">
+                      {analyticsStats.recentPlatformClicks.map((event) => {
+                        const movie = movies.find((item) => item.id === event.movie_id || item.slug === event.movie_slug);
+                        return (
+                          <article className="analytics-list-card" key={event.id}>
+                            <strong>{cleanPlatformName(event.platform_name)}</strong>
+                            <span>{movie?.title || event.movie_slug || "No movie attached"}</span>
+                            <span>{formatTimeAgo(event.created_at)}</span>
+                          </article>
+                        );
+                      })}
+                      {!analyticsStats.recentPlatformClicks.length ? <AnalyticsEmptyState>No recent link clicks.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {analyticsTab === "live" ? (
+              <div className="analytics-tab-panel">
+                <div className="analytics-metric-grid compact">
+                  <AnalyticsMetricCard icon={<Radio size={17} />} label="Active Users Now" value={compactNumber(analyticsStats.activeSessions.length)} note="Last 5 minutes" />
+                  <AnalyticsMetricCard icon={<BarChart3 size={17} />} label="Live Pages" value={compactNumber(analyticsStats.activePages.length)} note="Pages active in last 5 minutes" />
+                </div>
+                <div className="form-grid two">
+                  <div className="panel">
+                    <div className="section-head">
+                      <div>
+                        <h3>Live pages</h3>
+                        <p className="muted">Where active users are right now.</p>
+                      </div>
+                      <button className="button" type="button" onClick={() => router.refresh()}>Refresh</button>
+                    </div>
+                    <div className="analytics-card-list compact-list">
+                      {analyticsStats.activePages.map((page) => (
+                        <article className="analytics-list-card" key={page.path}>
+                          <strong className="analytics-path">{cleanPath(page.path)}</strong>
+                          <span>{compactNumber(page.count)} active</span>
+                        </article>
+                      ))}
+                      {!analyticsStats.activePages.length ? <AnalyticsEmptyState>No live pages right now.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                  <div className="panel">
+                    <h3>Recent Activity Feed</h3>
+                    <div className="analytics-card-list compact-list">
+                      {analyticsStats.recentEvents.slice(0, 14).map((event) => {
+                        const movie = movies.find((item) => item.id === event.movie_id || item.slug === event.movie_slug);
+                        return (
+                          <article className="analytics-list-card" key={event.id}>
+                            <strong>{readableEventType(event.event_type)}</strong>
+                            <span>{movie?.title || cleanPath(event.page_path) || event.search_query || "WatchFinder"}</span>
+                            <span>{event.device_type || "device"} / {formatTimeAgo(event.created_at)}</span>
+                          </article>
+                        );
+                      })}
+                      {!analyticsStats.recentEvents.length ? <AnalyticsEmptyState>No recent events in this range.</AnalyticsEmptyState> : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {analyticsTab === "debug" ? (
+              <div className="analytics-tab-panel">
+                <div className="panel analytics-debug-panel">
+                  <div>
+                    <h3>Analytics Debug</h3>
+                    <p className="muted">Technical checks live here so the main dashboard stays clean.</p>
+                  </div>
+                  <div className="analytics-metric-grid compact">
+                    <AnalyticsMetricCard icon={<Bug size={17} />} label="Total Events" value={compactNumber(analytics.debug?.eventsCount ?? analytics.events.length)} />
+                    <AnalyticsMetricCard icon={<Bug size={17} />} label="Total Sessions" value={compactNumber(analytics.debug?.sessionsCount ?? analytics.sessions.length)} />
+                    <AnalyticsMetricCard icon={<Activity size={17} />} label="Last Event" value={analytics.debug?.lastEventAt ? formatTimeAgo(analytics.debug.lastEventAt) : "None"} />
+                    <AnalyticsMetricCard icon={<Activity size={17} />} label="Last Event Type" value={readableEventType(analytics.debug?.lastEventType)} />
+                    <AnalyticsMetricCard icon={<Activity size={17} />} label="Last Session" value={analytics.debug?.lastSessionAt ? formatTimeAgo(analytics.debug.lastSessionAt) : "None"} />
+                  </div>
+                  <div className="chip-row">
+                    <button className="button primary" type="button" onClick={sendTestAnalyticsEvent}>
+                      <Activity size={16} /> Send Test Analytics Event
+                    </button>
+                    {analyticsTestMessage ? <span className="chip active">{analyticsTestMessage}</span> : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        {false && activeSection === "analytics" ? (
           <section className="section analytics-dashboard">
             <div className="section-head analytics-hero-head">
               <div>
@@ -695,7 +1297,7 @@ export default function AdminDashboard({
                 <strong>Analytics query failed.</strong>
                 <p>Analytics query failed. Check Supabase RLS or analytics table policies.</p>
                 <div className="meta-line">
-                  {analytics.debug.errors.map((error) => (
+                  {analytics.debug?.errors?.map((error) => (
                     <span key={error}>{error}</span>
                   ))}
                 </div>
@@ -938,9 +1540,9 @@ export default function AdminDashboard({
               <div className="analytics-metric-grid compact">
                 <AnalyticsMetricCard label="Total events" value={compactNumber(analytics.debug?.eventsCount ?? analytics.events.length)} />
                 <AnalyticsMetricCard label="Total sessions" value={compactNumber(analytics.debug?.sessionsCount ?? analytics.sessions.length)} />
-                <AnalyticsMetricCard label="Last event" value={analytics.debug?.lastEventAt ? formatTimeAgo(analytics.debug.lastEventAt) : "None"} />
+                <AnalyticsMetricCard label="Last event" value={analytics.debug?.lastEventAt ? formatTimeAgo(analytics.debug?.lastEventAt) : "None"} />
                 <AnalyticsMetricCard label="Last event type" value={analytics.debug?.lastEventType || "None"} />
-                <AnalyticsMetricCard label="Last session" value={analytics.debug?.lastSessionAt ? formatTimeAgo(analytics.debug.lastSessionAt) : "None"} />
+                <AnalyticsMetricCard label="Last session" value={analytics.debug?.lastSessionAt ? formatTimeAgo(analytics.debug?.lastSessionAt) : "None"} />
               </div>
               <div className="chip-row">
                 <button className="button primary" type="button" onClick={sendTestAnalyticsEvent}>
