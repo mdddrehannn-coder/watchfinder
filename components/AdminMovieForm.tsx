@@ -499,6 +499,7 @@ export default function AdminMovieForm({
 
     if (hasLicensedVideo) {
       if (!videoProvider) return "Video provider is required for licensed video.";
+      if (videoProvider === "external_ott_link") return "External OTT Link is not playable inside WatchFinder. Turn off Has licensed video and add it as an Official Watch Link.";
       if (!toNullableString(form.get("video_embed_url")) && !toNullableString(form.get("video_id"))) {
         return "Video embed URL or video ID is required for licensed video.";
       }
@@ -662,6 +663,8 @@ export default function AdminMovieForm({
     if (platform && isExternalOnlyPlatform(platform) && !firstPlatformLink?.watch_url) {
       setWatchLinkType("platform_search");
       setHasLicensedVideo(false);
+      setVideoProvider("external_ott_link");
+    } else if (videoProvider === "external_ott_link") {
       setVideoProvider("");
     }
   }
@@ -711,7 +714,7 @@ export default function AdminMovieForm({
         seo_description: toNullableString(form.get("seo_description")),
         og_image_url: toNullableString(form.get("og_image_url")),
         has_licensed_video: hasLicensedVideo,
-        video_provider: hasLicensedVideo ? videoProvider : null,
+        video_provider: hasLicensedVideo ? videoProvider : selectedPlatformIsExternalOnly ? "external_ott_link" : null,
         video_embed_url: hasLicensedVideo ? toNullableString(form.get("video_embed_url")) : null,
         video_id: hasLicensedVideo ? toNullableString(form.get("video_id")) : null,
         license_type: hasLicensedVideo ? licenseType : null,
@@ -1174,7 +1177,7 @@ export default function AdminMovieForm({
         </div>
       </FormSection>
 
-      <FormSection title="Official Watch Link" helper="Optional. Add only official legal platform links. OTT platforms like JioHotstar, Netflix, Prime Video may not allow embedded playback. Add an official watch page or platform/search link instead.">
+      <FormSection title="Official Watch Link" helper="Optional. Add only official legal platform links. OTT platforms like JioHotstar, Netflix and Prime Video usually do not allow embedded playback. Add the official watch page, app link, home page, or platform/search link instead.">
         <div className="form-grid two">
           <div className="field"><label>Official Platform</label><select name="platform_id" value={selectedPlatformId} onChange={(event) => updateOfficialPlatform(event.target.value)}><option value="">Select platform</option>{platforms.map((platform) => <option value={platform.id} key={platform.id}>{platform.name}</option>)}</select></div>
           <div className="field"><label>Watch URL</label><input name="watch_url" placeholder="Optional exact title, search, home, or app link" defaultValue={firstPlatformLink?.watch_url ?? ""} /></div>
@@ -1252,10 +1255,11 @@ export default function AdminMovieForm({
       <FormSection title="Licensed Video" helper="Optional. Leave this off for normal discovery pages with trailers and official watch links.">
         <label className="chip"><input checked={hasLicensedVideo} onChange={(event) => setHasLicensedVideo(event.target.checked)} name="has_licensed_video" type="checkbox" /> Has licensed video</label>
         {hasLicensedVideo ? <p className="legal-badge">Only use videos you own or have written permission to distribute. Do not upload pirated movies.</p> : null}
+        <p className="form-helper">Video Provider choices are for playable video inside WatchFinder only. Use External OTT Link / No playable video for JioHotstar, Netflix, Prime Video and other platforms that open on their official app/site.</p>
         {hasLicensedVideo ? (
           <>
             <div className="form-grid two">
-              <div className="field"><label>Video Provider <span className="required">*</span></label><select name="video_provider" value={videoProvider} onChange={(event) => setVideoProvider(event.target.value)}><option value="">None</option><option value="cloudflare_stream">Cloudflare Stream</option><option value="vimeo">Vimeo</option><option value="youtube_embed">YouTube Embed</option><option value="supabase_storage_small_video">Supabase small video</option><option value="external_legal_embed">External legal embed</option></select></div>
+              <div className="field"><label>Video Provider <span className="required">*</span></label><select name="video_provider" value={videoProvider} onChange={(event) => setVideoProvider(event.target.value)}><option value="">No playable video</option><option value="youtube_embed">YouTube Embed</option><option value="external_legal_embed">Official Embed URL</option><option value="external_ott_link">External OTT Link</option><option value="cloudflare_stream">Cloudflare Stream</option><option value="vimeo">Vimeo</option><option value="supabase_storage_small_video">Supabase small video</option></select></div>
               <div className="field"><label>Video Embed URL</label><input name="video_embed_url" defaultValue={initialMovie?.video_embed_url ?? ""} /></div>
               <div className="field"><label>Video ID</label><input name="video_id" defaultValue={initialMovie?.video_id ?? ""} /></div>
               <div className="field"><label>License Type <span className="required">*</span></label><select name="license_type" value={licenseType} onChange={(event) => setLicenseType(event.target.value)}><option value="">Select</option><option value="self_owned">Self owned</option><option value="creator_permission">Creator permission</option><option value="public_domain">Public domain</option><option value="purchased_license">Purchased license</option></select></div>

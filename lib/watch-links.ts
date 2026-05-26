@@ -155,14 +155,18 @@ export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
   const platformName = link.platforms?.name || "Official platform";
   const linkType = normalizeWatchLinkType(link.link_type);
   const exactUrl = link.watch_url?.trim();
+  const externalOnly = isExternalOnlyPlatform(link.platforms);
 
   if (exactUrl) {
     return {
       url: exactUrl,
       label: linkType === "app_deeplink" ? `Open in ${platformName}` : `Watch on ${platformName}`,
-      note: link.notes || "Opens the official title page or app link.",
+      note: link.notes || (externalOnly
+        ? `${platformName} playback opens on the official app/site. WatchFinder does not host or embed OTT videos.`
+        : "Opens the official title page or app link."),
       type: linkType,
-      platformName
+      platformName,
+      externalOnly
     };
   }
 
@@ -172,10 +176,11 @@ export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
   if (linkType === "platform_search" && searchUrl) {
     return {
       url: searchUrl,
-      label: `Search on ${platformName}`,
+      label: externalOnly ? `Open ${platformName}` : `Search on ${platformName}`,
       note: link.notes || `Search this title on ${platformName}. Exact title link is not available.`,
       type: linkType,
-      platformName
+      platformName,
+      externalOnly
     };
   }
 
@@ -185,7 +190,8 @@ export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
       label: `Open ${platformName}`,
       note: link.notes || `Search this title on ${platformName}. Exact title link is not available.`,
       type: "platform_home" as WatchLinkType,
-      platformName
+      platformName,
+      externalOnly
     };
   }
 
@@ -194,6 +200,7 @@ export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
     label: `Open ${platformName}`,
     note: link.notes || `Exact title link is not available. Search this title on ${platformName}.`,
     type: linkType,
-    platformName
+    platformName,
+    externalOnly
   };
 }

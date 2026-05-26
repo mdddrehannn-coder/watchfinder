@@ -22,7 +22,7 @@ import {
 } from "@/lib/data";
 import { movieAvailabilityTypes, movieQualities, movieSmartBadges, readableAvailability } from "@/lib/discovery";
 import { formatDuration, formatType, getYouTubeEmbedUrl } from "@/lib/format";
-import { isKnownExternalWatchPageUrl } from "@/lib/watch-links";
+import { isExternalOnlyPlatform, isKnownExternalWatchPageUrl } from "@/lib/watch-links";
 
 export async function generateMetadata({
   params
@@ -58,21 +58,24 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
   ]);
 
   const hasProof = licenseDocuments.length > 0;
-  const legalVideoSource = movie.video_embed_url || movie.video_id;
+  const hasExternalOttLink = Boolean(movie.movie_platform_links?.some((link) => link.is_active !== false && isExternalOnlyPlatform(link.platforms)));
+  const legalEmbedUrl = movie.video_embed_url && !isKnownExternalWatchPageUrl(movie.video_embed_url) ? movie.video_embed_url : null;
+  const legalVideoSource = legalEmbedUrl || movie.video_id;
+  const playableVideoProvider = movie.video_provider === "external_ott_link" ? null : movie.video_provider;
   const canShowLicensedVideo = Boolean(
     movie.has_licensed_video &&
       legalVideoSource &&
       hasProof &&
-      movie.video_provider &&
+      playableVideoProvider &&
       movie.license_type &&
       movie.license_owner_name
   );
   const qualities = movieQualities(movie);
   const availabilityTypes = movieAvailabilityTypes(movie);
   const allBadges = movieSmartBadges(movie);
-  const modalProvider = movie.video_provider || movie.trailer_provider || "youtube";
+  const modalProvider = playableVideoProvider || movie.trailer_provider || "youtube";
   const hasPlayableModalSource = Boolean(
-    (movie.video_embed_url && !isKnownExternalWatchPageUrl(movie.video_embed_url)) ||
+    (playableVideoProvider && legalEmbedUrl) ||
       getYouTubeEmbedUrl(movie.trailer_url)
   );
 
@@ -92,7 +95,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
             <TrailerModalTrigger
               className="detail-poster"
               trailerUrl={movie.trailer_url}
-              videoEmbedUrl={movie.video_embed_url}
+              videoEmbedUrl={playableVideoProvider ? legalEmbedUrl : null}
               movieId={movie.id}
               movieSlug={movie.slug}
               provider={modalProvider}
@@ -144,7 +147,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
                 <TrailerModalTrigger
                   className="button primary watch-trailer-action"
                   trailerUrl={movie.trailer_url}
-                  videoEmbedUrl={movie.video_embed_url}
+                  videoEmbedUrl={playableVideoProvider ? legalEmbedUrl : null}
                   movieId={movie.id}
                   movieSlug={movie.slug}
                   provider={modalProvider}
@@ -173,19 +176,24 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
               {movie.license_owner_name ? <span className="platform-badge">{movie.license_owner_name}</span> : null}
             </div>
           ) : (
-            <p className="muted">Trailer-only listing. WatchFinder does not host unauthorized movies. Use official links below.</p>
+            <p className="muted">
+              Trailer-only listing. WatchFinder does not host unauthorized movies. Use official links below.
+              {hasExternalOttLink ? " OTT playback opens on the official app/site; WatchFinder does not embed JioHotstar, Netflix, Prime Video, or other DRM OTT videos." : ""}
+            </p>
           )}
         </div>
       </section>
 
       <WatchLinks links={movie.movie_platform_links} movie={{ id: movie.id, slug: movie.slug }} title={movie.title} />
-      <TrailerPlayer
-        trailerUrl={movie.trailer_url}
-        movieId={movie.id}
-        movieSlug={movie.slug}
-        provider={movie.trailer_provider || "youtube"}
-        title={movie.title}
-      />
+      {getYouTubeEmbedUrl(movie.trailer_url) ? (
+        <TrailerPlayer
+          trailerUrl={movie.trailer_url}
+          movieId={movie.id}
+          movieSlug={movie.slug}
+          provider={movie.trailer_provider || "youtube"}
+          title={movie.title}
+        />
+      ) : null}
       <PromotionBanner promotion={middlePromos[0]} />
       <AdSlot slot={middleAds[0]} />
       <LicensedVideoPlayer movie={movie} hasProof={hasProof} />

@@ -51,6 +51,11 @@ export default function WatchLinks({
                 ))}
               </span>
               <span className="watch-link-note">{target.note}</span>
+              {target.externalOnly ? (
+                <span className="watch-link-note ott-external-note">
+                  This opens outside WatchFinder on the official app/site.
+                </span>
+              ) : null}
               <span className={target.url ? "button primary watch-link-button" : "button ghost watch-link-button disabled"}>
                 {target.label}
               </span>
