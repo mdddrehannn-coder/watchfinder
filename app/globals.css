@@ -2839,6 +2839,13 @@ html.theme-light .relation-chip {
   text-decoration: none;
 }
 
+.watch-link-card-button {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
 html.theme-light .watch-link-card {
   background: rgba(255, 255, 255, 0.86);
 }
@@ -2919,7 +2926,7 @@ html.theme-light .in-app-browser-page {
 
 .in-app-browser-topbar {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  grid-template-columns: auto minmax(0, 1fr) repeat(4, auto);
   gap: 0.55rem;
   align-items: center;
   padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) 0.75rem max(0.75rem, env(safe-area-inset-left));

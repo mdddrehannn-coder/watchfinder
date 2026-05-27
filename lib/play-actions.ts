@@ -72,7 +72,12 @@ export function resolveMoviePlayAction(movie: Movie): ResolvedPlayAction {
           platformName: target.platformName,
           title: movie.title,
           url: target.url,
-          movieSlug: movie.slug
+          movieSlug: movie.slug,
+          appRequired: target.appRequired,
+          appUrl: target.appUrl,
+          appStoreUrl: target.appStoreUrl,
+          playStoreUrl: target.playStoreUrl,
+          fallbackNote: target.fallbackNote
         })
         : target.url,
       label: target.label,
@@ -88,4 +93,3 @@ export function resolveMoviePlayAction(movie: Movie): ResolvedPlayAction {
     note: "No official trailer or watch link available yet."
   };
 }
-

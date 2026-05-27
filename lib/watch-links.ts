@@ -26,6 +26,10 @@ export const availabilityLabels: Record<string, string> = {
   unknown: "Unknown"
 };
 
+export function isAppRequiredLink(link: MoviePlatformLink) {
+  return Boolean(link.app_required) || link.mobile_web_supported === "no";
+}
+
 type PlatformFallback = {
   home: string;
   search?: string;
@@ -157,21 +161,31 @@ export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
   const linkType = normalizeWatchLinkType(link.link_type);
   const exactUrl = (linkType === "app_deeplink" ? link.app_deeplink || link.watch_url : link.watch_url)?.trim();
   const externalOnly = isExternalOnlyPlatform(link.platforms);
+  const appRequired = Boolean(link.app_required);
   const openMode = linkType === "app_deeplink"
     ? "external"
+    : appRequired
+      ? "in_app_browser"
     : shouldUseInAppBrowser(link.platforms, link.open_mode) ? "in_app_browser" : "external";
 
   if (exactUrl) {
     return {
       url: exactUrl,
-      label: openMode === "in_app_browser" ? "Open in WatchFinder" : linkType === "app_deeplink" ? `Open in ${platformName}` : `Watch on ${platformName}`,
-      note: link.notes || (externalOnly
+      label: appRequired ? `Open ${platformName} App` : openMode === "in_app_browser" ? "Open in WatchFinder" : linkType === "app_deeplink" ? `Open in ${platformName}` : `Watch on ${platformName}`,
+      note: link.fallback_note || link.notes || (appRequired
+        ? `This title is not supported on mobile web playback. Continue in the official ${platformName} app.`
+        : externalOnly
         ? `${platformName} playback opens on the official app/site. WatchFinder does not host or embed OTT videos.`
         : "Opens the official title page or app link."),
       type: linkType,
       platformName,
       externalOnly,
-      openMode
+      openMode,
+      appRequired,
+      appUrl: link.app_deeplink || exactUrl,
+      appStoreUrl: link.app_store_url,
+      playStoreUrl: link.play_store_url,
+      fallbackNote: link.fallback_note
     };
   }
 
@@ -186,7 +200,12 @@ export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
       type: linkType,
       platformName,
       externalOnly,
-      openMode
+      openMode,
+      appRequired,
+      appUrl: link.app_deeplink || searchUrl,
+      appStoreUrl: link.app_store_url,
+      playStoreUrl: link.play_store_url,
+      fallbackNote: link.fallback_note
     };
   }
 
@@ -198,7 +217,12 @@ export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
       type: "platform_home" as WatchLinkType,
       platformName,
       externalOnly,
-      openMode
+      openMode,
+      appRequired,
+      appUrl: link.app_deeplink || homeUrl,
+      appStoreUrl: link.app_store_url,
+      playStoreUrl: link.play_store_url,
+      fallbackNote: link.fallback_note
     };
   }
 
@@ -209,6 +233,11 @@ export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
     type: linkType,
     platformName,
     externalOnly,
-    openMode
+    openMode,
+    appRequired,
+    appUrl: link.app_deeplink,
+    appStoreUrl: link.app_store_url,
+    playStoreUrl: link.play_store_url,
+    fallbackNote: link.fallback_note
   };
 }

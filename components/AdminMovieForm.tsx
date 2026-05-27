@@ -52,6 +52,12 @@ const OPEN_MODE_OPTIONS = [
   { label: "External", value: "external" }
 ];
 
+const PLAYBACK_SUPPORT_OPTIONS = [
+  { label: "Unknown", value: "unknown" },
+  { label: "Yes", value: "yes" },
+  { label: "No / App required", value: "no" }
+];
+
 const VIDEO_PROVIDER_OPTIONS = [
   { label: "Direct Video URL", value: "direct" },
   { label: "YouTube", value: "youtube" },
@@ -73,6 +79,11 @@ function normalizeVideoProvider(value?: string | null) {
   if (provider === "external_ott_link" || provider === "cloudflare_stream" || provider === "supabase_storage_small_video") return "direct";
   if (VIDEO_PROVIDER_OPTIONS.some((option) => option.value === provider)) return provider;
   return "direct";
+}
+
+function normalizePlaybackSupport(value?: string | null) {
+  const support = String(value || "").trim().toLowerCase();
+  return support === "yes" || support === "no" ? support : "unknown";
 }
 
 function toNullableString(value: FormDataEntryValue | null) {
@@ -419,6 +430,13 @@ export default function AdminMovieForm({
   const [availabilityType, setAvailabilityType] = useState(firstPlatformLink?.availability_type ?? "subscription");
   const [watchLinkType, setWatchLinkType] = useState(normalizeWatchLinkType(firstPlatformLink?.link_type));
   const [openMode, setOpenMode] = useState(firstPlatformLink?.open_mode ?? "in_app_browser");
+  const [mobileWebSupported, setMobileWebSupported] = useState(normalizePlaybackSupport(firstPlatformLink?.mobile_web_supported));
+  const [desktopWebSupported, setDesktopWebSupported] = useState(normalizePlaybackSupport(firstPlatformLink?.desktop_web_supported));
+  const [appRequired, setAppRequired] = useState(Boolean(firstPlatformLink?.app_required));
+  const [appDeeplink, setAppDeeplink] = useState(firstPlatformLink?.app_deeplink ?? "");
+  const [appStoreUrl, setAppStoreUrl] = useState(firstPlatformLink?.app_store_url ?? "");
+  const [playStoreUrl, setPlayStoreUrl] = useState(firstPlatformLink?.play_store_url ?? "");
+  const [fallbackNote, setFallbackNote] = useState(firstPlatformLink?.fallback_note ?? "");
   const [watchLinkNotes, setWatchLinkNotes] = useState(firstPlatformLink?.notes ?? "");
   const firstChannelType = initialMovie?.content_channels?.[0]?.channel_type;
   const [selectedChannelType, setSelectedChannelType] = useState<"" | "cartoon" | "tv_show">(
@@ -468,6 +486,13 @@ export default function AdminMovieForm({
     setAvailabilityType(link?.availability_type ?? "subscription");
     setWatchLinkType(normalizeWatchLinkType(link?.link_type));
     setOpenMode(link?.open_mode ?? "in_app_browser");
+    setMobileWebSupported(normalizePlaybackSupport(link?.mobile_web_supported));
+    setDesktopWebSupported(normalizePlaybackSupport(link?.desktop_web_supported));
+    setAppRequired(Boolean(link?.app_required));
+    setAppDeeplink(link?.app_deeplink ?? "");
+    setAppStoreUrl(link?.app_store_url ?? "");
+    setPlayStoreUrl(link?.play_store_url ?? "");
+    setFallbackNote(link?.fallback_note ?? "");
     setWatchLinkNotes(link?.notes ?? "");
     const nextChannelType = initialMovie?.content_channels?.[0]?.channel_type;
     setSelectedChannelType(nextChannelType === "cartoon" || nextChannelType === "tv_show" ? nextChannelType : "");
@@ -630,6 +655,13 @@ export default function AdminMovieForm({
     setAvailabilityType("subscription");
     setWatchLinkType("direct_title_page");
     setOpenMode("in_app_browser");
+    setMobileWebSupported("unknown");
+    setDesktopWebSupported("unknown");
+    setAppRequired(false);
+    setAppDeeplink("");
+    setAppStoreUrl("");
+    setPlayStoreUrl("");
+    setFallbackNote("");
     setWatchLinkNotes("");
     setSelectedChannelType("");
     setSelectedChannelIds([]);
@@ -694,11 +726,44 @@ export default function AdminMovieForm({
     if (platform && isExternalOnlyPlatform(platform) && !firstPlatformLink?.watch_url) {
       setWatchLinkType("platform_search");
       setOpenMode("in_app_browser");
+      setMobileWebSupported("unknown");
+      setDesktopWebSupported("unknown");
+      setAppRequired(false);
       setHasLicensedVideo(false);
       setVideoProvider("direct");
     } else {
       setVideoProvider((current) => normalizeVideoProvider(current));
     }
+  }
+
+  async function markSelectedPlatformAppRequired() {
+    setAppRequired(true);
+    setMobileWebSupported("no");
+    setFallbackNote((current) => current || "This title is not supported on mobile web playback. Continue in the official app.");
+
+    if (!firstPlatformLink?.id) {
+      setHelperMessage("Marked as app required. Save the movie to apply this to the watch link.");
+      window.setTimeout(() => setHelperMessage(null), 3500);
+      return;
+    }
+
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase
+        .from("movie_platform_links")
+        .update({
+          app_required: true,
+          mobile_web_supported: "no",
+          fallback_note: fallbackNote || "This title is not supported on mobile web playback. Continue in the official app."
+        })
+        .eq("id", firstPlatformLink.id);
+
+      if (error) throw error;
+      setHelperMessage("Marked as App Required. Public pages will show the app fallback after refresh.");
+    } catch (error) {
+      setHelperMessage(error instanceof Error ? error.message : "Could not mark this link as app required.");
+    }
+    window.setTimeout(() => setHelperMessage(null), 4500);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -870,7 +935,13 @@ export default function AdminMovieForm({
           watch_url: watchUrl,
           platform_home_url: toNullableString(form.get("platform_home_url")),
           platform_search_url: toNullableString(form.get("platform_search_url")),
-          app_deeplink: toNullableString(form.get("app_deeplink")),
+          app_deeplink: toNullableString(appDeeplink),
+          app_store_url: toNullableString(appStoreUrl),
+          play_store_url: toNullableString(playStoreUrl),
+          fallback_note: toNullableString(fallbackNote),
+          mobile_web_supported: mobileWebSupported,
+          desktop_web_supported: desktopWebSupported,
+          app_required: appRequired,
           link_type: savedWatchLinkType,
           open_mode: openMode,
           availability_type: availabilityType,
@@ -1219,14 +1290,30 @@ export default function AdminMovieForm({
           <div className="field"><label>Watch URL</label><input name="watch_url" placeholder="Optional exact title, search, home, or app link" defaultValue={firstPlatformLink?.watch_url ?? ""} /></div>
           <div className="field"><label>Platform Home URL</label><input name="platform_home_url" placeholder="Optional official home page fallback" defaultValue={firstPlatformLink?.platform_home_url ?? ""} /></div>
           <div className="field"><label>Platform Search URL</label><input name="platform_search_url" placeholder="Optional official search result URL" defaultValue={firstPlatformLink?.platform_search_url ?? ""} /></div>
-          <div className="field"><label>App Deeplink</label><input name="app_deeplink" placeholder="Optional official app deeplink" defaultValue={firstPlatformLink?.app_deeplink ?? ""} /></div>
+          <div className="field"><label>App Deep Link</label><input name="app_deeplink" placeholder="Optional official app/web deeplink" value={appDeeplink} onChange={(event) => setAppDeeplink(event.target.value)} /></div>
           <div className="field"><label>Open Mode</label><select name="open_mode" value={openMode} onChange={(event) => setOpenMode(event.target.value)}>{OPEN_MODE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+          <div className="field"><label>Mobile Web Supported</label><select value={mobileWebSupported} onChange={(event) => setMobileWebSupported(normalizePlaybackSupport(event.target.value))}>{PLAYBACK_SUPPORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+          <div className="field"><label>Desktop Web Supported</label><select value={desktopWebSupported} onChange={(event) => setDesktopWebSupported(normalizePlaybackSupport(event.target.value))}>{PLAYBACK_SUPPORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+          <div className="field"><label>Play Store Link</label><input value={playStoreUrl} onChange={(event) => setPlayStoreUrl(event.target.value)} placeholder="Optional Android app listing" /></div>
+          <div className="field"><label>App Store Link</label><input value={appStoreUrl} onChange={(event) => setAppStoreUrl(event.target.value)} placeholder="Optional iOS app listing" /></div>
         </div>
         {selectedPlatformIsExternalOnly ? (
           <p className="form-message info">
             {selectedPlatform?.name} is treated as an external legal platform. OTT platforms may block embedded playback. WatchFinder opens the official page inside an in-app browser when possible, with fallback to official app/site.
           </p>
         ) : null}
+        <div className="option-group compact-options">
+          <label className="option-card">
+            <input checked={appRequired} onChange={(event) => setAppRequired(event.target.checked)} type="checkbox" />
+            <span>App Required</span>
+            <small>Use when mobile web playback is blocked by the platform.</small>
+          </label>
+          {selectedPlatformIsExternalOnly ? (
+            <button className="button ghost" type="button" onClick={markSelectedPlatformAppRequired}>
+              Mark as App Required
+            </button>
+          ) : null}
+        </div>
         <div className="field">
           <label>Link Type</label>
           <div className="option-group compact-options">
@@ -1256,6 +1343,14 @@ export default function AdminMovieForm({
             value={watchLinkNotes}
             onChange={(event) => setWatchLinkNotes(event.target.value)}
             placeholder="Example: Exact title link is not available. Search this title on JioHotstar."
+          />
+        </div>
+        <div className="field">
+          <label>Fallback Note</label>
+          <textarea
+            value={fallbackNote}
+            onChange={(event) => setFallbackNote(event.target.value)}
+            placeholder="Example: This title is not supported on mobile web playback. Continue in the official JioHotstar app."
           />
         </div>
         <div className="field">

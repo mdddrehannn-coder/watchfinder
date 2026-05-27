@@ -86,6 +86,18 @@ function statusClass(status?: string | null) {
   return "status-badge status-draft";
 }
 
+function isJioHotstarPlatformName(value?: string | null) {
+  const normalized = String(value || "").toLowerCase().replace(/\+/g, "plus").replace(/[^a-z0-9]+/g, "-");
+  return ["hotstar", "jiohotstar", "jio-hotstar", "disney-hotstar", "disney-plus-hotstar"].some((token) => normalized.includes(token));
+}
+
+function hasJioHotstarAppRequiredWarning(movie: Movie) {
+  return Boolean(movie.movie_platform_links?.some((link) => {
+    const platformText = `${link.platforms?.name || ""} ${link.platforms?.slug || ""}`;
+    return isJioHotstarPlatformName(platformText) && (link.app_required || link.mobile_web_supported === "no");
+  }));
+}
+
 function normalizeAdminMovie(row: any): Movie {
   return {
     ...row,
@@ -1049,6 +1061,9 @@ export default function AdminDashboard({
                         <span className={visibility.visibleOnHomepageSlider ? "legal-badge" : "status-badge status-draft"}>
                           Homepage: {visibility.homepageReasons.join(", ")}
                         </span>
+                        {hasJioHotstarAppRequiredWarning(movie) ? (
+                          <span className="status-badge status-draft">JioHotstar App Required</span>
+                        ) : null}
                         {visibility.warnings.map((warning) => <span className="status-badge status-draft" key={warning}>{warning}</span>)}
                       </div>
                       {analyticsStats.movieStatsById.get(movie.id) ? (

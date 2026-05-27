@@ -34,7 +34,7 @@ function ottBehavior(hosts: string[]): PlatformBehavior {
   return {
     internalMode: "in_app_browser_try",
     fallback: "external_official",
-    allowIframe: false,
+    allowIframe: true,
     knownBlocksIframe: true,
     allowedHosts: hosts
   };
@@ -74,13 +74,23 @@ export function buildInAppBrowserHref({
   platformName,
   title,
   url,
-  movieSlug
+  movieSlug,
+  appRequired,
+  appUrl,
+  appStoreUrl,
+  playStoreUrl,
+  fallbackNote
 }: {
   platform?: Platform | null;
   platformName?: string | null;
   title: string;
   url: string;
   movieSlug?: string | null;
+  appRequired?: boolean;
+  appUrl?: string | null;
+  appStoreUrl?: string | null;
+  playStoreUrl?: string | null;
+  fallbackNote?: string | null;
 }) {
   const slug = platform?.slug || platformKeyFromText(platformName || "official-platform") || "official-platform";
   const params = new URLSearchParams({
@@ -89,6 +99,11 @@ export function buildInAppBrowserHref({
     platformName: platformName || platform?.name || "Official platform"
   });
   if (movieSlug) params.set("movie", movieSlug);
+  if (appRequired) params.set("appRequired", "1");
+  if (appUrl) params.set("appUrl", appUrl);
+  if (appStoreUrl) params.set("appStoreUrl", appStoreUrl);
+  if (playStoreUrl) params.set("playStoreUrl", playStoreUrl);
+  if (fallbackNote) params.set("fallbackNote", fallbackNote);
   return `/watch/${encodeURIComponent(slug)}?${params.toString()}`;
 }
 

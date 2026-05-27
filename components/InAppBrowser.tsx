@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Copy, ExternalLink, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Copy, ExternalLink, RefreshCw, X } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
 import { isAllowedPlatformHost, isSafeLauncherUrl, platformBehaviorFor } from "@/lib/platformBehavior";
 
@@ -13,19 +13,30 @@ export default function InAppBrowser({
   platformName,
   title,
   url,
-  movieSlug
+  movieSlug,
+  appRequired = false,
+  appUrl,
+  appStoreUrl,
+  playStoreUrl,
+  fallbackNote
 }: {
   platform: string;
   platformName: string;
   title: string;
   url: string;
   movieSlug?: string | null;
+  appRequired?: boolean;
+  appUrl?: string | null;
+  appStoreUrl?: string | null;
+  playStoreUrl?: string | null;
+  fallbackNote?: string | null;
 }) {
   const router = useRouter();
   const behavior = useMemo(() => platformBehaviorFor(platform || platformName), [platform, platformName]);
   const safeUrl = useMemo(() => isSafeLauncherUrl(url), [url]);
   const hostMatches = useMemo(() => safeUrl && isAllowedPlatformHost(url, platform || platformName), [platform, platformName, safeUrl, url]);
-  const shouldTryIframe = safeUrl && hostMatches && behavior.allowIframe;
+  const safeAppUrl = useMemo(() => isSafeLauncherUrl(appUrl || url), [appUrl, url]);
+  const shouldTryIframe = !appRequired && safeUrl && hostMatches && behavior.allowIframe;
   const [state, setState] = useState<BrowserState>(() => safeUrl && hostMatches ? (shouldTryIframe ? "loading" : "blocked") : "invalid");
   const [frameKey, setFrameKey] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -39,9 +50,25 @@ export default function InAppBrowser({
       event_type: "platform_open_attempt",
       movie_slug: movieSlug || null,
       platform_name: platformName,
-      metadata: { platform, urlSafe: safeUrl, hostMatches, iframeAttempted: shouldTryIframe }
+      metadata: { platform, urlSafe: safeUrl, hostMatches, iframeAttempted: shouldTryIframe, appRequired }
     });
-  }, [hostMatches, movieSlug, platform, platformName, safeUrl, shouldTryIframe]);
+  }, [appRequired, hostMatches, movieSlug, platform, platformName, safeUrl, shouldTryIframe]);
+
+  useEffect(() => {
+    if (!appRequired) return;
+    trackEvent({
+      event_type: "platform_app_required_shown",
+      movie_slug: movieSlug || null,
+      platform_name: platformName,
+      metadata: { platform }
+    });
+    trackEvent({
+      event_type: "platform_mobile_web_blocked",
+      movie_slug: movieSlug || null,
+      platform_name: platformName,
+      metadata: { platform, source: "admin_app_required_flag" }
+    });
+  }, [appRequired, movieSlug, platform, platformName]);
 
   useEffect(() => {
     if (trackedInitialBlockedRef.current || shouldTryIframe || state === "loaded" || state === "loading") return;
@@ -117,6 +144,33 @@ export default function InAppBrowser({
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  function openApp() {
+    const target = appUrl || url;
+    if (!safeAppUrl) return;
+    trackEvent({
+      event_type: "platform_app_open_clicked",
+      movie_slug: movieSlug || null,
+      platform_name: platformName,
+      metadata: { platform }
+    });
+    trackEvent({
+      event_type: "platform_external_opened",
+      movie_slug: movieSlug || null,
+      platform_name: platformName,
+      metadata: { platform, source: "app_required_button" }
+    });
+    window.open(target, "_blank", "noopener,noreferrer");
+  }
+
+  function reportPlaybackIssue() {
+    trackEvent({
+      event_type: "platform_mobile_web_blocked",
+      movie_slug: movieSlug || null,
+      platform_name: platformName,
+      metadata: { platform, source: "user_report" }
+    });
+  }
+
   async function copyLink() {
     if (!safeUrl) return;
     try {
@@ -128,7 +182,9 @@ export default function InAppBrowser({
     }
   }
 
-  const reason = !safeUrl
+  const reason = appRequired
+    ? (fallbackNote || `This title is not supported on mobile web playback. Continue in the official ${platformName} app.`)
+    : !safeUrl
     ? "This URL is blocked because it is not a safe HTTPS official link."
     : !hostMatches
       ? "This URL domain does not match the selected platform."
@@ -150,8 +206,13 @@ export default function InAppBrowser({
           <RefreshCw size={19} />
         </button>
         <button className="button primary in-app-browser-external" type="button" onClick={openExternal} disabled={!safeUrl}>
-          <ExternalLink size={17} /> Open external
+          <ExternalLink size={17} /> {appRequired ? "Open website" : "Open external"}
         </button>
+        {appRequired || behavior.knownBlocksIframe ? (
+          <button className="button in-app-browser-external" type="button" onClick={openApp} disabled={!safeAppUrl}>
+            Open in App
+          </button>
+        ) : null}
         <button className="icon-button" type="button" onClick={() => router.push(movieSlug ? `/movie/${movieSlug}` : "/")} aria-label="Close">
           <X size={20} />
         </button>
@@ -177,15 +238,29 @@ export default function InAppBrowser({
         {state === "blocked" || state === "invalid" ? (
           <div className="in-app-browser-fallback">
             <p className="rating-badge">Official platform</p>
-            <h1>Open on official platform</h1>
+            <h1>{appRequired ? `Open in ${platformName} App` : "Open on official platform"}</h1>
             <p>{reason} Continue on the official site/app to watch, sign in, rent, buy, or subscribe.</p>
             <p className="muted">Login session is managed by {platformName} and may require re-login. WatchFinder never captures your credentials.</p>
             <div className="save-actions">
+              {appRequired ? (
+                <button className="button primary" type="button" onClick={openApp} disabled={!safeAppUrl}>
+                  <ExternalLink size={18} /> Open {platformName} App
+                </button>
+              ) : null}
               <button className="button primary" type="button" onClick={openExternal} disabled={!safeUrl}>
                 <ExternalLink size={18} /> Open Official Site
               </button>
+              {playStoreUrl ? (
+                <a className="button" href={playStoreUrl} target="_blank" rel="noreferrer">Play Store</a>
+              ) : null}
+              {appStoreUrl ? (
+                <a className="button" href={appStoreUrl} target="_blank" rel="noreferrer">App Store</a>
+              ) : null}
               <button className="button" type="button" onClick={copyLink} disabled={!safeUrl}>
                 <Copy size={18} /> {copied ? "Copied" : "Copy Link"}
+              </button>
+              <button className="button ghost" type="button" onClick={reportPlaybackIssue}>
+                <AlertTriangle size={18} /> Report playback issue
               </button>
               <button className="button ghost" type="button" onClick={() => router.push(movieSlug ? `/movie/${movieSlug}` : "/")}>
                 Back to WatchFinder

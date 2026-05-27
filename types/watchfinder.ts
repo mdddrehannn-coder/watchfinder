@@ -209,6 +209,12 @@ export type MoviePlatformLink = {
   platform_home_url?: string | null;
   platform_search_url?: string | null;
   app_deeplink?: string | null;
+  app_store_url?: string | null;
+  play_store_url?: string | null;
+  fallback_note?: string | null;
+  mobile_web_supported?: "unknown" | "yes" | "no" | string | null;
+  desktop_web_supported?: "unknown" | "yes" | "no" | string | null;
+  app_required?: boolean | null;
   link_type?: string | null;
   open_mode?: string | null;
   availability_type?: string | null;
