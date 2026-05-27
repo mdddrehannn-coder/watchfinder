@@ -4,7 +4,8 @@ import SearchFilters from "@/components/SearchFilters";
 import SearchHistory from "@/components/SearchHistory";
 import MovieGrid from "@/components/MovieGrid";
 import SearchAnalyticsTracker from "@/components/SearchAnalyticsTracker";
-import { getGenres, getMovies, getPlatforms, getPopularSearches, getSearchChannels } from "@/lib/data";
+import SeriesCard from "@/components/SeriesCard";
+import { getGenres, getMovies, getPlatforms, getPopularSearches, getPublishedSeries, getSearchChannels } from "@/lib/data";
 import {
   filterDiscoveryMovies,
   hasOfficialYouTube,
@@ -24,7 +25,7 @@ export default async function SearchPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const params = await searchParams;
-  const [genres, platforms, popular, movies, channels] = await Promise.all([
+  const [genres, platforms, popular, movies, channels, webSeries] = await Promise.all([
     getGenres(),
     getPlatforms(),
     getPopularSearches(),
@@ -36,9 +37,19 @@ export default async function SearchPage({
       year: params.year,
       limit: 300
     }),
-    getSearchChannels(params.q || "")
+    getSearchChannels(params.q || ""),
+    getPublishedSeries(120)
   ]);
   let results = movies.filter((movie) => matchesDiscoveryQuery(movie, params.q));
+  const normalizedQuery = String(params.q || "").trim().toLowerCase();
+  const seriesResults = normalizedQuery
+    ? webSeries.filter((series) => `${series.title} ${series.slug} ${series.description || ""} ${series.genre || ""} ${series.language || ""} ${series.platform_name || ""}`.toLowerCase().includes(normalizedQuery))
+    : webSeries.slice(0, 12);
+  const episodeResults = normalizedQuery
+    ? webSeries
+      .flatMap((series) => (series.seasons ?? []).flatMap((season) => (season.episodes ?? []).map((episode) => ({ series, season, episode }))))
+      .filter(({ series, season, episode }) => `${series.title} ${season.title || ""} ${episode.title} ${episode.description || ""} ${episode.language || series.language || ""}`.toLowerCase().includes(normalizedQuery))
+    : [];
   results = filterDiscoveryMovies(results, {
     availability: params.availability,
     freeLegal: params.quick === "freeLegal",
@@ -51,7 +62,7 @@ export default async function SearchPage({
 
   return (
     <main className="page-inner">
-      <SearchAnalyticsTracker query={params.q} resultCount={results.length} />
+      <SearchAnalyticsTracker query={params.q} resultCount={results.length + seriesResults.length + episodeResults.length + channels.length} />
       <section className="search-hero">
         <h1>Search WatchFinder</h1>
         <form className="simple-search-form" action="/search">
@@ -97,6 +108,33 @@ export default async function SearchPage({
           emptyMessage="Try another title, language, or platform."
         />
       </section>
+      {seriesResults.length ? (
+        <section className="section search-results-section">
+          <div className="section-head">
+            <h2>Web Series</h2>
+            <p className="muted">{seriesResults.length} found</p>
+          </div>
+          <div className="grid">
+            {seriesResults.slice(0, 12).map((series) => <SeriesCard series={series} key={series.id} />)}
+          </div>
+        </section>
+      ) : null}
+      {episodeResults.length ? (
+        <section className="section search-results-section">
+          <div className="section-head">
+            <h2>Episodes</h2>
+            <p className="muted">{episodeResults.length} found</p>
+          </div>
+          <div className="grid">
+            {episodeResults.slice(0, 12).map(({ series, season, episode }) => (
+              <a className="quick-action-card" href={`/web-series/${series.slug}/season/${season.season_number}/episode/${episode.episode_number}`} key={episode.id}>
+                <strong>{episode.title}</strong>
+                <span>{series.title} - S{season.season_number} E{episode.episode_number}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {channels.length ? (
         <section className="section">
           <div className="section-head">

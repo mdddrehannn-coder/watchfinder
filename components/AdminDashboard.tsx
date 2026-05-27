@@ -26,17 +26,19 @@ import AdminBlogForm from "@/components/AdminBlogForm";
 import AdminChannelManager from "@/components/AdminChannelManager";
 import AdminLicenseForm from "@/components/AdminLicenseForm";
 import AdminMovieForm from "@/components/AdminMovieForm";
+import AdminSeriesForm from "@/components/AdminSeriesForm";
 import { getMovieVisibilityCheck } from "@/lib/admin-visibility";
 import { deleteMovieById, updateMovieStatusById, type AdminMovieActionStatus } from "@/lib/admin-movie-actions";
 import AdminPromotionForm from "@/components/AdminPromotionForm";
 import { trackEvent } from "@/lib/analytics";
 import { movieSelect } from "@/lib/movie-select";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
-import type { CastMember, ContentChannel, Genre, Movie, Platform } from "@/types/watchfinder";
+import type { CastMember, ContentChannel, Genre, Movie, Platform, Series } from "@/types/watchfinder";
 
 type AdminSection =
   | "dashboard"
   | "movies"
+  | "web-series"
   | "analytics"
   | "add-movie"
   | "genres"
@@ -55,8 +57,9 @@ type AdminSection =
 const sections: Array<{ id: AdminSection; label: string }> = [
   { id: "dashboard", label: "Dashboard Overview" },
   { id: "movies", label: "Movies" },
+  { id: "web-series", label: "Web Series" },
   { id: "analytics", label: "Analytics" },
-  { id: "add-movie", label: "Add Movie" },
+  { id: "add-movie", label: "Add Content" },
   { id: "genres", label: "Genres" },
   { id: "platforms", label: "Platforms" },
   { id: "cast-members", label: "Cast Members" },
@@ -129,6 +132,13 @@ type AnalyticsSession = {
 type PendingMovieAction = {
   kind: "delete" | "archive" | "draft";
   movie: Movie;
+  error?: string | null;
+  isSubmitting?: boolean;
+};
+
+type PendingSeriesAction = {
+  kind: "delete" | "archive" | "draft";
+  series: Series;
   error?: string | null;
   isSubmitting?: boolean;
 };
@@ -333,6 +343,7 @@ function AnalyticsEmptyState({ children }: { children: ReactNode }) {
 
 export default function AdminDashboard({
   initialMovies,
+  initialSeries,
   genres,
   platforms,
   castMembers,
@@ -340,6 +351,7 @@ export default function AdminDashboard({
   analytics
 }: {
   initialMovies: Movie[];
+  initialSeries: Series[];
   genres: Genre[];
   platforms: Platform[];
   castMembers: CastMember[];
@@ -349,7 +361,10 @@ export default function AdminDashboard({
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
   const [movies, setMovies] = useState<Movie[]>(initialMovies);
+  const [series, setSeries] = useState<Series[]>(initialSeries);
   const [editingMovie, setEditingMovie] = useState<Movie | null>(null);
+  const [editingSeries, setEditingSeries] = useState<Series | null>(null);
+  const [contentEditorType, setContentEditorType] = useState<"movie" | "series">("movie");
   const [movieSearch, setMovieSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -361,7 +376,9 @@ export default function AdminDashboard({
   const [movieSort, setMovieSort] = useState<MovieSort>("views");
   const [analyticsTestMessage, setAnalyticsTestMessage] = useState<string | null>(null);
   const [pendingMovieAction, setPendingMovieAction] = useState<PendingMovieAction | null>(null);
+  const [pendingSeriesAction, setPendingSeriesAction] = useState<PendingSeriesAction | null>(null);
   const [movieActionLoadingKey, setMovieActionLoadingKey] = useState<string | null>(null);
+  const [seriesActionLoadingKey, setSeriesActionLoadingKey] = useState<string | null>(null);
   const contentChannels = (collections.contentChannels ?? []) as ContentChannel[];
   const contentChannelsError = typeof collections.contentChannelsError === "string" ? collections.contentChannelsError : null;
 
@@ -633,12 +650,33 @@ export default function AdminDashboard({
 
   function showAddMovie() {
     setEditingMovie(null);
+    setEditingSeries(null);
+    setContentEditorType("movie");
     setActiveSection("add-movie");
     setMovieMessage(null);
   }
 
   function showEditMovie(movie: Movie) {
     setEditingMovie(movie);
+    setEditingSeries(null);
+    setContentEditorType("movie");
+    setActiveSection("add-movie");
+    setMovieMessage(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function showAddSeries() {
+    setEditingMovie(null);
+    setEditingSeries(null);
+    setContentEditorType("series");
+    setActiveSection("add-movie");
+    setMovieMessage(null);
+  }
+
+  function showEditSeries(seriesItem: Series) {
+    setEditingMovie(null);
+    setEditingSeries(seriesItem);
+    setContentEditorType("series");
     setActiveSection("add-movie");
     setMovieMessage(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -673,6 +711,7 @@ export default function AdminDashboard({
     const payload = {
       exportedAt: new Date().toISOString(),
       movies,
+      series,
       genres,
       platforms,
       contentChannels
@@ -702,6 +741,49 @@ export default function AdminDashboard({
       }
       return [{ ...savedMovie, genres: [], cast_members: [], movie_platform_links: [] }, ...current];
     });
+  }
+
+  function handleSavedSeries(savedSeries: Series) {
+    setSeries((current) => {
+      const exists = current.some((item) => item.id === savedSeries.id);
+      if (exists) return current.map((item) => item.id === savedSeries.id ? savedSeries : item);
+      return [savedSeries, ...current];
+    });
+    setEditingSeries(savedSeries);
+  }
+
+  async function performSeriesStatusUpdate(seriesItem: Series, status: "published" | "draft" | "archived") {
+    const loadingKey = `${seriesItem.id}:${status}`;
+    setSeriesActionLoadingKey(loadingKey);
+    setMovieMessage(`${status === "published" ? "Publishing" : `Moving to ${status}`} ${seriesItem.title}...`);
+
+    const supabase = createSupabaseBrowserClient();
+    const updatedAt = new Date().toISOString();
+    const { error } = await supabase
+      .from("web_series")
+      .update({ status, updated_at: updatedAt })
+      .eq("id", seriesItem.id);
+
+    setSeriesActionLoadingKey(null);
+
+    if (error) {
+      const message = `Series update failed: ${error.message}`;
+      setMovieMessage(message);
+      return { ok: false, message };
+    }
+
+    setSeries((current) => current.map((item) => (
+      item.id === seriesItem.id ? { ...item, status, is_published: status === "published", updated_at: updatedAt } : item
+    )));
+    setEditingSeries((current) => current?.id === seriesItem.id ? { ...current, status, is_published: status === "published", updated_at: updatedAt } : current);
+    setMovieMessage(`${seriesItem.title} ${status === "published" ? "published" : `moved to ${status}`}.`);
+    router.refresh();
+    return { ok: true, message: "Series updated." };
+  }
+
+  function requestSeriesAction(seriesItem: Series, kind: PendingSeriesAction["kind"]) {
+    setPendingSeriesAction({ kind, series: seriesItem, error: null, isSubmitting: false });
+    setMovieMessage(null);
   }
 
   async function performMovieStatusUpdate(movie: Movie, status: AdminMovieActionStatus) {
@@ -765,6 +847,42 @@ export default function AdminDashboard({
     setPendingMovieAction(null);
   }
 
+  async function confirmSeriesAction() {
+    if (!pendingSeriesAction || pendingSeriesAction.isSubmitting) return;
+    const { series: seriesItem, kind } = pendingSeriesAction;
+    setPendingSeriesAction({ ...pendingSeriesAction, isSubmitting: true, error: null });
+
+    if (kind === "delete") {
+      setMovieMessage(`Deleting ${seriesItem.title}...`);
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.from("web_series").delete().eq("id", seriesItem.id);
+      if (error) {
+        const message = `Delete failed: ${error.message}`;
+        setPendingSeriesAction({ ...pendingSeriesAction, isSubmitting: false, error: message });
+        setMovieMessage(message);
+        return;
+      }
+
+      setSeries((current) => current.filter((item) => item.id !== seriesItem.id));
+      if (editingSeries?.id === seriesItem.id) {
+        setEditingSeries(null);
+        setActiveSection("web-series");
+      }
+      setPendingSeriesAction(null);
+      setMovieMessage("Web series deleted successfully.");
+      router.refresh();
+      return;
+    }
+
+    const nextStatus = kind === "archive" ? "archived" : "draft";
+    const result = await performSeriesStatusUpdate(seriesItem, nextStatus);
+    if (!result.ok) {
+      setPendingSeriesAction((current) => current ? { ...current, isSubmitting: false, error: result.message } : current);
+      return;
+    }
+    setPendingSeriesAction(null);
+  }
+
   function actionModalCopy(action: PendingMovieAction) {
     if (action.kind === "delete") {
       return {
@@ -790,6 +908,31 @@ export default function AdminDashboard({
     };
   }
 
+  function seriesActionModalCopy(action: PendingSeriesAction) {
+    if (action.kind === "delete") {
+      return {
+        title: "Delete this web series?",
+        body: "This will permanently remove this series, its seasons, and its episodes. This cannot be undone.",
+        confirm: "Delete permanently",
+        danger: true
+      };
+    }
+    if (action.kind === "archive") {
+      return {
+        title: "Archive this web series?",
+        body: "This will hide the series from the public website but keep it editable in admin.",
+        confirm: "Archive series",
+        danger: false
+      };
+    }
+    return {
+      title: "Move this web series to draft?",
+      body: "This will hide the series from the public website while keeping it editable in admin.",
+      confirm: "Move to draft",
+      danger: false
+    };
+  }
+
   return (
     <div className="admin-shell">
       <nav className="admin-nav" aria-label="Admin sections">
@@ -798,7 +941,10 @@ export default function AdminDashboard({
             className={activeSection === section.id ? "chip active" : "chip"}
             key={section.id}
             onClick={() => {
-              if (section.id === "add-movie") setEditingMovie(null);
+              if (section.id === "add-movie") {
+                setEditingMovie(null);
+                setEditingSeries(null);
+              }
               setActiveSection(section.id);
             }}
             type="button"
@@ -815,6 +961,7 @@ export default function AdminDashboard({
             <h2>Dashboard overview</h2>
             <div className="grid">
               <div className="admin-card"><strong>{movies.length}</strong><p className="muted">Movies</p></div>
+              <div className="admin-card"><strong>{series.length}</strong><p className="muted">Web series</p></div>
               <div className="admin-card"><strong>{genres.length}</strong><p className="muted">Genres</p></div>
               <div className="admin-card"><strong>{platforms.length}</strong><p className="muted">Platforms</p></div>
               <div className="admin-card"><strong>{collections.feedbackMessages.length}</strong><p className="muted">Feedback messages</p></div>
@@ -833,6 +980,9 @@ export default function AdminDashboard({
               </div>
               <button className="button primary" type="button" onClick={showAddMovie}>
                 <Plus size={18} /> Add Movie
+              </button>
+              <button className="button" type="button" onClick={showAddSeries}>
+                <Plus size={18} /> Add Web Series
               </button>
               <button className="button" type="button" onClick={exportAdminBackup}>
                 <Download size={18} /> Export JSON Backup
@@ -936,6 +1086,67 @@ export default function AdminDashboard({
                 );
               })}
               {!filteredMovies.length ? <div className="empty">No movies found. Add your first movie.</div> : null}
+            </div>
+          </section>
+        ) : null}
+
+        {activeSection === "web-series" ? (
+          <section className="section">
+            <div className="section-head">
+              <div>
+                <h2>Web Series</h2>
+                <p className="muted">Manage premium series, seasons, and legal episode links without touching movie uploads.</p>
+              </div>
+              <button className="button primary" type="button" onClick={showAddSeries}>
+                <Plus size={18} /> Add Web Series
+              </button>
+            </div>
+            <div className="admin-movie-list">
+              {series.map((seriesItem) => (
+                <article className="admin-movie-row" key={seriesItem.id}>
+                  <div className="admin-movie-thumb">
+                    {seriesItem.poster_url ? <img src={seriesItem.poster_url} alt="" /> : <span>{seriesItem.title.slice(0, 1)}</span>}
+                  </div>
+                  <div className="admin-movie-main">
+                    <strong>{seriesItem.title}</strong>
+                    <p className="muted">{seriesItem.slug}</p>
+                    <div className="meta-line">
+                      <span className={statusClass(seriesItem.status)}>{seriesItem.status || "draft"}</span>
+                      <span>{seriesItem.language || "No language"}</span>
+                      <span>{seriesItem.genre || "No genre"}</span>
+                      <span>{seriesItem.platform_name || "No platform"}</span>
+                      <span>{seriesItem.season_count ?? seriesItem.seasons?.length ?? 0} seasons</span>
+                      <span>{seriesItem.episode_count ?? seriesItem.seasons?.reduce((total, season) => total + (season.episodes?.length ?? 0), 0) ?? 0} episodes</span>
+                      {seriesItem.is_featured ? <span className="platform-badge">Featured</span> : null}
+                      {seriesItem.is_latest ? <span className="platform-badge">Latest</span> : null}
+                      {seriesItem.is_trending ? <span className="platform-badge">Trending</span> : null}
+                    </div>
+                  </div>
+                  <div className="admin-row-actions">
+                    <button className="button" type="button" onClick={() => showEditSeries(seriesItem)}>
+                      <Edit3 size={16} /> Edit
+                    </button>
+                    <Link className="button" href={`/web-series/${seriesItem.slug}`}>
+                      <Eye size={16} /> View
+                    </Link>
+                    {seriesItem.status !== "published" ? (
+                      <button className="button" type="button" disabled={seriesActionLoadingKey === `${seriesItem.id}:published`} onClick={() => performSeriesStatusUpdate(seriesItem, "published")}>
+                        {seriesActionLoadingKey === `${seriesItem.id}:published` ? "Publishing..." : "Publish"}
+                      </button>
+                    ) : null}
+                    {seriesItem.status !== "draft" ? (
+                      <button className="button ghost" type="button" onClick={() => requestSeriesAction(seriesItem, "draft")}>Move to Draft</button>
+                    ) : null}
+                    {seriesItem.status !== "archived" ? (
+                      <button className="button ghost" type="button" onClick={() => requestSeriesAction(seriesItem, "archive")}>Archive</button>
+                    ) : null}
+                    <button className="button danger" type="button" onClick={() => requestSeriesAction(seriesItem, "delete")}>
+                      <Trash2 size={16} /> Delete
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {!series.length ? <div className="empty">No web series yet. Add your first web series.</div> : null}
             </div>
           </section>
         ) : null}
@@ -1682,22 +1893,59 @@ export default function AdminDashboard({
         {activeSection === "add-movie" ? (
           <section className="section">
             {movieMessage ? <p className="form-message info">{movieMessage}</p> : null}
-            <AdminMovieForm
-              key={editingMovie?.id || "new-movie"}
-              genres={genres}
-              castMembers={castMembers}
-              platforms={platforms}
-              initialMovie={editingMovie}
-              onSaved={handleSaved}
-              onDuplicateSlug={openMovieById}
-              onArchiveMovie={(movie) => requestMovieAction(movie, "archive")}
-              onDeleteMovie={(movie) => requestMovieAction(movie, "delete")}
-              onBackToMovies={() => setActiveSection("movies")}
-              onAddNew={showAddMovie}
-              movieAnalytics={editingMovie ? analyticsStats.movieStatsById.get(editingMovie.id) : undefined}
-              contentChannels={contentChannels}
-              contentChannelsError={contentChannelsError}
-            />
+            {!editingMovie && !editingSeries ? (
+              <div className="panel content-type-switcher">
+                <p className="rating-badge">Content Type</p>
+                <h2>What are you adding?</h2>
+                <p className="muted">Movie, trailer, TV show, cartoon, and short film use the existing upload flow. Web Series opens a season and episode editor.</p>
+                <div className="option-group compact-options">
+                  <label className="option-card option-card-published">
+                    <input type="radio" checked={contentEditorType === "movie"} onChange={() => setContentEditorType("movie")} />
+                    <span>Movie</span>
+                    <small>Use the current movie upload form</small>
+                  </label>
+                  {["Trailer", "TV Show", "Cartoon", "Short Film"].map((label) => (
+                    <label className="option-card" key={label}>
+                      <input type="radio" checked={false} onChange={() => setContentEditorType("movie")} />
+                      <span>{label}</span>
+                      <small>Select the matching type inside the existing movie form</small>
+                    </label>
+                  ))}
+                  <label className="option-card option-card-published">
+                    <input type="radio" checked={contentEditorType === "series"} onChange={() => setContentEditorType("series")} />
+                    <span>Web Series</span>
+                    <small>Create seasons and episodes</small>
+                  </label>
+                </div>
+              </div>
+            ) : null}
+            {contentEditorType === "movie" ? (
+              <AdminMovieForm
+                key={editingMovie?.id || "new-movie"}
+                genres={genres}
+                castMembers={castMembers}
+                platforms={platforms}
+                initialMovie={editingMovie}
+                onSaved={handleSaved}
+                onDuplicateSlug={openMovieById}
+                onArchiveMovie={(movie) => requestMovieAction(movie, "archive")}
+                onDeleteMovie={(movie) => requestMovieAction(movie, "delete")}
+                onBackToMovies={() => setActiveSection("movies")}
+                onAddNew={showAddMovie}
+                movieAnalytics={editingMovie ? analyticsStats.movieStatsById.get(editingMovie.id) : undefined}
+                contentChannels={contentChannels}
+                contentChannelsError={contentChannelsError}
+              />
+            ) : (
+              <AdminSeriesForm
+                key={editingSeries?.id || "new-series"}
+                genres={genres}
+                initialSeries={editingSeries}
+                onSaved={handleSavedSeries}
+                onAddNew={showAddSeries}
+                onBackToSeries={() => setActiveSection("web-series")}
+              />
+            )}
           </section>
         ) : null}
 
@@ -1846,6 +2094,66 @@ export default function AdminDashboard({
                 >
                   {pendingMovieAction.isSubmitting ? (
                     pendingMovieAction.kind === "delete" ? "Deleting..." : "Updating..."
+                  ) : copy.confirm}
+                </button>
+              </div>
+            </section>
+          </div>
+        );
+      })() : null}
+      {pendingSeriesAction ? (() => {
+        const copy = seriesActionModalCopy(pendingSeriesAction);
+        const seriesItem = pendingSeriesAction.series;
+        return (
+          <div className="admin-action-modal-backdrop" role="presentation" onMouseDown={() => !pendingSeriesAction.isSubmitting && setPendingSeriesAction(null)}>
+            <section
+              aria-labelledby="admin-series-action-title"
+              aria-modal="true"
+              className="admin-action-modal"
+              onMouseDown={(event) => event.stopPropagation()}
+              role="dialog"
+            >
+              <div className="section-head">
+                <div>
+                  <p className={copy.danger ? "status-badge status-hidden" : "status-badge status-draft"}>{copy.danger ? "Danger action" : "Visibility action"}</p>
+                  <h2 id="admin-series-action-title">{copy.title}</h2>
+                  <p className="muted">{copy.body}</p>
+                </div>
+              </div>
+              <div className="admin-action-movie-card">
+                <div className="admin-movie-thumb">
+                  {seriesItem.poster_url ? <img src={seriesItem.poster_url} alt="" /> : <span>{seriesItem.title.slice(0, 1)}</span>}
+                </div>
+                <div className="admin-movie-main">
+                  <strong>{seriesItem.title}</strong>
+                  <p className="muted">{seriesItem.slug}</p>
+                  <div className="meta-line">
+                    <span className={statusClass(seriesItem.status)}>{seriesItem.status || "draft"}</span>
+                    <span>{seriesItem.season_count ?? seriesItem.seasons?.length ?? 0} seasons</span>
+                    <span>{seriesItem.episode_count ?? seriesItem.seasons?.reduce((total, season) => total + (season.episodes?.length ?? 0), 0) ?? 0} episodes</span>
+                  </div>
+                </div>
+              </div>
+              {pendingSeriesAction.error ? (
+                <p className="form-message error">{pendingSeriesAction.error}</p>
+              ) : null}
+              <div className="admin-action-modal-actions">
+                <button
+                  className="button ghost"
+                  disabled={pendingSeriesAction.isSubmitting}
+                  onClick={() => setPendingSeriesAction(null)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className={copy.danger ? "button danger" : "button primary"}
+                  disabled={pendingSeriesAction.isSubmitting}
+                  onClick={confirmSeriesAction}
+                  type="button"
+                >
+                  {pendingSeriesAction.isSubmitting ? (
+                    pendingSeriesAction.kind === "delete" ? "Deleting..." : "Updating..."
                   ) : copy.confirm}
                 </button>
               </div>

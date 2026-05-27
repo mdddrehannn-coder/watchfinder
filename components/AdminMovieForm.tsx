@@ -52,6 +52,29 @@ const OPEN_MODE_OPTIONS = [
   { label: "External", value: "external" }
 ];
 
+const VIDEO_PROVIDER_OPTIONS = [
+  { label: "Direct Video URL", value: "direct" },
+  { label: "YouTube", value: "youtube" },
+  { label: "Vimeo", value: "vimeo" },
+  { label: "Embed", value: "embed" },
+  { label: "Iframe", value: "iframe" },
+  { label: "HLS", value: "hls" },
+  { label: "M3U8", value: "m3u8" },
+  { label: "Google Drive", value: "google_drive" },
+  { label: "Other", value: "other" }
+];
+
+function normalizeVideoProvider(value?: string | null) {
+  const provider = String(value || "").trim().toLowerCase();
+  if (!provider) return "direct";
+  if (provider === "youtube_embed") return "youtube";
+  if (provider === "external_legal_embed") return "embed";
+  if (provider === "google drive" || provider === "googledrive") return "google_drive";
+  if (provider === "external_ott_link" || provider === "cloudflare_stream" || provider === "supabase_storage_small_video") return "direct";
+  if (VIDEO_PROVIDER_OPTIONS.some((option) => option.value === provider)) return provider;
+  return "direct";
+}
+
 function toNullableString(value: FormDataEntryValue | null) {
   const stringValue = String(value || "").trim();
   return stringValue || null;
@@ -407,7 +430,7 @@ export default function AdminMovieForm({
   const [channelEpisodeTitle, setChannelEpisodeTitle] = useState(firstChannelItem?.episode_title ?? "");
   const [channelPlaylistGroup, setChannelPlaylistGroup] = useState(firstChannelItem?.playlist_group ?? "");
   const [channelSortOrder, setChannelSortOrder] = useState(firstChannelItem?.sort_order ? String(firstChannelItem.sort_order) : "");
-  const [videoProvider, setVideoProvider] = useState(initialMovie?.video_provider ?? "");
+  const [videoProvider, setVideoProvider] = useState(normalizeVideoProvider(initialMovie?.video_provider));
   const [licenseType, setLicenseType] = useState(initialMovie?.license_type ?? "");
   const [message, setMessage] = useState<Message | null>(null);
   const [duplicateAdvisory, setDuplicateAdvisory] = useState<DuplicateAdvisory | null>(null);
@@ -455,7 +478,7 @@ export default function AdminMovieForm({
     setChannelEpisodeTitle(nextChannelItem?.episode_title ?? "");
     setChannelPlaylistGroup(nextChannelItem?.playlist_group ?? "");
     setChannelSortOrder(nextChannelItem?.sort_order ? String(nextChannelItem.sort_order) : "");
-    setVideoProvider(initialMovie?.video_provider ?? "");
+    setVideoProvider(normalizeVideoProvider(initialMovie?.video_provider));
     setLicenseType(initialMovie?.license_type ?? "");
     setMessage(null);
     setDuplicateAdvisory(null);
@@ -506,8 +529,7 @@ export default function AdminMovieForm({
     if (watchUrl && !platformId) return "Select an official platform before adding a watch link.";
 
     if (hasLicensedVideo) {
-      if (!videoProvider) return "Video provider is required for licensed video.";
-      if (videoProvider === "external_ott_link") return "External OTT Link is not playable inside WatchFinder. Turn off Has licensed video and add it as an Official Watch Link.";
+      if (!normalizeVideoProvider(videoProvider)) return "Video provider is required for licensed video.";
       if (!toNullableString(form.get("video_embed_url")) && !toNullableString(form.get("video_id"))) {
         return "Video embed URL or video ID is required for licensed video.";
       }
@@ -616,7 +638,7 @@ export default function AdminMovieForm({
     setChannelEpisodeTitle("");
     setChannelPlaylistGroup("");
     setChannelSortOrder("");
-    setVideoProvider("");
+    setVideoProvider("direct");
     setLicenseType("");
     setIsTrending(false);
     setIsFeatured(false);
@@ -673,9 +695,9 @@ export default function AdminMovieForm({
       setWatchLinkType("platform_search");
       setOpenMode("in_app_browser");
       setHasLicensedVideo(false);
-      setVideoProvider("external_ott_link");
-    } else if (videoProvider === "external_ott_link") {
-      setVideoProvider("");
+      setVideoProvider("direct");
+    } else {
+      setVideoProvider((current) => normalizeVideoProvider(current));
     }
   }
 
@@ -724,7 +746,7 @@ export default function AdminMovieForm({
         seo_description: toNullableString(form.get("seo_description")),
         og_image_url: toNullableString(form.get("og_image_url")),
         has_licensed_video: hasLicensedVideo,
-        video_provider: hasLicensedVideo ? videoProvider : selectedPlatformIsExternalOnly ? "external_ott_link" : null,
+        video_provider: normalizeVideoProvider(videoProvider),
         video_embed_url: hasLicensedVideo ? toNullableString(form.get("video_embed_url")) : null,
         video_id: hasLicensedVideo ? toNullableString(form.get("video_id")) : null,
         license_type: hasLicensedVideo ? licenseType : null,
@@ -1273,11 +1295,11 @@ export default function AdminMovieForm({
       <FormSection title="Licensed Video" helper="Optional. Leave this off for normal discovery pages with trailers and official watch links.">
         <label className="chip"><input checked={hasLicensedVideo} onChange={(event) => setHasLicensedVideo(event.target.checked)} name="has_licensed_video" type="checkbox" /> Has licensed video</label>
         {hasLicensedVideo ? <p className="legal-badge">Only use videos you own or have written permission to distribute. Do not upload pirated movies.</p> : null}
-        <p className="form-helper">Video Provider choices are for playable video inside WatchFinder only. Use External OTT Link / No playable video for JioHotstar, Netflix, Prime Video and other platforms that open on their official app/site.</p>
+        <p className="form-helper">Video Provider choices are for playable video inside WatchFinder only. OTT platforms like JioHotstar, Netflix, and Prime Video should be added as official watch links, not as internal playable providers. If no provider is selected, WatchFinder saves Direct Video URL as the safe default.</p>
         {hasLicensedVideo ? (
           <>
             <div className="form-grid two">
-              <div className="field"><label>Video Provider <span className="required">*</span></label><select name="video_provider" value={videoProvider} onChange={(event) => setVideoProvider(event.target.value)}><option value="">No playable video</option><option value="youtube_embed">YouTube Embed</option><option value="external_legal_embed">Official Embed URL</option><option value="external_ott_link">External OTT Link</option><option value="cloudflare_stream">Cloudflare Stream</option><option value="vimeo">Vimeo</option><option value="supabase_storage_small_video">Supabase small video</option></select></div>
+              <div className="field"><label>Video Provider <span className="required">*</span></label><select name="video_provider" value={videoProvider} onChange={(event) => setVideoProvider(normalizeVideoProvider(event.target.value))}>{VIDEO_PROVIDER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
               <div className="field"><label>Video Embed URL</label><input name="video_embed_url" defaultValue={initialMovie?.video_embed_url ?? ""} /></div>
               <div className="field"><label>Video ID</label><input name="video_id" defaultValue={initialMovie?.video_id ?? ""} /></div>
               <div className="field"><label>License Type <span className="required">*</span></label><select name="license_type" value={licenseType} onChange={(event) => setLicenseType(event.target.value)}><option value="">Select</option><option value="self_owned">Self owned</option><option value="creator_permission">Creator permission</option><option value="public_domain">Public domain</option><option value="purchased_license">Purchased license</option></select></div>

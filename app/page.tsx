@@ -3,6 +3,7 @@ import HomepageHeroSlider from "@/components/HomepageHeroSlider";
 import MovieSlider from "@/components/MovieSlider";
 import PlatformLogo from "@/components/PlatformLogo";
 import PromotionBanner from "@/components/PromotionBanner";
+import SeriesCard from "@/components/SeriesCard";
 import AdSlot from "@/components/AdSlot";
 import {
   getAdSlots,
@@ -11,6 +12,7 @@ import {
   getHomepageHeroMovies,
   getMovies,
   getPlatforms,
+  getPublishedSeries,
   getPromotions
 } from "@/lib/data";
 import { filterDiscoveryMovies, hasOfficialYouTube, isHindiFriendly } from "@/lib/discovery";
@@ -28,7 +30,8 @@ export default async function HomePage() {
     latest,
     posts,
     popularCartoons,
-    popularTvShows
+    popularTvShows,
+    webSeries
   ] = await Promise.all([
     getPromotions("home_middle"),
     getAdSlots("home"),
@@ -39,7 +42,8 @@ export default async function HomePage() {
     getMovies({ latest: true, limit: 18 }),
     getBlogPosts(6),
     getChannelLinkedMovies("cartoon", 12),
-    getChannelLinkedMovies("tv_show", 12)
+    getChannelLinkedMovies("tv_show", 12),
+    getPublishedSeries(12)
   ]);
 
   const fallbackByPopularity = [...allMovies]
@@ -94,6 +98,17 @@ export default async function HomePage() {
       <MovieSlider title="Official YouTube Movies" movies={officialYouTube} href="/free-movies?platform=youtube" />
       <MovieSlider title="Popular Cartoons" movies={popularCartoons} href="/cartoons" />
       <MovieSlider title="Popular TV Shows" movies={popularTvShows} href="/tv-shows" />
+      {webSeries.length ? (
+        <section className="section">
+          <div className="section-head">
+            <h2>Web Series</h2>
+            <Link className="muted" href="/web-series">View all</Link>
+          </div>
+          <div className="grid">
+            {webSeries.map((series) => <SeriesCard series={series} key={series.id} />)}
+          </div>
+        </section>
+      ) : null}
       <PromotionBanner promotion={middlePromotions[0]} />
       <AdSlot slot={ads[0]} />
 

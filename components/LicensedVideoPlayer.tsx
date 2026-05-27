@@ -7,17 +7,21 @@ import type { Movie } from "@/types/watchfinder";
 
 function sourceFor(movie: Movie) {
   if (movie.video_provider === "external_ott_link") return null;
+  const provider = String(movie.video_provider || "direct").trim().toLowerCase();
   if (movie.video_embed_url && !isKnownExternalWatchPageUrl(movie.video_embed_url)) return movie.video_embed_url;
-  if (!movie.video_id || !movie.video_provider) return null;
+  if (!movie.video_id) return null;
 
-  if (movie.video_provider === "cloudflare_stream") {
+  if (provider === "cloudflare_stream") {
     return `https://iframe.videodelivery.net/${movie.video_id}`;
   }
-  if (movie.video_provider === "vimeo") {
+  if (provider === "vimeo") {
     return `https://player.vimeo.com/video/${movie.video_id}`;
   }
-  if (movie.video_provider === "youtube_embed") {
+  if (provider === "youtube" || provider === "youtube_embed") {
     return `https://www.youtube.com/embed/${movie.video_id}`;
+  }
+  if (provider === "direct" || provider === "embed" || provider === "external_legal_embed" || provider === "supabase_storage_small_video") {
+    return movie.video_id;
   }
   return null;
 }

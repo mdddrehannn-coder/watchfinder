@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { matchesDiscoveryQuery } from "@/lib/discovery";
-import { getMovies, getSearchChannels } from "@/lib/data";
+import { getMovies, getPublishedSeries, getSearchChannels } from "@/lib/data";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -10,9 +10,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ results: [] });
   }
 
-  const [movies, channels] = await Promise.all([
+  const [movies, channels, series] = await Promise.all([
     getMovies({ limit: 300 }),
-    getSearchChannels(query)
+    getSearchChannels(query),
+    getPublishedSeries(120)
   ]);
   const movieResults = movies
     .filter((movie) => matchesDiscoveryQuery(movie, query))
@@ -39,5 +40,35 @@ export async function GET(request: Request) {
     language: channel.channel_type === "cartoon" ? "Cartoon channel" : "TV show channel"
   }));
 
-  return NextResponse.json({ results: [...movieResults, ...channelResults].slice(0, 8) });
+  const normalizedQuery = query.trim().toLowerCase();
+  const seriesResults = series
+    .filter((item) => `${item.title} ${item.slug} ${item.description || ""} ${item.genre || ""} ${item.language || ""} ${item.platform_name || ""}`.toLowerCase().includes(normalizedQuery))
+    .slice(0, 4)
+    .map((item) => ({
+      id: item.id,
+      kind: "web_series",
+      title: item.title,
+      slug: item.slug,
+      href: `/web-series/${item.slug}`,
+      poster_url: item.poster_url,
+      release_year: item.release_year,
+      language: item.language || "Web Series"
+    }));
+
+  const episodeResults = series
+    .flatMap((item) => (item.seasons ?? []).flatMap((season) => (season.episodes ?? []).map((episode) => ({ item, season, episode }))))
+    .filter(({ item, season, episode }) => `${item.title} ${season.title || ""} ${episode.title} ${episode.description || ""} ${episode.language || item.language || ""}`.toLowerCase().includes(normalizedQuery))
+    .slice(0, 4)
+    .map(({ item, season, episode }) => ({
+      id: episode.id,
+      kind: "episode",
+      title: `${item.title}: ${episode.title}`,
+      slug: item.slug,
+      href: `/web-series/${item.slug}/season/${season.season_number}/episode/${episode.episode_number}`,
+      poster_url: episode.poster_url || episode.banner_url || item.poster_url,
+      release_year: item.release_year,
+      language: `S${season.season_number} E${episode.episode_number}`
+    }));
+
+  return NextResponse.json({ results: [...movieResults, ...seriesResults, ...episodeResults, ...channelResults].slice(0, 8) });
 }

@@ -9,7 +9,7 @@ import { splitLanguages } from "@/lib/languages";
 
 type Suggestion = {
   id: string;
-  kind?: "movie" | "cartoon" | "tv_show" | "channel";
+  kind?: "movie" | "cartoon" | "tv_show" | "channel" | "web_series" | "episode";
   title: string;
   slug: string;
   href?: string;
@@ -112,7 +112,7 @@ export default function NavbarSearch() {
                   </span>
                   <span className="search-suggestion-copy">
                     <strong>{movie.title}</strong>
-                    <small>{[movie.release_year, language].filter(Boolean).join(" - ") || (movie.kind === "channel" ? "Channel" : movie.kind === "cartoon" ? "Cartoon" : movie.kind === "tv_show" ? "TV Show" : "Movie")}</small>
+                    <small>{[movie.release_year, language].filter(Boolean).join(" - ") || (movie.kind === "channel" ? "Channel" : movie.kind === "cartoon" ? "Cartoon" : movie.kind === "tv_show" ? "TV Show" : movie.kind === "web_series" ? "Web Series" : movie.kind === "episode" ? "Episode" : "Movie")}</small>
                   </span>
                 </Link>
               );

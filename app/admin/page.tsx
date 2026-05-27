@@ -5,6 +5,7 @@ import {
   getAdminAnalyticsData,
   getAdminCollections,
   getAllAdminMovies,
+  getAllAdminSeries,
   getCastMembers,
   getGenres,
   getPlatforms,
@@ -46,8 +47,9 @@ export default async function AdminPage() {
     );
   }
 
-  const [movies, genres, platforms, castMembers, collections, analytics] = await Promise.all([
+  const [movies, series, genres, platforms, castMembers, collections, analytics] = await Promise.all([
     getAllAdminMovies(),
+    getAllAdminSeries(),
     getGenres(),
     getPlatforms(),
     getCastMembers(),
@@ -61,6 +63,7 @@ export default async function AdminPage() {
       <p className="muted">Manage legal movie discovery content, official links, blogs, promotions, ad slots and license proof.</p>
       <AdminDashboard
         initialMovies={movies}
+        initialSeries={series}
         genres={genres}
         platforms={platforms}
         castMembers={castMembers}

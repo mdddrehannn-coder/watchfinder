@@ -13,8 +13,11 @@ import type {
   Movie,
   MoviePlatformLink,
   Platform,
-  Promotion
+  Promotion,
+  Series
 } from "@/types/watchfinder";
+
+const seriesSelect = "*, web_series_seasons(*, web_series_episodes(*))";
 
 function normalizeMovie(row: any): Movie {
   return {
@@ -41,6 +44,50 @@ function contentChannelTableErrorMessage(error: any) {
     return "Cartoon/TV Show tables are missing. Run the Supabase migration.";
   }
   return message || "Cartoon/TV Show channel query failed.";
+}
+
+function seriesTableErrorMessage(error: any) {
+  if (!error) return null;
+  const message = String(error.message || "");
+  const code = String(error.code || "");
+  if (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    message.toLowerCase().includes("web_series") ||
+    message.toLowerCase().includes("web_series_seasons") ||
+    message.toLowerCase().includes("web_series_episodes") ||
+    message.toLowerCase().includes("schema cache")
+  ) {
+    return "Web Series tables are missing. Run the Supabase migration.";
+  }
+  return message || "Web Series query failed.";
+}
+
+function normalizeSeries(row: any): Series {
+  const rawSeasons = row.web_series_seasons ?? row.seasons ?? [];
+  const seasons = [...rawSeasons]
+    .map((season: any) => ({
+      ...season,
+      is_published: season.is_published ?? season.status === "published",
+      episodes: [...(season.web_series_episodes ?? season.episodes ?? [])]
+        .map((episode: any) => ({
+          ...episode,
+          thumbnail_url: episode.thumbnail_url ?? episode.poster_url ?? episode.banner_url ?? null,
+          video_url: episode.video_url ?? episode.video_embed_url ?? episode.trailer_url ?? episode.watch_url ?? "",
+          duration: episode.duration ?? (episode.duration_minutes ? `${episode.duration_minutes}m` : null),
+          is_published: episode.is_published ?? episode.status === "published"
+        }))
+        .sort((a: any, b: any) => (a.sort_order ?? a.episode_number ?? 0) - (b.sort_order ?? b.episode_number ?? 0))
+    }))
+    .sort((a: any, b: any) => (a.sort_order ?? a.season_number ?? 0) - (b.sort_order ?? b.season_number ?? 0));
+
+  return {
+    ...row,
+    is_published: row.is_published ?? row.status === "published",
+    seasons,
+    season_count: seasons.length,
+    episode_count: seasons.reduce((total: number, season: any) => total + (season.episodes?.length ?? 0), 0)
+  } as Series;
 }
 
 async function runMovieQuery(
@@ -191,6 +238,81 @@ export async function getHomepageHeroMovies() {
   return heroMovies.slice(0, 6);
 }
 
+export async function getPublishedSeries(limit = 12) {
+  const supabase = createSupabaseAnonServerClient();
+  if (!supabase) return [] as Series[];
+
+  const { data, error } = await supabase
+    .from("web_series")
+    .select(seriesSelect)
+    .eq("status", "published")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error || !data) {
+    if (error && process.env.NODE_ENV !== "production") console.warn(seriesTableErrorMessage(error));
+    return [] as Series[];
+  }
+
+  return data.map(normalizeSeries);
+}
+
+export async function getSeriesBySlug(slug: string, admin = false) {
+  const supabase = admin ? createSupabaseAdminClient() ?? (await createSupabaseServerClient()) : createSupabaseAnonServerClient();
+  if (!supabase) return null;
+
+  let query = supabase
+    .from("web_series")
+    .select(seriesSelect)
+    .eq("slug", slug);
+
+  if (!admin) query = query.eq("status", "published");
+
+  const { data, error } = await query.maybeSingle();
+  if (error || !data) {
+    if (error && process.env.NODE_ENV !== "production") console.warn(seriesTableErrorMessage(error));
+    return null;
+  }
+
+  const series = normalizeSeries(data);
+  if (admin) return series;
+
+  return {
+    ...series,
+    seasons: (series.seasons ?? [])
+      .filter((season) => season.status === "published" || season.is_published)
+      .map((season) => ({
+        ...season,
+        episodes: (season.episodes ?? []).filter((episode) => episode.status === "published" || episode.is_published)
+      }))
+  };
+}
+
+export async function getSeriesEpisodeByNumbers(slug: string, seasonNumber: number, episodeNumber: number) {
+  const series = await getSeriesBySlug(slug);
+  if (!series) return null;
+
+  const season = series.seasons?.find((item) => item.season_number === seasonNumber);
+  const episode = season?.episodes?.find((item) => item.episode_number === episodeNumber);
+  if (!season || !episode) return null;
+
+  const allEpisodes = (series.seasons ?? [])
+    .flatMap((item) => (item.episodes ?? []).map((episodeItem) => ({ season: item, episode: episodeItem })))
+    .sort((a, b) => {
+      if (a.season.season_number !== b.season.season_number) return a.season.season_number - b.season.season_number;
+      return a.episode.episode_number - b.episode.episode_number;
+    });
+  const currentIndex = allEpisodes.findIndex((item) => item.episode.id === episode.id);
+
+  return {
+    series,
+    season,
+    episode,
+    previous: currentIndex > 0 ? allEpisodes[currentIndex - 1] : null,
+    next: currentIndex >= 0 && currentIndex < allEpisodes.length - 1 ? allEpisodes[currentIndex + 1] : null
+  };
+}
+
 export async function getMovieBySlug(slug: string) {
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return null;
@@ -215,6 +337,23 @@ export async function getAllAdminMovies() {
     supabase.from("movies").select(select).order("created_at", { ascending: false })
   );
   return (data ?? []).map(normalizeMovie);
+}
+
+export async function getAllAdminSeries() {
+  const supabase = createSupabaseAdminClient() ?? (await createSupabaseServerClient());
+  if (!supabase) return [] as Series[];
+
+  const { data, error } = await supabase
+    .from("web_series")
+    .select(seriesSelect)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    if (error) console.warn(seriesTableErrorMessage(error));
+    return [] as Series[];
+  }
+
+  return data.map(normalizeSeries);
 }
 
 export async function getUserFavoriteMovies() {

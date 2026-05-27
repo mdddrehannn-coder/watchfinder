@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import AdSlot from "@/components/AdSlot";
 import { Play } from "lucide-react";
 import FavoriteButton from "@/components/FavoriteButton";
+import HeroPlayBanner from "@/components/HeroPlayBanner";
 import LicensedVideoPlayer from "@/components/LicensedVideoPlayer";
 import LanguageTags from "@/components/LanguageTags";
 import MovieAnalyticsTracker from "@/components/MovieAnalyticsTracker";
@@ -22,6 +23,7 @@ import {
 } from "@/lib/data";
 import { movieAvailabilityTypes, movieQualities, movieSmartBadges, readableAvailability } from "@/lib/discovery";
 import { formatDuration, formatType, getYouTubeEmbedUrl } from "@/lib/format";
+import { resolveMoviePlayAction } from "@/lib/play-actions";
 import { isExternalOnlyPlatform, isKnownExternalWatchPageUrl } from "@/lib/watch-links";
 
 export async function generateMetadata({
@@ -61,6 +63,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
   const hasExternalOttLink = Boolean(movie.movie_platform_links?.some((link) => link.is_active !== false && isExternalOnlyPlatform(link.platforms)));
   const legalEmbedUrl = movie.video_embed_url && !isKnownExternalWatchPageUrl(movie.video_embed_url) ? movie.video_embed_url : null;
   const playableVideoProvider = movie.video_provider === "external_ott_link" ? null : movie.video_provider;
+  const playAction = resolveMoviePlayAction(movie);
   const qualities = movieQualities(movie);
   const availabilityTypes = movieAvailabilityTypes(movie);
   const allBadges = movieSmartBadges(movie);
@@ -84,27 +87,17 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
       <AdSlot slot={topAds[0]} />
 
       <section className="detail-hero section">
-        <div className="detail-banner" aria-label={`${movie.title} banner`}>
-          {movie.banner_url || movie.poster_url ? <img src={movie.banner_url || movie.poster_url || ""} alt={movie.title} /> : null}
-        </div>
+        <HeroPlayBanner
+          action={playAction}
+          className="detail-banner"
+          imageUrl={movie.banner_url || movie.poster_url}
+          movie={{ id: movie.id, slug: movie.slug }}
+          title={movie.title}
+        />
         <div className="detail-layout">
-          {hasPlayableModalSource ? (
-            <TrailerModalTrigger
-              className="detail-poster"
-              trailerUrl={movie.trailer_url}
-              videoEmbedUrl={playableVideoProvider ? legalEmbedUrl : null}
-              movieId={movie.id}
-              movieSlug={movie.slug}
-              provider={modalProvider}
-              title={movie.title}
-            >
-              {movie.poster_url ? <img src={movie.poster_url} alt={`${movie.title} poster`} /> : null}
-            </TrailerModalTrigger>
-          ) : (
-            <div className="detail-poster detail-poster-static">
-              {movie.poster_url ? <img src={movie.poster_url} alt={`${movie.title} poster`} /> : null}
-            </div>
-          )}
+          <div className="detail-poster detail-poster-static">
+            {movie.poster_url ? <img src={movie.poster_url} alt={`${movie.title} poster`} /> : null}
+          </div>
           <div>
             <div className="meta-line">
               <span className="rating-badge">{formatType(movie.type)}</span>

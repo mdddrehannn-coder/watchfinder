@@ -217,7 +217,7 @@ Allowed license types:
 Steps:
 
 1. In `/admin`, enable `Has licensed video`.
-2. Choose provider: `cloudflare_stream`, `vimeo`, `youtube_embed`, `supabase_storage_small_video`, or `external_legal_embed`.
+2. Choose provider: `direct`, `youtube`, `vimeo`, or `embed`.
 3. Add `video_embed_url` or `video_id`.
 4. Fill license owner, dates, notes and territory.
 5. Upload proof to `license-documents`.
@@ -225,7 +225,7 @@ Steps:
 
 The movie page shows **Licensed / Permission Verified** and the licensed player only when `movies.has_licensed_video = true`, a playable video URL/ID exists, and a license document exists.
 
-Do not host full movie files on Vercel. Use Cloudflare Stream, Vimeo, YouTube embed, or another legal embed provider. The Supabase `licensed-videos-small` bucket should only be used for small self-owned videos.
+Do not host full movie files on Vercel. Use a direct legal video URL, Vimeo, YouTube embed, or another legal embed provider. The Supabase `licensed-videos-small` bucket should only be used for small self-owned videos.
 
 ## Add Promotion
 

@@ -1,11 +1,21 @@
 export type MovieType = "movie" | "tv_show" | "anime" | "short_film" | "cartoon";
 export type MovieStatus = "draft" | "published" | "archived" | "hidden";
+export type SeriesStatus = "draft" | "published" | "archived";
 export type VideoProvider =
-  | "cloudflare_stream"
+  | "direct"
+  | "youtube"
   | "vimeo"
+  | "embed"
+  | "iframe"
+  | "hls"
+  | "m3u8"
+  | "google_drive"
+  | "other"
+  | "cloudflare_stream"
   | "youtube_embed"
   | "supabase_storage_small_video"
-  | "external_legal_embed";
+  | "external_legal_embed"
+  | "external_ott_link";
 
 export type Profile = {
   id: string;
@@ -80,6 +90,84 @@ export type Movie = {
   movie_platform_links?: MoviePlatformLink[];
   content_channels?: ContentChannel[];
   content_channel_items?: ContentChannelItem[];
+};
+
+export type Episode = {
+  id: string;
+  season_id: string;
+  series_id: string;
+  episode_number: number;
+  title: string;
+  description?: string | null;
+  poster_url?: string | null;
+  banner_url?: string | null;
+  thumbnail_url?: string | null;
+  trailer_url?: string | null;
+  video_embed_url?: string | null;
+  watch_url?: string | null;
+  video_url: string;
+  video_provider?: VideoProvider | string | null;
+  platform_name?: string | null;
+  availability_type?: string | null;
+  language?: string | null;
+  quality?: string | null;
+  duration_minutes?: number | null;
+  duration?: string | null;
+  release_date?: string | null;
+  status?: SeriesStatus | string | null;
+  sort_order?: number | null;
+  is_published?: boolean | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type Season = {
+  id: string;
+  series_id: string;
+  season_number: number;
+  title?: string | null;
+  description?: string | null;
+  poster_url?: string | null;
+  banner_url?: string | null;
+  release_year?: number | null;
+  status?: SeriesStatus | string | null;
+  sort_order?: number | null;
+  is_published?: boolean | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  episodes?: Episode[];
+};
+
+export type Series = {
+  id: string;
+  title: string;
+  slug: string;
+  description?: string | null;
+  poster_url?: string | null;
+  banner_url?: string | null;
+  genre?: string | null;
+  platform_name?: string | null;
+  language?: string | null;
+  release_year?: number | null;
+  rating?: string | null;
+  status?: SeriesStatus | string | null;
+  trailer_url?: string | null;
+  video_embed_url?: string | null;
+  video_provider?: VideoProvider | string | null;
+  is_featured?: boolean | null;
+  is_latest?: boolean | null;
+  is_trending?: boolean | null;
+  is_hindi_dubbed?: boolean | null;
+  is_free_legal?: boolean | null;
+  is_official?: boolean | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  is_published?: boolean | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  seasons?: Season[];
+  season_count?: number;
+  episode_count?: number;
 };
 
 export type ContentChannelType = "cartoon" | "tv_show";
