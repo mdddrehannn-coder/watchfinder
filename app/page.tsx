@@ -2,7 +2,6 @@ import Link from "next/link";
 import HomepageHeroSlider from "@/components/HomepageHeroSlider";
 import HomepageSectionTracker from "@/components/HomepageSectionTracker";
 import MovieSlider from "@/components/MovieSlider";
-import PlatformLogo from "@/components/PlatformLogo";
 import PromotionBanner from "@/components/PromotionBanner";
 import SeriesCard from "@/components/SeriesCard";
 import StreamingPlatformRow from "@/components/StreamingPlatformRow";
@@ -56,22 +55,22 @@ export default async function HomePage() {
   const quickActions = [
     {
       title: "Free Legal Movies",
-      text: "Public-domain, licensed and official free titles.",
+      text: "Licensed and public-domain picks.",
       href: "/free-movies"
     },
     {
-      title: "Hindi Dubbed Finder",
-      text: "Find South, Hollywood and anime titles in Hindi.",
+      title: "Hindi Dubbed",
+      text: "Hindi audio and dubbed titles.",
       href: "/hindi-dubbed"
     },
     {
       title: "New OTT Releases",
-      text: "Track legal streaming availability.",
+      text: "Latest legal platform updates.",
       href: "/ott-releases"
     },
     {
-      title: "Official Trailers",
-      text: "Watch trailers and then choose official platforms.",
+      title: "Official YouTube",
+      text: "Trailers and official clips.",
       href: "/search?q=trailer"
     }
   ];
@@ -80,6 +79,14 @@ export default async function HomePage() {
     <main className="page-inner">
       <HomepageHeroSlider movies={heroMovies} />
       <StreamingPlatformRow platforms={platforms} />
+      <section className="section homepage-shortcut-strip" aria-label="Quick content shortcuts">
+        {quickActions.map((action) => (
+          <Link className="quick-action-card" href={action.href} key={action.title}>
+            <strong>{action.title}</strong>
+            <span>{action.text}</span>
+          </Link>
+        ))}
+      </section>
 
       <MovieSlider title="Trending Now" movies={trending} href="/movies?section=trending" />
       <MovieSlider title="Recently Added" movies={recentlyAdded} href="/movies?section=recently_added" />
@@ -101,36 +108,8 @@ export default async function HomePage() {
       <MovieSlider title="Official YouTube Movies" movies={officialYouTube} href="/free-movies?platform=youtube" />
       <MovieSlider title="Popular Cartoons" movies={popularCartoons} href="/cartoons" />
       <MovieSlider title="Popular TV Shows" movies={popularTvShows} href="/tv-shows" />
-      <section className="section quick-action-grid compact-guide-grid">
-        {quickActions.map((action) => (
-          <Link className="quick-action-card" href={action.href} key={action.title}>
-            <strong>{action.title}</strong>
-            <span>{action.text}</span>
-          </Link>
-        ))}
-      </section>
       <PromotionBanner promotion={middlePromotions[0]} />
       <AdSlot slot={ads[0]} />
-
-      <section className="section popular-platforms-lower">
-        <div className="section-head">
-          <h2>Popular Platforms</h2>
-          <Link className="muted" href="/platforms">More</Link>
-        </div>
-        {platforms.length ? (
-          <div className="platform-grid">
-            {platforms.slice(0, 8).map((platform) => (
-              <Link className="platform-card" href={`/platform/${platform.slug}`} key={platform.id}>
-                <PlatformLogo platform={platform} />
-                <strong>{platform.name}</strong>
-                <p className="muted">Official titles and watch links</p>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="empty">Add platforms from admin panel to display this section.</div>
-        )}
-      </section>
 
       <section className="section">
         <div className="section-head">

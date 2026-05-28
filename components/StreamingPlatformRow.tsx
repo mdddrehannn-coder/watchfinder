@@ -27,7 +27,7 @@ export default function StreamingPlatformRow({ platforms }: { platforms: Platfor
   return (
     <section className="section streaming-platform-section">
       <div className="section-head">
-        <h2>Streaming</h2>
+        <h2>Popular Platforms</h2>
         <Link className="muted" href="/platforms">More</Link>
       </div>
       <div className="streaming-platform-row">
