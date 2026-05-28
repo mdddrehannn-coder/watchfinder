@@ -1,5 +1,18 @@
-export type MovieType = "movie" | "tv_show" | "anime" | "short_film" | "cartoon";
+export type MovieType = "movie" | "tv_show" | "anime" | "short_film" | "cartoon" | "trailer" | "episode" | "web_series";
 export type MovieStatus = "draft" | "published" | "archived" | "hidden";
+export type HomepageSection =
+  | "none"
+  | "hero"
+  | "trending"
+  | "recently_added"
+  | "ott_release"
+  | "hindi_dubbed"
+  | "free_legal"
+  | "official_youtube"
+  | "web_series"
+  | "cartoon"
+  | "tv_show"
+  | "platform_only";
 export type SeriesStatus = "draft" | "published" | "archived";
 export type VideoProvider =
   | "direct"
@@ -55,6 +68,12 @@ export type Movie = {
   title: string;
   slug: string;
   type: MovieType | string;
+  content_type?: MovieType | string | null;
+  primary_section?: HomepageSection | string | null;
+  show_in_hero?: boolean | null;
+  primary_language?: string | null;
+  languages_json?: string[] | Record<string, unknown> | null;
+  platform_name?: string | null;
   description?: string | null;
   poster_url?: string | null;
   banner_url?: string | null;

@@ -1,6 +1,6 @@
 import Link from "next/link";
+import HomepageSectionTracker from "@/components/HomepageSectionTracker";
 import MovieCard from "@/components/MovieCard";
-import EmptyState from "@/components/EmptyState";
 import type { Movie } from "@/types/watchfinder";
 
 export default function MovieSlider({
@@ -12,25 +12,24 @@ export default function MovieSlider({
   movies: Movie[];
   href?: string;
 }) {
+  if (!movies.length) return null;
+
   return (
-    <section className="section">
+    <section className="section poster-row-section">
+      <HomepageSectionTracker sectionName={title} itemCount={movies.length} />
       <div className="section-head">
         <h2>{title}</h2>
         {href ? (
           <Link className="muted" href={href}>
-            View all
+            More
           </Link>
         ) : null}
       </div>
-      {movies.length ? (
-        <div className="slider">
-          {movies.map((movie) => (
-            <MovieCard movie={movie} key={movie.id} />
-          ))}
-        </div>
-      ) : (
-        <EmptyState title={`No ${title.toLowerCase()} yet`} message="Add content from admin panel to display this section." />
-      )}
+      <div className="slider poster-app-row">
+        {movies.map((movie) => (
+          <MovieCard movie={movie} key={movie.id} sectionName={title} />
+        ))}
+      </div>
     </section>
   );
 }

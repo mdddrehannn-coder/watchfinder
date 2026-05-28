@@ -138,6 +138,9 @@ export async function getMovies(options: {
   search?: string;
   availability?: string;
   quality?: string;
+  primarySection?: string;
+  showInHero?: boolean;
+  createdDesc?: boolean;
 } = {}) {
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return [] as Movie[];
@@ -147,10 +150,15 @@ export async function getMovies(options: {
       .from("movies")
       .select(select)
       .eq("status", "published")
-      .order(options.topRated ? "rating" : "popularity_score", { ascending: false, nullsFirst: false })
       .limit(options.limit ?? 24);
 
+    query = options.createdDesc
+      ? query.order("created_at", { ascending: false, nullsFirst: false })
+      : query.order(options.topRated ? "rating" : "popularity_score", { ascending: false, nullsFirst: false });
+
     if (options.type) query = query.eq("type", options.type);
+    if (options.primarySection) query = query.eq("primary_section", options.primarySection);
+    if (typeof options.showInHero === "boolean") query = query.eq("show_in_hero", options.showInHero);
     if (options.language) query = query.ilike("language", `%${options.language}%`);
     if (options.year) query = query.eq("release_year", Number(options.year));
     if (options.trending) query = query.eq("is_trending", true);
@@ -200,42 +208,48 @@ export async function getHomepageHeroMovies() {
       .from("movies")
       .select(select)
       .eq("status", "published")
-      .or("is_featured.eq.true,is_latest.eq.true,is_trending.eq.true")
+      .eq("show_in_hero", true)
       .order("created_at", { ascending: false, nullsFirst: false })
       .limit(6)
   );
 
   if (eligibleError) {
     if (process.env.NODE_ENV !== "production") console.warn("Homepage hero eligible query failed:", eligibleError);
-    return [];
+    const { data: legacyData } = await runMovieQuery(supabase, (select) =>
+      supabase
+        .from("movies")
+        .select(select)
+        .eq("status", "published")
+        .or("is_featured.eq.true,is_latest.eq.true,is_trending.eq.true")
+        .order("created_at", { ascending: false, nullsFirst: false })
+        .limit(6)
+    );
+    return (legacyData ?? []).map(normalizeMovie).slice(0, 6);
   }
 
-  const heroMovies = (eligibleData ?? []).map(normalizeMovie);
-  if (heroMovies.length >= 6) return heroMovies.slice(0, 6);
+  return (eligibleData ?? []).map(normalizeMovie).slice(0, 6);
+}
 
-  const { data: fallbackData, error: fallbackError } = await runMovieQuery(supabase, (select) =>
+export async function getHomepageSectionMovies(section: string, limit = 12) {
+  const supabase = createSupabaseAnonServerClient();
+  if (!supabase) return [] as Movie[];
+
+  const { data, error } = await runMovieQuery(supabase, (select) =>
     supabase
       .from("movies")
       .select(select)
       .eq("status", "published")
+      .eq("primary_section", section)
       .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(12)
+      .limit(limit)
   );
 
-  if (fallbackError) {
-    if (process.env.NODE_ENV !== "production") console.warn("Homepage hero fallback query failed:", fallbackError);
-    return heroMovies.slice(0, 6);
+  if (error || !data) {
+    if (error && process.env.NODE_ENV !== "production") console.warn(`Homepage ${section} query failed:`, error);
+    return [] as Movie[];
   }
 
-  const seen = new Set(heroMovies.map((movie) => movie.id));
-  for (const movie of (fallbackData ?? []).map(normalizeMovie)) {
-    if (seen.has(movie.id)) continue;
-    heroMovies.push(movie);
-    seen.add(movie.id);
-    if (heroMovies.length === 6) break;
-  }
-
-  return heroMovies.slice(0, 6);
+  return data.map(normalizeMovie);
 }
 
 export async function getPublishedSeries(limit = 12) {

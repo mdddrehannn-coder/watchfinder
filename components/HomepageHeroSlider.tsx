@@ -4,13 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 import {
-  hasOfficialLink,
-  isHindiFriendly,
-  isLegalFreeMovie,
   movieQualities
 } from "@/lib/discovery";
 import { formatType, getYouTubeEmbedUrl } from "@/lib/format";
-import { splitLanguages } from "@/lib/languages";
+import { languageBadge } from "@/lib/content-language";
 import type { Movie } from "@/types/watchfinder";
 
 function firstPlatform(movie: Movie) {
@@ -19,13 +16,9 @@ function firstPlatform(movie: Movie) {
 
 function slideBadges(movie: Movie) {
   return [
-    formatType(movie.type),
-    splitLanguages(movie.language)[0] || null,
-    movieQualities(movie)[0] || null,
-    !movie.has_licensed_video ? "Trailer Only" : null,
-    hasOfficialLink(movie) ? "Official" : null,
-    isLegalFreeMovie(movie) ? "Free Legal" : null,
-    isHindiFriendly(movie) ? "Hindi Dubbed" : null
+    formatType(movie.content_type || movie.type),
+    languageBadge(movie.language, movie.primary_language),
+    movieQualities(movie)[0] || null
   ].filter(Boolean).slice(0, 3) as string[];
 }
 
@@ -154,9 +147,8 @@ export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
                 />
               ) : null}
               <div className="hero-movie-content">
-                <p className="hero-kicker">Latest on WatchFinder</p>
+                <p className="hero-kicker">Hero Pick</p>
                 <h1>{movie.title}</h1>
-                {movie.description ? <p className="hero-movie-description">{movie.description}</p> : null}
                 <div className="smart-badge-row hero-badge-row">
                   {badges.map((badge) => (
                     <span className="smart-badge" key={badge}>{badge}</span>

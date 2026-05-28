@@ -52,6 +52,21 @@ const OPEN_MODE_OPTIONS = [
   { label: "External", value: "external" }
 ];
 
+const HOMEPAGE_SECTION_OPTIONS = [
+  { label: "None", value: "none" },
+  { label: "Hero Slider", value: "hero" },
+  { label: "Trending Now", value: "trending" },
+  { label: "Recently Added", value: "recently_added" },
+  { label: "New OTT Releases", value: "ott_release" },
+  { label: "Hindi Dubbed", value: "hindi_dubbed" },
+  { label: "Free Legal Movies", value: "free_legal" },
+  { label: "Official YouTube", value: "official_youtube" },
+  { label: "Web Series", value: "web_series" },
+  { label: "Cartoons", value: "cartoon" },
+  { label: "TV Shows", value: "tv_show" },
+  { label: "Platform Only", value: "platform_only" }
+];
+
 const PLAYBACK_SUPPORT_OPTIONS = [
   { label: "Unknown", value: "unknown" },
   { label: "Yes", value: "yes" },
@@ -415,6 +430,9 @@ export default function AdminMovieForm({
   const [slug, setSlug] = useState(initialMovie?.slug ?? "");
   const [selectedType, setSelectedType] = useState(initialMovie?.type ?? "movie");
   const [selectedStatus, setSelectedStatus] = useState(initialMovie?.status ?? "draft");
+  const [primarySection, setPrimarySection] = useState(initialMovie?.primary_section ?? (initialMovie?.is_trending ? "trending" : initialMovie?.is_latest ? "recently_added" : "recently_added"));
+  const [showInHero, setShowInHero] = useState(Boolean(initialMovie?.show_in_hero ?? initialMovie?.is_featured));
+  const [primaryLanguage, setPrimaryLanguage] = useState(initialMovie?.primary_language ?? "");
   const [hasLicensedVideo, setHasLicensedVideo] = useState(Boolean(initialMovie?.has_licensed_video));
   const [isLatest, setIsLatest] = useState(Boolean(initialMovie?.is_latest));
   const [isTrending, setIsTrending] = useState(Boolean(initialMovie?.is_trending));
@@ -471,6 +489,9 @@ export default function AdminMovieForm({
     setSlug(initialMovie?.slug ?? "");
     setSelectedType(initialMovie?.type ?? "movie");
     setSelectedStatus(initialMovie?.status ?? "draft");
+    setPrimarySection(initialMovie?.primary_section ?? (initialMovie?.is_trending ? "trending" : initialMovie?.is_latest ? "recently_added" : "recently_added"));
+    setShowInHero(Boolean(initialMovie?.show_in_hero ?? initialMovie?.is_featured));
+    setPrimaryLanguage(initialMovie?.primary_language ?? "");
     setHasLicensedVideo(Boolean(initialMovie?.has_licensed_video));
     setIsLatest(Boolean(initialMovie?.is_latest));
     setIsTrending(Boolean(initialMovie?.is_trending));
@@ -586,6 +607,7 @@ export default function AdminMovieForm({
       setHasLicensedVideo(false);
       setVideoProvider("");
       setLicenseType("");
+      setSelectedType("trailer");
       setHelperMessage("Trailer Only selected. Licensed video fields are turned off.");
       return;
     }
@@ -593,18 +615,21 @@ export default function AdminMovieForm({
     if (positioning === "free") {
       setHasLicensedVideo(true);
       setAvailabilityType("free");
+      setPrimarySection("free_legal");
       setHelperMessage("Free Legal Movie selected. Use only if full video is legally available.");
       return;
     }
 
     if (positioning === "hindi") {
       setSelectedLanguages((current) => current.includes("Hindi Dubbed") ? current : [...current, "Hindi Dubbed"]);
+      setPrimarySection("hindi_dubbed");
       setHelperMessage("Hindi Dubbed added to language.");
       return;
     }
 
     if (positioning === "ott") {
       setIsLatest(true);
+      setPrimarySection("ott_release");
       setHelperMessage("OTT Release marked as latest.");
       return;
     }
@@ -622,6 +647,7 @@ export default function AdminMovieForm({
       );
       if (youtube) setSelectedPlatformId(youtube.id);
       setAvailabilityType("official");
+      setPrimarySection("official_youtube");
       setHelperMessage(youtube ? "Official YouTube selected as the platform." : "Official YouTube selected. Add a YouTube platform to auto-select it.");
       return;
     }
@@ -642,6 +668,9 @@ export default function AdminMovieForm({
     setSlug("");
     setSelectedType("movie");
     setSelectedStatus("draft");
+    setPrimarySection("recently_added");
+    setShowInHero(false);
+    setPrimaryLanguage("");
     setHasLicensedVideo(false);
     setIsLatest(false);
     setSelectedLanguages([]);
@@ -794,6 +823,12 @@ export default function AdminMovieForm({
         title: title.trim(),
         slug: slug.trim(),
         type: selectedType,
+        content_type: selectedType,
+        primary_section: primarySection,
+        show_in_hero: showInHero,
+        primary_language: toNullableString(primaryLanguage),
+        languages_json: selectedLanguages,
+        platform_name: selectedPlatform?.name || null,
         description: toNullableString(form.get("description")),
         release_year: toNullableNumber(form.get("release_year")),
         duration_minutes: toNullableNumber(form.get("duration_minutes")),
@@ -1130,13 +1165,35 @@ export default function AdminMovieForm({
           <div className="field"><label>Popularity Score</label><input name="popularity_score" inputMode="numeric" defaultValue={initialMovie?.popularity_score ?? 0} /></div>
         </div>
         <div className="field">
-          <label>Type</label>
+          <label>Content Type</label>
           <div className="option-group">
             <label className="option-card"><input type="radio" name="type" value="movie" checked={selectedType === "movie"} onChange={() => setSelectedType("movie")} /> <span>Movie</span></label>
+            <label className="option-card"><input type="radio" name="type" value="trailer" checked={selectedType === "trailer"} onChange={() => setSelectedType("trailer")} /> <span>Trailer</span></label>
+            <label className="option-card"><input type="radio" name="type" value="web_series" checked={selectedType === "web_series"} onChange={() => setSelectedType("web_series")} /> <span>Web Series</span></label>
+            <label className="option-card"><input type="radio" name="type" value="episode" checked={selectedType === "episode"} onChange={() => setSelectedType("episode")} /> <span>Episode</span></label>
             <label className="option-card"><input type="radio" name="type" value="tv_show" checked={selectedType === "tv_show"} onChange={() => setSelectedType("tv_show")} /> <span>TV Show</span></label>
             <label className="option-card"><input type="radio" name="type" value="cartoon" checked={selectedType === "cartoon"} onChange={() => setSelectedType("cartoon")} /> <span>Cartoon</span></label>
-            <label className="option-card"><input type="radio" name="type" value="anime" checked={selectedType === "anime"} onChange={() => setSelectedType("anime")} /> <span>Anime</span></label>
             <label className="option-card"><input type="radio" name="type" value="short_film" checked={selectedType === "short_film"} onChange={() => setSelectedType("short_film")} /> <span>Short Film</span></label>
+          </div>
+        </div>
+        <div className="form-grid two">
+          <div className="field">
+            <label>Homepage Placement</label>
+            <select value={primarySection} onChange={(event) => setPrimarySection(event.target.value)}>
+              {HOMEPAGE_SECTION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+            </select>
+          </div>
+          <label className="option-card option-card-published">
+            <input checked={showInHero} onChange={(event) => setShowInHero(event.target.checked)} type="checkbox" />
+            <span>Show in Hero Slider</span>
+            <small>Hero is separate from the normal homepage section.</small>
+          </label>
+          <div className="field">
+            <label>Primary Language</label>
+            <select value={primaryLanguage} onChange={(event) => setPrimaryLanguage(event.target.value)}>
+              <option value="">Auto from selected languages</option>
+              {WATCHFINDER_LANGUAGES.map((language) => <option value={language} key={language}>{language}</option>)}
+            </select>
           </div>
         </div>
         <div className="field">
@@ -1154,6 +1211,7 @@ export default function AdminMovieForm({
           {draftVisibilityCheck.warnings.length ? <p className="muted">Warnings: {draftVisibilityCheck.warnings.join(", ")}</p> : null}
         </div>
         <div className="field"><label>Description</label><textarea name="description" defaultValue={initialMovie?.description ?? ""} /></div>
+        <p className="form-helper">Legacy flags are kept for compatibility. Homepage rows now use the single Homepage Placement dropdown to avoid repeating the same title in many sections.</p>
         <div className="chip-row">
           <label className="chip"><input name="is_trending" type="checkbox" checked={isTrending} onChange={(event) => setIsTrending(event.target.checked)} /> Trending</label>
           <label className="chip"><input name="is_featured" type="checkbox" checked={isFeatured} onChange={(event) => setIsFeatured(event.target.checked)} /> Featured</label>

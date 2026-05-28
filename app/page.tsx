@@ -1,21 +1,22 @@
 import Link from "next/link";
 import HomepageHeroSlider from "@/components/HomepageHeroSlider";
+import HomepageSectionTracker from "@/components/HomepageSectionTracker";
 import MovieSlider from "@/components/MovieSlider";
 import PlatformLogo from "@/components/PlatformLogo";
 import PromotionBanner from "@/components/PromotionBanner";
 import SeriesCard from "@/components/SeriesCard";
+import StreamingPlatformRow from "@/components/StreamingPlatformRow";
 import AdSlot from "@/components/AdSlot";
 import {
   getAdSlots,
   getBlogPosts,
   getChannelLinkedMovies,
   getHomepageHeroMovies,
-  getMovies,
+  getHomepageSectionMovies,
   getPlatforms,
   getPublishedSeries,
   getPromotions
 } from "@/lib/data";
-import { filterDiscoveryMovies, hasOfficialYouTube, isHindiFriendly } from "@/lib/discovery";
 
 export const dynamic = "force-dynamic";
 
@@ -25,9 +26,12 @@ export default async function HomePage() {
     ads,
     platforms,
     heroMovies,
-    allMovies,
     trending,
-    latest,
+    recentlyAdded,
+    ottReleases,
+    hindiDubbed,
+    freeLegal,
+    officialYouTube,
     posts,
     popularCartoons,
     popularTvShows,
@@ -37,23 +41,17 @@ export default async function HomePage() {
     getAdSlots("home"),
     getPlatforms(),
     getHomepageHeroMovies(),
-    getMovies({ limit: 120 }),
-    getMovies({ trending: true, limit: 12 }),
-    getMovies({ latest: true, limit: 18 }),
+    getHomepageSectionMovies("trending", 12),
+    getHomepageSectionMovies("recently_added", 12),
+    getHomepageSectionMovies("ott_release", 12),
+    getHomepageSectionMovies("hindi_dubbed", 12),
+    getHomepageSectionMovies("free_legal", 12),
+    getHomepageSectionMovies("official_youtube", 12),
     getBlogPosts(6),
-    getChannelLinkedMovies("cartoon", 12),
-    getChannelLinkedMovies("tv_show", 12),
+    getHomepageSectionMovies("cartoon", 12).then((items) => items.length ? items : getChannelLinkedMovies("cartoon", 12)),
+    getHomepageSectionMovies("tv_show", 12).then((items) => items.length ? items : getChannelLinkedMovies("tv_show", 12)),
     getPublishedSeries(12)
   ]);
-
-  const fallbackByPopularity = [...allMovies]
-    .sort((a, b) => (b.popularity_score || 0) - (a.popularity_score || 0))
-    .slice(0, 12);
-  const freeLegal = filterDiscoveryMovies(allMovies, { freeLegal: true }).slice(0, 12);
-  const hindiDubbed = allMovies.filter(isHindiFriendly).slice(0, 12);
-  const officialYouTube = allMovies.filter(hasOfficialYouTube).slice(0, 12);
-  const newOttReleases = latest.length ? latest : allMovies.slice(0, 12);
-  const trendingMovies = trending.length ? trending : fallbackByPopularity;
 
   const quickActions = [
     {
@@ -81,8 +79,29 @@ export default async function HomePage() {
   return (
     <main className="page-inner">
       <HomepageHeroSlider movies={heroMovies} />
+      <StreamingPlatformRow platforms={platforms} />
 
-      <section className="section quick-action-grid">
+      <MovieSlider title="Trending Now" movies={trending} href="/movies?section=trending" />
+      <MovieSlider title="Recently Added" movies={recentlyAdded} href="/movies?section=recently_added" />
+      {webSeries.length ? (
+        <section className="section poster-row-section">
+          <HomepageSectionTracker sectionName="Web Series" itemCount={webSeries.length} />
+          <div className="section-head">
+            <h2>Web Series</h2>
+            <Link className="muted" href="/web-series">More</Link>
+          </div>
+          <div className="slider poster-app-row">
+            {webSeries.map((series) => <SeriesCard series={series} key={series.id} />)}
+          </div>
+        </section>
+      ) : null}
+      <MovieSlider title="New OTT Releases" movies={ottReleases} href="/ott-releases" />
+      <MovieSlider title="Hindi Dubbed" movies={hindiDubbed} href="/hindi-dubbed" />
+      <MovieSlider title="Free Legal Movies" movies={freeLegal} href="/free-movies" />
+      <MovieSlider title="Official YouTube Movies" movies={officialYouTube} href="/free-movies?platform=youtube" />
+      <MovieSlider title="Popular Cartoons" movies={popularCartoons} href="/cartoons" />
+      <MovieSlider title="Popular TV Shows" movies={popularTvShows} href="/tv-shows" />
+      <section className="section quick-action-grid compact-guide-grid">
         {quickActions.map((action) => (
           <Link className="quick-action-card" href={action.href} key={action.title}>
             <strong>{action.title}</strong>
@@ -90,34 +109,13 @@ export default async function HomePage() {
           </Link>
         ))}
       </section>
-
-      <MovieSlider title="Free Legal Movies" movies={freeLegal} href="/free-movies" />
-      <MovieSlider title="Hindi Dubbed Picks" movies={hindiDubbed} href="/hindi-dubbed" />
-      <MovieSlider title="New OTT Releases" movies={newOttReleases} href="/ott-releases" />
-      <MovieSlider title="Trending Now" movies={trendingMovies} href="/movies?trending=true" />
-      <MovieSlider title="Official YouTube Movies" movies={officialYouTube} href="/free-movies?platform=youtube" />
-      <MovieSlider title="Popular Cartoons" movies={popularCartoons} href="/cartoons" />
-      <MovieSlider title="Popular TV Shows" movies={popularTvShows} href="/tv-shows" />
-      {webSeries.length ? (
-        <section className="section">
-          <div className="section-head">
-            <h2>Web Series</h2>
-            <Link className="muted" href="/web-series">View all</Link>
-          </div>
-          <div className="grid">
-            {webSeries.map((series) => <SeriesCard series={series} key={series.id} />)}
-          </div>
-        </section>
-      ) : null}
       <PromotionBanner promotion={middlePromotions[0]} />
       <AdSlot slot={ads[0]} />
 
-      <section className="section">
+      <section className="section popular-platforms-lower">
         <div className="section-head">
           <h2>Popular Platforms</h2>
-          <Link className="muted" href="/platforms">
-            View all
-          </Link>
+          <Link className="muted" href="/platforms">More</Link>
         </div>
         {platforms.length ? (
           <div className="platform-grid">

@@ -11,6 +11,7 @@ import {
   hasOfficialYouTube,
   matchesDiscoveryQuery
 } from "@/lib/discovery";
+import { splitLanguages } from "@/lib/languages";
 
 export const metadata: Metadata = {
   title: "Search",
@@ -59,6 +60,12 @@ export default async function SearchPage({
   });
   if (params.quick === "officialYouTube") results = results.filter(hasOfficialYouTube);
   if (params.quick === "publicDomain") results = results.filter((movie) => movie.license_type === "public_domain");
+  if (params.quick === "movies") results = results.filter((movie) => movie.type === "movie" || movie.content_type === "movie");
+  if (params.quick === "webSeries") results = [];
+  if (params.quick === "cartoons") results = results.filter((movie) => movie.type === "cartoon" || movie.primary_section === "cartoon");
+  if (params.quick === "tvShows") results = results.filter((movie) => movie.type === "tv_show" || movie.primary_section === "tv_show");
+  if (params.quick === "hindi") results = results.filter((movie) => splitLanguages(movie.language).some((language) => language.toLowerCase().includes("hindi")));
+  if (params.quick === "multilingual") results = results.filter((movie) => splitLanguages(movie.language).length > 1);
 
   return (
     <main className="page-inner">
@@ -81,6 +88,13 @@ export default async function SearchPage({
             <a className="chip" href="/search?quick=ottRelease">OTT Release</a>
             <a className="chip" href="/search?quick=officialYouTube">Official YouTube</a>
             <a className="chip" href="/search?quick=publicDomain">Public Domain</a>
+            <a className="chip" href="/search?quick=movies">Movies</a>
+            <a className="chip" href="/search?quick=webSeries">Web Series</a>
+            <a className="chip" href="/search?quick=cartoons">Cartoons</a>
+            <a className="chip" href="/search?quick=tvShows">TV Shows</a>
+            <a className="chip" href="/platforms">Platforms</a>
+            <a className="chip" href="/search?quick=hindi">Hindi</a>
+            <a className="chip" href="/search?quick=multilingual">Multilingual</a>
           </div>
         </form>
       </details>

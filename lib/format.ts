@@ -18,7 +18,10 @@ export function formatType(type?: string | null) {
     tv_show: "TV Show",
     cartoon: "Cartoon",
     anime: "Anime",
-    short_film: "Short Film"
+    short_film: "Short Film",
+    trailer: "Trailer",
+    episode: "Episode",
+    web_series: "Web Series"
   };
   return type && type in map ? map[type as MovieType] : type || "Title";
 }

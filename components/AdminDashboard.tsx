@@ -1055,6 +1055,8 @@ export default function AdminDashboard({
                         {movie.is_featured ? <span className="platform-badge">Featured</span> : null}
                         {movie.is_latest ? <span className="platform-badge">Latest</span> : null}
                         {movie.is_trending ? <span className="platform-badge">Trending</span> : null}
+                        {movie.primary_section ? <span className="platform-badge">Section: {movie.primary_section}</span> : null}
+                        {movie.show_in_hero ? <span className="platform-badge">Hero</span> : null}
                         <span className={visibility.visibleOnPublicPages ? "legal-badge" : "status-badge status-draft"}>
                           Public: {visibility.visibleOnPublicPages ? "Visible" : visibility.publicReasons.join(", ")}
                         </span>
