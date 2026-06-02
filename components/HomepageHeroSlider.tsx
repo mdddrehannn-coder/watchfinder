@@ -2,10 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Play } from "lucide-react";
-import {
-  movieQualities
-} from "@/lib/discovery";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatType, getYouTubeEmbedUrl } from "@/lib/format";
 import { languageBadge } from "@/lib/content-language";
 import type { Movie } from "@/types/watchfinder";
@@ -17,9 +14,8 @@ function firstPlatform(movie: Movie) {
 function slideBadges(movie: Movie) {
   return [
     formatType(movie.content_type || movie.type),
-    languageBadge(movie.language, movie.primary_language),
-    movieQualities(movie)[0] || null
-  ].filter(Boolean).slice(0, 3) as string[];
+    languageBadge(movie.language, movie.primary_language)
+  ].filter(Boolean).slice(0, 2) as string[];
 }
 
 function getPreviewSrc(trailerUrl?: string | null) {
@@ -158,11 +154,6 @@ export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
                   <Link className="button primary" href={`/movie/${movie.slug}`}>
                     View Details
                   </Link>
-                  {movie.trailer_url ? (
-                    <Link className="button hero-secondary-button" href={`/movie/${movie.slug}#trailer`}>
-                      <Play size={16} /> Watch Trailer
-                    </Link>
-                  ) : null}
                 </div>
               </div>
             </article>

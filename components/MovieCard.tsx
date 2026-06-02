@@ -15,7 +15,7 @@ export default function MovieCard({ movie, sectionName }: { movie: Movie; sectio
         contentType: movie.content_type || movie.type,
         languageLabel: languageBadge(movie.language, movie.primary_language),
         platformLabel: movie.platform_name || firstPlatformLabel(movie),
-        updateBadge: movie.show_in_hero ? "Hero" : null
+        updateBadge: null
       }}
       sectionName={sectionName}
     />
