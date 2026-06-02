@@ -10,7 +10,9 @@ function countLabel(series: Series) {
   return null;
 }
 
-export default function SeriesCard({ series, sectionName = "Web Series" }: { series: Series; sectionName?: string }) {
+export default function SeriesCard({ series, sectionName }: { series: Series; sectionName?: string }) {
+  const compact = Boolean(sectionName);
+
   return (
     <ContentPosterCard
       item={{
@@ -21,9 +23,10 @@ export default function SeriesCard({ series, sectionName = "Web Series" }: { ser
         bannerUrl: series.banner_url,
         contentType: "web_series",
         languageLabel: languageBadge(series.language),
-        platformLabel: series.platform_name,
+        platformLabel: null,
         updateBadge: countLabel(series)
       }}
+      compact={compact}
       sectionName={sectionName}
     />
   );

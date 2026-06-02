@@ -97,7 +97,7 @@ export default function AppUpdateManager() {
     }
 
     navigator.serviceWorker
-      .register("/sw.js")
+      .register("/sw.js", { updateViaCache: "none" })
       .then((registration) => {
         watchRegistration(registration);
         return registration.update();

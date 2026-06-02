@@ -34,14 +34,14 @@ const OPTIONS: Array<{
 ];
 
 export default function ThemeModeSelector() {
-  const [mode, setMode] = useState<ThemeMode>("auto");
+  const [mode, setMode] = useState<ThemeMode>("dark");
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved === "dark" || saved === "light" || saved === "auto") setMode(saved);
     } catch {
-      setMode("auto");
+      setMode("dark");
     }
   }, []);
 

@@ -2,12 +2,24 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import HeroPlayBanner from "@/components/HeroPlayBanner";
+import IntroductionDetailsSection from "@/components/IntroductionDetailsSection";
 import SeriesSeasonBrowser from "@/components/SeriesSeasonBrowser";
 import WebSeriesAnalyticsTracker from "@/components/WebSeriesAnalyticsTracker";
 import { getPublishedSeries, getSeriesBySlug } from "@/lib/data";
 import type { ResolvedPlayAction } from "@/lib/play-actions";
 
 export const dynamic = "force-dynamic";
+
+function formatDateLabel(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(date);
+}
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -29,6 +41,12 @@ export default async function WebSeriesDetailPage({ params }: { params: Promise<
     .slice(0, 4);
   const seasons = series.seasons ?? [];
   const episodeCount = seasons.reduce((total, season) => total + (season.episodes?.length ?? 0), 0);
+  const addedDate = formatDateLabel(series.created_at);
+  const updatedDate = formatDateLabel(series.updated_at);
+  const releaseUpdateSummary = [
+    addedDate ? `Added ${addedDate}` : null,
+    updatedDate ? `Updated ${updatedDate}` : null
+  ].filter(Boolean).join(" - ");
   const firstPlayableSeason = seasons.find((season) => season.episodes?.length);
   const firstEpisode = firstPlayableSeason?.episodes?.[0];
   const heroPlayAction: ResolvedPlayAction = firstPlayableSeason && firstEpisode
@@ -76,6 +94,28 @@ export default async function WebSeriesDetailPage({ params }: { params: Promise<
           </div>
         </div>
       </section>
+
+      <IntroductionDetailsSection
+        description={series.description}
+        items={[
+          { label: "Title", value: series.title },
+          { label: "Content type", value: "Web Series" },
+          { label: "Language", value: series.language },
+          { label: "Category / Genre", value: series.genre },
+          { label: "Platform / Source", value: series.platform_name },
+          { label: "Release year", value: series.release_year },
+          { label: "Rating", value: series.rating },
+          { label: "Series status", value: series.status === "published" ? "Published" : series.status },
+          { label: "Seasons", value: seasons.length ? `${seasons.length} ${seasons.length === 1 ? "Season" : "Seasons"}` : null },
+          { label: "Episodes", value: episodeCount ? `${episodeCount} ${episodeCount === 1 ? "Episode" : "Episodes"}` : null },
+          { label: "Release / Update info", value: releaseUpdateSummary }
+        ]}
+        tags={[
+          series.genre || "",
+          series.language || "",
+          series.platform_name || ""
+        ]}
+      />
 
       <SeriesSeasonBrowser series={series} />
 

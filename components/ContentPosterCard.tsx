@@ -23,16 +23,18 @@ function typeLabel(value?: string | null) {
 
 export default function ContentPosterCard({
   item,
-  sectionName
+  sectionName,
+  compact = false
 }: {
   item: PosterCardItem;
   sectionName?: string;
+  compact?: boolean;
 }) {
   const image = item.posterUrl || item.bannerUrl;
 
   return (
     <Link
-      className="content-poster-card"
+      className={compact ? "content-poster-card content-poster-card-compact" : "content-poster-card"}
       href={item.href}
       onClick={() => trackEvent({
         event_type: "poster_card_click",
@@ -52,10 +54,12 @@ export default function ContentPosterCard({
       </div>
       <div className="content-poster-copy">
         <strong title={item.title}>{item.title}</strong>
-        <div className="content-poster-meta">
-          <span>{typeLabel(item.contentType)}</span>
-          {item.platformLabel ? <span>{item.platformLabel}</span> : null}
-        </div>
+        {!compact ? (
+          <div className="content-poster-meta">
+            <span>{typeLabel(item.contentType)}</span>
+            {item.platformLabel ? <span>{item.platformLabel}</span> : null}
+          </div>
+        ) : null}
       </div>
     </Link>
   );

@@ -63,12 +63,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const themeScript = `
     (function () {
       try {
-        var mode = localStorage.getItem("watchfinder-theme-mode") || "auto";
+        var mode = localStorage.getItem("watchfinder-theme-mode") || "dark";
         var hour = new Date().getHours();
         var theme = mode === "light" || (mode === "auto" && hour >= 6 && hour < 18) ? "theme-light" : "theme-dark";
         document.documentElement.classList.remove("theme-dark", "theme-light");
         document.documentElement.classList.add(theme);
-        document.documentElement.dataset.themeMode = mode === "dark" || mode === "light" ? mode : "auto";
+        document.documentElement.dataset.themeMode = mode === "dark" || mode === "light" || mode === "auto" ? mode : "dark";
+        var themeMeta = document.querySelector('meta[name="theme-color"]');
+        if (themeMeta) themeMeta.setAttribute("content", theme === "theme-light" ? "#f6f7fb" : "#090a0f");
       } catch (error) {
         document.documentElement.classList.add("theme-dark");
       }

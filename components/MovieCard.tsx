@@ -1,9 +1,10 @@
 import ContentPosterCard from "@/components/ContentPosterCard";
-import { firstPlatformLabel } from "@/lib/data";
 import { languageBadge } from "@/lib/content-language";
 import type { Movie } from "@/types/watchfinder";
 
 export default function MovieCard({ movie, sectionName }: { movie: Movie; sectionName?: string }) {
+  const compact = Boolean(sectionName);
+
   return (
     <ContentPosterCard
       item={{
@@ -14,9 +15,10 @@ export default function MovieCard({ movie, sectionName }: { movie: Movie; sectio
         bannerUrl: movie.banner_url,
         contentType: movie.content_type || movie.type,
         languageLabel: languageBadge(movie.language, movie.primary_language),
-        platformLabel: movie.platform_name || firstPlatformLabel(movie),
+        platformLabel: null,
         updateBadge: null
       }}
+      compact={compact}
       sectionName={sectionName}
     />
   );

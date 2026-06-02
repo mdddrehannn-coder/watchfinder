@@ -1,4 +1,4 @@
-const CACHE_VERSION = "watchfinder-cache-v4";
+const CACHE_VERSION = "watchfinder-cache-v5";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const STATIC_ASSETS = [
   "/manifest.json",
@@ -69,7 +69,9 @@ function isStaticAsset(request, url) {
 
 async function networkFirst(request) {
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, {
+      cache: request.mode === "navigate" || request.destination === "document" ? "no-store" : "default"
+    });
     return response;
   } catch (error) {
     const cached = await caches.match(request);

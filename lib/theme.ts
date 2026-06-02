@@ -6,6 +6,7 @@ export const WATCHFINDER_THEME_STORAGE_KEY = "watchfinder-theme-mode";
 export function resolveWatchFinderTheme(mode?: string | null, date = new Date()): WatchFinderTheme {
   if (mode === "dark") return "dark";
   if (mode === "light") return "light";
+  if (mode !== "auto") return "dark";
   const hour = date.getHours();
   return hour >= 6 && hour < 18 ? "light" : "dark";
 }

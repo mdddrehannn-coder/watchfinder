@@ -4,6 +4,7 @@ import AdSlot from "@/components/AdSlot";
 import { Play } from "lucide-react";
 import FavoriteButton from "@/components/FavoriteButton";
 import HeroPlayBanner from "@/components/HeroPlayBanner";
+import IntroductionDetailsSection from "@/components/IntroductionDetailsSection";
 import LicensedVideoPlayer from "@/components/LicensedVideoPlayer";
 import LanguageTags from "@/components/LanguageTags";
 import MovieAnalyticsTracker from "@/components/MovieAnalyticsTracker";
@@ -25,6 +26,30 @@ import { movieAvailabilityTypes, movieQualities, movieSmartBadges, readableAvail
 import { formatDuration, formatType, getYouTubeEmbedUrl } from "@/lib/format";
 import { resolveMoviePlayAction } from "@/lib/play-actions";
 import { isExternalOnlyPlatform, isKnownExternalWatchPageUrl } from "@/lib/watch-links";
+import type { Movie } from "@/types/watchfinder";
+
+function formatDateLabel(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(date);
+}
+
+function movieEpisodeSummary(movie: Movie) {
+  const values = (movie.content_channel_items || [])
+    .map((item) => [
+      item.playlist_group,
+      item.season_number ? `Season ${item.season_number}` : null,
+      item.episode_number ? `Episode ${item.episode_number}` : null,
+      item.episode_title
+    ].filter(Boolean).join(" - "))
+    .filter(Boolean);
+  return values.length ? values.join(", ") : null;
+}
 
 export async function generateMetadata({
   params
@@ -78,6 +103,14 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
   const languageSummary = movie.language || "Audio/subtitle details not listed";
   const qualitySummary = qualities.length ? qualities.join(", ") : "Quality varies by platform";
   const availabilitySummary = availabilityTypes.length ? availabilityTypes.map((availability) => readableAvailability(availability)).join(", ") : "Availability varies by platform";
+  const genreSummary = movie.genres?.map((genre) => genre.name).filter(Boolean).join(", ") || null;
+  const castSummary = movie.cast_members?.map((member) => member.name).filter(Boolean).join(", ") || null;
+  const addedDate = formatDateLabel(movie.created_at);
+  const updatedDate = formatDateLabel(movie.updated_at);
+  const releaseUpdateSummary = [
+    addedDate ? `Added ${addedDate}` : null,
+    updatedDate ? `Updated ${updatedDate}` : null
+  ].filter(Boolean).join(" - ");
 
   return (
     <main className="page-inner">
@@ -154,6 +187,27 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
           </div>
         </div>
       </section>
+
+      <IntroductionDetailsSection
+        description={movie.description}
+        items={[
+          { label: "Title", value: movie.title },
+          { label: "Content type", value: formatType(movie.content_type || movie.type) },
+          { label: "Language", value: movie.language },
+          { label: "Quality", value: qualities },
+          { label: "Category / Genre", value: genreSummary },
+          { label: "Season / Episode", value: movieEpisodeSummary(movie) },
+          { label: "Platform / Source", value: platformNames },
+          { label: "Availability", value: availabilityTypes.map((availability) => readableAvailability(availability)) },
+          { label: "Release year", value: movie.release_year },
+          { label: "Duration", value: formatDuration(movie.duration_minutes) },
+          { label: "Rating", value: movie.rating ? `Rating ${movie.rating}` : null },
+          { label: "Director", value: movie.director },
+          { label: "Cast", value: castSummary },
+          { label: "Release / Update info", value: releaseUpdateSummary }
+        ]}
+        tags={allBadges}
+      />
 
       <section className="section panel legal-watch-panel movie-watch-guide">
         <div className="section-head">
