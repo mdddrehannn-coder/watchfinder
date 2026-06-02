@@ -63,7 +63,7 @@ export default async function HomePage() {
       href: "/ott-releases"
     },
     {
-      title: "Official YouTube",
+      title: "Official Trailers",
       text: "Trailers and official clips.",
       href: "/search?q=trailer"
     }

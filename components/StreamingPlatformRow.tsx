@@ -7,6 +7,15 @@ import type { Platform } from "@/types/watchfinder";
 
 const preferredOrder = ["netflix", "hotstar", "jiohotstar", "prime", "zee5", "sonyliv", "aha", "youtube", "apple"];
 
+const fallbackPlatforms: Platform[] = [
+  { id: "fallback-netflix", name: "Netflix", slug: "netflix", is_active: true },
+  { id: "fallback-jiohotstar", name: "JioHotstar", slug: "jiohotstar", is_active: true },
+  { id: "fallback-prime-video", name: "Prime Video", slug: "prime-video", is_active: true },
+  { id: "fallback-zee5", name: "Zee5", slug: "zee5", is_active: true },
+  { id: "fallback-sonyliv", name: "SonyLIV", slug: "sonyliv", is_active: true },
+  { id: "fallback-youtube", name: "YouTube", slug: "youtube", is_active: true }
+];
+
 function scorePlatform(platform: Platform) {
   const text = `${platform.name} ${platform.slug}`.toLowerCase();
   const index = preferredOrder.findIndex((token) => text.includes(token));
@@ -14,20 +23,25 @@ function scorePlatform(platform: Platform) {
 }
 
 export default function StreamingPlatformRow({ platforms }: { platforms: Platform[] }) {
-  const visiblePlatforms = [...platforms]
+  const matchedPlatforms = [...platforms]
+    .filter((platform) => platform.is_active !== false)
     .filter((platform) => {
       const text = `${platform.name} ${platform.slug}`.toLowerCase();
       return preferredOrder.some((token) => text.includes(token));
+    });
+
+  const visiblePlatforms = [...matchedPlatforms, ...fallbackPlatforms]
+    .filter((platform, index, all) => {
+      const score = scorePlatform(platform);
+      return all.findIndex((item) => scorePlatform(item) === score) === index;
     })
     .sort((a, b) => scorePlatform(a) - scorePlatform(b))
     .slice(0, 9);
 
-  if (!visiblePlatforms.length) return null;
-
   return (
     <section className="section streaming-platform-section">
       <div className="section-head">
-        <h2>Popular Platforms</h2>
+        <h2>Streaming</h2>
         <Link className="muted" href="/platforms">More</Link>
       </div>
       <div className="streaming-platform-row">
