@@ -39,6 +39,7 @@ export default function PWAInstallBanner() {
   async function install() {
     const result = await promptInstall();
     if (result === "accepted" || result === "installed" || result === "manual") setVisible(false);
+    if (result === "dismissed") later();
   }
 
   function later() {

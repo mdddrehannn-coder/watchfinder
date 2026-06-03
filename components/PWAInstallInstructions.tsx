@@ -26,7 +26,7 @@ const COPY: Record<InstallPlatform, { title: string; steps: string[] }> = {
     steps: [
       "Look for the install icon in the address bar.",
       "Or open your browser menu.",
-      "Choose Install WatchFinder."
+      "Choose Install WatchFinder, Add to Home Screen, or Create shortcut."
     ]
   }
 };
@@ -56,7 +56,7 @@ export default function PWAInstallInstructions({
             <li key={step}>{step}</li>
           ))}
         </ol>
-        <p className="muted">Some browsers do not support direct install prompts.</p>
+        <p className="muted">Your browser may not support direct install prompts. Use the browser menu to add WatchFinder to your home screen.</p>
         <button className="button primary" type="button" onClick={onClose}>
           Got it
         </button>
