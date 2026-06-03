@@ -5,15 +5,17 @@ import PlatformLogo from "@/components/PlatformLogo";
 import { trackEvent } from "@/lib/analytics";
 import type { Platform } from "@/types/watchfinder";
 
-const preferredOrder = ["netflix", "hotstar", "jiohotstar", "prime", "zee5", "sonyliv", "aha", "youtube", "apple"];
+const preferredOrder = ["youtube", "netflix", "jiohotstar", "hotstar", "prime", "sonyliv", "zee5", "apple", "aha"];
 
 const fallbackPlatforms: Platform[] = [
+  { id: "fallback-youtube", name: "YouTube", slug: "youtube", is_active: true },
   { id: "fallback-netflix", name: "Netflix", slug: "netflix", is_active: true },
   { id: "fallback-jiohotstar", name: "JioHotstar", slug: "jiohotstar", is_active: true },
   { id: "fallback-prime-video", name: "Prime Video", slug: "prime-video", is_active: true },
-  { id: "fallback-zee5", name: "Zee5", slug: "zee5", is_active: true },
   { id: "fallback-sonyliv", name: "SonyLIV", slug: "sonyliv", is_active: true },
-  { id: "fallback-youtube", name: "YouTube", slug: "youtube", is_active: true }
+  { id: "fallback-apple-tv", name: "Apple TV", slug: "apple-tv", is_active: true },
+  { id: "fallback-aha", name: "Aha", slug: "aha", is_active: true },
+  { id: "fallback-zee5", name: "Zee5", slug: "zee5", is_active: true }
 ];
 
 function scorePlatform(platform: Platform) {
@@ -22,21 +24,33 @@ function scorePlatform(platform: Platform) {
   return index === -1 ? 99 : index;
 }
 
-export default function StreamingPlatformRow({ platforms }: { platforms: Platform[] }) {
-  const matchedPlatforms = [...platforms]
-    .filter((platform) => platform.is_active !== false)
-    .filter((platform) => {
-      const text = `${platform.name} ${platform.slug}`.toLowerCase();
-      return preferredOrder.some((token) => text.includes(token));
-    });
+function platformKey(platform: Platform) {
+  const text = `${platform.name} ${platform.slug}`.toLowerCase();
+  const token = preferredOrder.find((item) => text.includes(item));
+  return token || platform.slug || platform.name.toLowerCase();
+}
 
-  const visiblePlatforms = [...matchedPlatforms, ...fallbackPlatforms]
+function platformDescription(platform: Platform) {
+  const text = `${platform.name} ${platform.slug}`.toLowerCase();
+  if (text.includes("youtube")) return "Trailers and official videos";
+  if (text.includes("netflix")) return "Subscription originals and films";
+  if (text.includes("hotstar") || text.includes("jio")) return "Movies, sports, and TV";
+  if (text.includes("prime")) return "Rentals and Prime titles";
+  if (text.includes("sonyliv") || text.includes("sony")) return "TV shows and originals";
+  if (text.includes("zee5") || text.includes("zee")) return "Hindi and regional titles";
+  if (text.includes("apple")) return "Apple originals and rentals";
+  if (text.includes("aha")) return "South Indian streaming";
+  return platform.description || "Official streaming platform";
+}
+
+export default function StreamingPlatformRow({ platforms }: { platforms: Platform[] }) {
+  const activePlatforms = [...platforms].filter((platform) => platform.is_active !== false);
+  const visiblePlatforms = [...activePlatforms, ...fallbackPlatforms]
     .filter((platform, index, all) => {
-      const score = scorePlatform(platform);
-      return all.findIndex((item) => scorePlatform(item) === score) === index;
+      const key = platformKey(platform);
+      return all.findIndex((item) => platformKey(item) === key) === index;
     })
-    .sort((a, b) => scorePlatform(a) - scorePlatform(b))
-    .slice(0, 9);
+    .sort((a, b) => scorePlatform(a) - scorePlatform(b) || a.name.localeCompare(b.name));
 
   return (
     <section className="section streaming-platform-section">
@@ -59,6 +73,7 @@ export default function StreamingPlatformRow({ platforms }: { platforms: Platfor
           >
             <PlatformLogo platform={platform} />
             <span>{platform.name}</span>
+            <small>{platformDescription(platform)}</small>
           </Link>
         ))}
       </div>

@@ -53,7 +53,7 @@ export default async function HomePage() {
       href: "/free-movies"
     },
     {
-      title: "Hindi Dubbed",
+      title: "Hindi Dubbed Finder",
       text: "Hindi audio and dubbed titles.",
       href: "/hindi-dubbed"
     },
