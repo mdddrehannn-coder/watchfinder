@@ -3250,6 +3250,12 @@ html.theme-light .relation-chip {
   border-color: rgba(34, 211, 238, 0.28);
 }
 
+.form-message.warning {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.13);
+  border-color: rgba(245, 158, 11, 0.34);
+}
+
 .save-actions {
   display: flex;
   align-items: center;
@@ -4748,6 +4754,12 @@ html.theme-light .form-message.info {
   color: #0f596b;
   background: rgba(14, 116, 144, 0.08);
   border-color: rgba(14, 116, 144, 0.22);
+}
+
+html.theme-light .form-message.warning {
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.09);
+  border-color: rgba(245, 158, 11, 0.28);
 }
 
 html.theme-light .bottom-nav a {

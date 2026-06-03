@@ -127,6 +127,29 @@ function mobilePlaybackValue(link?: { app_required?: boolean | null; mobile_web_
   return link?.app_required ? "no" : normalizePlaybackSupport(link?.mobile_web_supported);
 }
 
+function hasSavedPlayableOrWatchLink(movie?: Movie | null) {
+  if (!movie) return false;
+
+  const hasMovieRowLink = Boolean(
+    movie.trailer_url?.trim() ||
+      movie.video_embed_url?.trim() ||
+      movie.video_url?.trim() ||
+      movie.watch_url?.trim() ||
+      movie.platform_home_url?.trim() ||
+      movie.platform_search_url?.trim() ||
+      movie.app_deeplink?.trim()
+  );
+  if (hasMovieRowLink) return true;
+
+  return Boolean(
+    movie.movie_platform_links?.some((link) =>
+      link.is_active !== false &&
+        link.is_official !== false &&
+        Boolean(link.watch_url?.trim() || link.platform_home_url?.trim() || link.platform_search_url?.trim() || link.app_deeplink?.trim())
+    )
+  );
+}
+
 function toNullableString(value: FormDataEntryValue | null) {
   const stringValue = String(value || "").trim();
   return stringValue || null;
@@ -1131,6 +1154,7 @@ export default function AdminMovieForm({
     is_trending: isTrending,
     movie_platform_links: selectedPlatformId ? [{ id: "pending", movie_id: initialMovie?.id || "pending", platform_id: selectedPlatformId, watch_url: "pending" }] : initialMovie?.movie_platform_links || []
   } as Movie);
+  const showMissingPlayLinkWarning = isEditMode && initialMovie && !hasSavedPlayableOrWatchLink(initialMovie);
 
   return (
     <form ref={formRef} className="form-grid panel admin-movie-form" onSubmit={submit}>
@@ -1383,6 +1407,11 @@ export default function AdminMovieForm({
 
       <FormSection title="Official Watch Link" helper="Add only official legal platform links.">
         <p className="form-helper">OTT apps may block mobile web playback. If it does not play, mark as App required.</p>
+        {showMissingPlayLinkWarning ? (
+          <p className="form-message warning">
+            This movie has no playable trailer or official watch link. Add one to show the play button.
+          </p>
+        ) : null}
         <div className="form-grid two">
           <div className="field">
             <label>Official Platform</label>

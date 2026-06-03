@@ -25,7 +25,7 @@ import {
 import { movieAvailabilityTypes, movieQualities, movieSmartBadges, readableAvailability } from "@/lib/discovery";
 import { formatDuration, formatType, getYouTubeEmbedUrl } from "@/lib/format";
 import { resolveMoviePlayAction } from "@/lib/play-actions";
-import { isExternalOnlyPlatform, isKnownExternalWatchPageUrl } from "@/lib/watch-links";
+import { isExternalOnlyPlatform } from "@/lib/watch-links";
 import type { Movie } from "@/types/watchfinder";
 
 function formatDateLabel(value?: string | null) {
@@ -86,19 +86,19 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
 
   const hasProof = licenseDocuments.length > 0;
   const hasExternalOttLink = Boolean(movie.movie_platform_links?.some((link) => link.is_active !== false && isExternalOnlyPlatform(link.platforms)));
-  const legalEmbedUrl = movie.video_embed_url && !isKnownExternalWatchPageUrl(movie.video_embed_url) ? movie.video_embed_url : null;
-  const playableVideoProvider = movie.video_provider === "external_ott_link" ? null : movie.video_provider;
   const playAction = resolveMoviePlayAction(movie);
   const qualities = movieQualities(movie);
   const availabilityTypes = movieAvailabilityTypes(movie);
   const allBadges = movieSmartBadges(movie);
-  const modalProvider = playableVideoProvider || movie.trailer_provider || "youtube";
-  const hasPlayableModalSource = Boolean(
-    (playableVideoProvider && legalEmbedUrl) ||
-      getYouTubeEmbedUrl(movie.trailer_url)
-  );
+  const hasPlayableModalSource = playAction.type === "modal";
   const officialWatchLinks = (movie.movie_platform_links || []).filter((link) => link.is_active !== false && link.is_official !== false);
-  const platformNames = officialWatchLinks.map((link) => link.platforms?.name).filter(Boolean) as string[];
+  const rowPlatformName = movie.watch_url || movie.platform_home_url || movie.platform_search_url
+    ? movie.official_platform || movie.platform_name || "Official platform"
+    : null;
+  const platformNames = Array.from(new Set([
+    ...officialWatchLinks.map((link) => link.platforms?.name).filter(Boolean),
+    rowPlatformName
+  ].filter(Boolean))) as string[];
   const platformSummary = platformNames.length ? platformNames.slice(0, 3).join(", ") : "No official platform added yet";
   const languageSummary = movie.language || "Audio/subtitle details not listed";
   const qualitySummary = qualities.length ? qualities.join(", ") : "Quality varies by platform";
@@ -166,19 +166,19 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
             <p><strong>Director:</strong> {movie.director || "Not listed"}</p>
             <p><strong>Cast:</strong> {movie.cast_members?.map((member) => member.name).join(", ") || "Not listed"}</p>
             <div className="chip-row">
-              {hasPlayableModalSource ? (
+              {playAction.type === "modal" ? (
                 <TrailerModalTrigger
                   className="button primary watch-trailer-action"
-                  trailerUrl={movie.trailer_url}
-                  videoEmbedUrl={playableVideoProvider ? legalEmbedUrl : null}
+                  trailerUrl={playAction.trailerUrl}
+                  videoEmbedUrl={playAction.videoEmbedUrl}
                   movieId={movie.id}
                   movieSlug={movie.slug}
-                  provider={modalProvider}
+                  provider={playAction.provider || "youtube"}
                   title={movie.title}
-                  buttonLabel="Watch Trailer"
+                  buttonLabel={playAction.label}
                 >
                   <Play size={18} fill="currentColor" />
-                  Watch Trailer
+                  {playAction.label}
                 </TrailerModalTrigger>
               ) : null}
               <FavoriteButton movieId={movie.id} />
