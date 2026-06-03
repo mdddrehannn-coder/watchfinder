@@ -1,5 +1,4 @@
 import Link from "next/link";
-import HomeCategoryTabs from "@/components/HomeCategoryTabs";
 import HomepageHeroSlider from "@/components/HomepageHeroSlider";
 import HomepageSectionTracker from "@/components/HomepageSectionTracker";
 import MovieSlider from "@/components/MovieSlider";
@@ -10,41 +9,65 @@ import {
   getAdSlots,
   getChannelLinkedMovies,
   getHomepageHeroMovies,
-  getHomepageSectionMovies,
+  getMovies,
   getPlatforms,
   getPublishedSeries,
 } from "@/lib/data";
+import { filterDiscoveryMovies } from "@/lib/discovery";
+import type { Movie } from "@/types/watchfinder";
 
 export const dynamic = "force-dynamic";
+
+function uniqueMovies(movies: Movie[]) {
+  const seen = new Set<string>();
+  return movies.filter((movie) => {
+    if (seen.has(movie.id)) return false;
+    seen.add(movie.id);
+    return true;
+  });
+}
+
+function contentTypeMatches(movie: Movie, type: string) {
+  return movie.content_type === type || movie.type === type;
+}
 
 export default async function HomePage() {
   const [
     ads,
     platforms,
     heroMovies,
-    trending,
-    recentlyAdded,
-    ottReleases,
-    hindiDubbed,
-    freeLegal,
-    officialYouTube,
-    popularCartoons,
-    popularTvShows,
+    allMovies,
+    trendingMovies,
+    latestMovies,
+    channelCartoons,
+    channelTvShows,
     webSeries
   ] = await Promise.all([
     getAdSlots("home"),
     getPlatforms(),
     getHomepageHeroMovies(),
-    getHomepageSectionMovies("trending", 12),
-    getHomepageSectionMovies("recently_added", 12),
-    getHomepageSectionMovies("ott_release", 12),
-    getHomepageSectionMovies("hindi_dubbed", 12),
-    getHomepageSectionMovies("free_legal", 12),
-    getHomepageSectionMovies("official_youtube", 12),
-    getHomepageSectionMovies("cartoon", 12).then((items) => items.length ? items : getChannelLinkedMovies("cartoon", 12)),
-    getHomepageSectionMovies("tv_show", 12).then((items) => items.length ? items : getChannelLinkedMovies("tv_show", 12)),
+    getMovies({ limit: 120, createdDesc: true }),
+    getMovies({ trending: true, limit: 24, createdDesc: true }),
+    getMovies({ latest: true, limit: 24, createdDesc: true }),
+    getChannelLinkedMovies("cartoon", 12),
+    getChannelLinkedMovies("tv_show", 12),
     getPublishedSeries(12)
   ]);
+
+  const trending = uniqueMovies(trendingMovies.length ? trendingMovies : allMovies).slice(0, 12);
+  const recentlyAdded = uniqueMovies(latestMovies.length ? latestMovies : allMovies).slice(0, 12);
+  const ottReleases = uniqueMovies(latestMovies.length ? latestMovies : allMovies).slice(0, 12);
+  const hindiDubbed = filterDiscoveryMovies(allMovies, { hindiDubbed: true }).slice(0, 12);
+  const freeLegal = filterDiscoveryMovies(allMovies, { freeLegal: true }).slice(0, 12);
+  const officialYouTube = filterDiscoveryMovies(allMovies, { officialYouTube: true }).slice(0, 12);
+  const popularCartoons = uniqueMovies([
+    ...channelCartoons,
+    ...allMovies.filter((movie) => contentTypeMatches(movie, "cartoon"))
+  ]).slice(0, 12);
+  const popularTvShows = uniqueMovies([
+    ...channelTvShows,
+    ...allMovies.filter((movie) => contentTypeMatches(movie, "tv_show"))
+  ]).slice(0, 12);
 
   const quickActions = [
     {
@@ -71,7 +94,6 @@ export default async function HomePage() {
 
   return (
     <main className="page-inner streaming-home">
-      <HomeCategoryTabs />
       <HomepageHeroSlider movies={heroMovies} />
       <StreamingPlatformRow platforms={platforms} />
       <section className="section homepage-shortcut-strip" aria-label="Quick content shortcuts">
