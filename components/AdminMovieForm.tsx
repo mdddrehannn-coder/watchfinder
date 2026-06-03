@@ -190,6 +190,13 @@ function formatSaveError(error: unknown) {
   const normalized = message.toLowerCase();
   if (normalized.includes("migration hint:")) return message;
   if (
+    code === "PGRST204" &&
+    normalized.includes("content_type") &&
+    normalized.includes("movies")
+  ) {
+    return "Supabase migration missing: content_type column is required. Run supabase/migrations/202606030001_fix_movies_content_type_schema.sql, then try saving again.";
+  }
+  if (
     code === "PGRST204" ||
     normalized.includes("schema cache") ||
     normalized.includes("could not find") ||
