@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import PWAInstallInstructions, { type InstallPlatform } from "@/components/PWAInstallInstructions";
 import { trackEvent } from "@/lib/analytics";
+import { isAppInstalledOrStandalone, markAppInstalled } from "@/lib/pwa";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -31,12 +32,6 @@ function getPlatform(): InstallPlatform {
   return "desktop";
 }
 
-function isStandalone() {
-  if (typeof window === "undefined") return false;
-  const navigatorWithStandalone = window.navigator as Navigator & { standalone?: boolean };
-  return window.matchMedia("(display-mode: standalone)").matches || navigatorWithStandalone.standalone === true;
-}
-
 export function usePWAInstall() {
   const context = useContext(PWAInstallContext);
   if (!context) throw new Error("usePWAInstall must be used inside PWAInstallManager");
@@ -51,10 +46,17 @@ export default function PWAInstallManager({ children }: { children: React.ReactN
   const platform = useMemo(getPlatform, []);
 
   useEffect(() => {
-    setInstalled(isStandalone());
+    const currentlyInstalled = isAppInstalledOrStandalone();
+    setInstalled(currentlyInstalled);
+    if (currentlyInstalled) markAppInstalled();
 
     function handleBeforeInstallPrompt(event: Event) {
       event.preventDefault();
+      if (isAppInstalledOrStandalone()) {
+        setInstalled(true);
+        setPromptEvent(null);
+        return;
+      }
       setPromptEvent(event as BeforeInstallPromptEvent);
       setStatus("Install is available on this browser.");
     }
@@ -63,6 +65,7 @@ export default function PWAInstallManager({ children }: { children: React.ReactN
       setInstalled(true);
       setPromptEvent(null);
       setInstructionsOpen(false);
+      markAppInstalled();
       setStatus("WatchFinder is already installed.");
       trackEvent({ event_type: "app_installed" });
     }
@@ -78,15 +81,16 @@ export default function PWAInstallManager({ children }: { children: React.ReactN
 
   const promptInstall = useCallback(async (): Promise<InstallResult> => {
     trackEvent({ event_type: "app_install_clicked" });
-    if (installed || isStandalone()) {
+    if (installed || isAppInstalledOrStandalone()) {
       setInstalled(true);
+      markAppInstalled();
       setStatus("WatchFinder is already installed.");
       return "installed";
     }
 
     if (!promptEvent) {
       setInstructionsOpen(true);
-      setStatus("Manual install instructions opened.");
+      setStatus("Install prompt is not available in this browser. Follow the steps below.");
       return "manual";
     }
 
@@ -95,6 +99,7 @@ export default function PWAInstallManager({ children }: { children: React.ReactN
     setPromptEvent(null);
 
     if (choice.outcome === "accepted") {
+      markAppInstalled();
       setStatus("Install started.");
       return "accepted";
     }

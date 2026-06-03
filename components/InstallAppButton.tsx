@@ -24,7 +24,7 @@ export default function InstallAppButton() {
   return (
     <div className="install-app-actions">
       <button className="button primary install-button" type="button" onClick={install}>
-        <Download size={18} /> Install WatchFinder
+        <Download size={18} /> {canPrompt ? "Install WatchFinder" : "Show install steps"}
       </button>
       <p className="install-help">
         <Info size={16} />

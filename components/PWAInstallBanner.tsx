@@ -8,30 +8,29 @@ import { usePWAInstall } from "@/components/PWAInstallManager";
 import { trackEvent } from "@/lib/analytics";
 
 const DISMISSED_AT_KEY = "watchfinder-install-banner-dismissed-at";
-const LATER_KEY = "watchfinder-install-banner-later-session";
+const LATER_UNTIL_KEY = "watchfinder-install-banner-later-until";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEK_MS = 7 * DAY_MS;
 
 export default function PWAInstallBanner() {
   const pathname = usePathname();
-  const { installed, promptInstall } = usePWAInstall();
+  const { canPrompt, installed, promptInstall } = usePWAInstall();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     if (installed || pathname.startsWith("/admin")) return;
 
     const dismissedAt = Number(localStorage.getItem(DISMISSED_AT_KEY) || 0);
-    const dismissedToday = dismissedAt && Date.now() - dismissedAt < DAY_MS;
-    const laterThisSession = sessionStorage.getItem(LATER_KEY) === "1";
-    if (dismissedToday || laterThisSession) return;
+    const dismissedRecently = dismissedAt && Date.now() - dismissedAt < WEEK_MS;
+    const laterUntil = Number(localStorage.getItem(LATER_UNTIL_KEY) || 0);
+    if (dismissedRecently || laterUntil > Date.now()) return;
 
-    const showTimer = window.setTimeout(() => setVisible(true), 1000);
-    const analyticsTimer = window.setTimeout(() => trackEvent({ event_type: "app_install_prompt_shown" }), 1000);
-    const hideTimer = window.setTimeout(() => setVisible(false), 9000);
+    const showTimer = window.setTimeout(() => setVisible(true), 4000);
+    const analyticsTimer = window.setTimeout(() => trackEvent({ event_type: "app_install_prompt_shown" }), 4000);
 
     return () => {
       window.clearTimeout(showTimer);
       window.clearTimeout(analyticsTimer);
-      window.clearTimeout(hideTimer);
     };
   }, [installed, pathname]);
 
@@ -39,11 +38,11 @@ export default function PWAInstallBanner() {
 
   async function install() {
     const result = await promptInstall();
-    if (result === "accepted" || result === "installed") setVisible(false);
+    if (result === "accepted" || result === "installed" || result === "manual") setVisible(false);
   }
 
   function later() {
-    sessionStorage.setItem(LATER_KEY, "1");
+    localStorage.setItem(LATER_UNTIL_KEY, String(Date.now() + DAY_MS));
     setVisible(false);
   }
 
@@ -58,13 +57,13 @@ export default function PWAInstallBanner() {
         <Image src="/icon-192-v3.png" width={44} height={44} alt="" />
       </div>
       <div className="pwa-install-copy">
-        <strong>Install WatchFinder App</strong>
+        <strong>Install WatchFinder</strong>
         <span>Get quick access from your home screen.</span>
       </div>
       <div className="pwa-install-actions">
-        <button className="button primary" type="button" onClick={install}>Install</button>
+        <button className="button primary" type="button" onClick={install}>{canPrompt ? "Install" : "Show install steps"}</button>
         <button className="button ghost" type="button" onClick={later}>Later</button>
-        <button className="icon-button" type="button" onClick={dismissToday} aria-label="Don't show today">
+        <button className="icon-button" type="button" onClick={dismissToday} aria-label="Close install prompt">
           <X size={17} />
         </button>
       </div>

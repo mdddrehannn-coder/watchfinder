@@ -1,4 +1,4 @@
-const CACHE_VERSION = "watchfinder-cache-v5";
+const CACHE_VERSION = "watchfinder-cache-v6";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const STATIC_ASSETS = [
   "/manifest.json",
@@ -12,8 +12,6 @@ self.addEventListener("install", function (event) {
   event.waitUntil(
     caches.open(STATIC_CACHE).then(function (cache) {
       return cache.addAll(STATIC_ASSETS);
-    }).finally(function () {
-      return self.skipWaiting();
     })
   );
 });
