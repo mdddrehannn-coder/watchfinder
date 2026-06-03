@@ -31,6 +31,7 @@ import { getMovieVisibilityCheck } from "@/lib/admin-visibility";
 import { deleteMovieById, updateMovieStatusById, type AdminMovieActionStatus } from "@/lib/admin-movie-actions";
 import AdminPromotionForm from "@/components/AdminPromotionForm";
 import { trackEvent } from "@/lib/analytics";
+import { formatType } from "@/lib/format";
 import { movieSelect } from "@/lib/movie-select";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import type { CastMember, ContentChannel, Genre, Movie, Platform, Series } from "@/types/watchfinder";
@@ -53,6 +54,9 @@ type AdminSection =
   | "feedback-messages"
   | "license-documents"
   | "site-settings";
+
+type MovieEditorContentType = "movie" | "trailer" | "tv_show" | "cartoon" | "short_film";
+type ContentEditorType = MovieEditorContentType | "series";
 
 const sections: Array<{ id: AdminSection; label: string }> = [
   { id: "dashboard", label: "Dashboard Overview" },
@@ -211,6 +215,26 @@ const analyticsTabs: Array<{ label: string; value: AnalyticsTab; icon: ReactNode
   { label: "Live", value: "live", icon: <Radio size={16} /> },
   { label: "Debug", value: "debug", icon: <Bug size={16} /> }
 ];
+
+const addContentTypes: Array<{
+  label: string;
+  value: ContentEditorType;
+  helper: string;
+  highlighted?: boolean;
+}> = [
+  { label: "Movie", value: "movie", helper: "Use the normal movie upload form", highlighted: true },
+  { label: "Trailer", value: "trailer", helper: "Save this listing with a Trailer badge" },
+  { label: "TV Show", value: "tv_show", helper: "Save this listing with a TV Show badge" },
+  { label: "Cartoon", value: "cartoon", helper: "Save this listing with a Cartoon badge" },
+  { label: "Short Film", value: "short_film", helper: "Save this listing with a Short Film badge" },
+  { label: "Web Series", value: "series", helper: "Create seasons and episodes", highlighted: true }
+];
+
+function normalizeContentEditorType(value?: string | null): ContentEditorType {
+  if (value === "trailer" || value === "tv_show" || value === "cartoon" || value === "short_film") return value;
+  if (value === "series") return "series";
+  return "movie";
+}
 
 function compactNumber(value = 0) {
   return new Intl.NumberFormat("en", {
@@ -376,7 +400,7 @@ export default function AdminDashboard({
   const [series, setSeries] = useState<Series[]>(initialSeries);
   const [editingMovie, setEditingMovie] = useState<Movie | null>(null);
   const [editingSeries, setEditingSeries] = useState<Series | null>(null);
-  const [contentEditorType, setContentEditorType] = useState<"movie" | "series">("movie");
+  const [contentEditorType, setContentEditorType] = useState<ContentEditorType>("movie");
   const [movieSearch, setMovieSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -399,7 +423,7 @@ export default function AdminDashboard({
     return movies.filter((movie) => {
       if (query && !`${movie.title} ${movie.slug} ${movie.language || ""}`.toLowerCase().includes(query)) return false;
       if (statusFilter && movie.status !== statusFilter) return false;
-      if (typeFilter && movie.type !== typeFilter) return false;
+      if (typeFilter && (movie.content_type || movie.type) !== typeFilter) return false;
       if (languageFilter && !String(movie.language || "").toLowerCase().includes(languageFilter.toLowerCase())) return false;
       if (flagFilter === "featured" && !movie.is_featured) return false;
       if (flagFilter === "latest" && !movie.is_latest) return false;
@@ -660,10 +684,10 @@ export default function AdminDashboard({
     };
   }, [analytics, analyticsRange, movieSort, movies]);
 
-  function showAddMovie() {
+  function showAddMovie(type: MovieEditorContentType = "movie") {
     setEditingMovie(null);
     setEditingSeries(null);
-    setContentEditorType("movie");
+    setContentEditorType(type);
     setActiveSection("add-movie");
     setMovieMessage(null);
   }
@@ -671,7 +695,7 @@ export default function AdminDashboard({
   function showEditMovie(movie: Movie) {
     setEditingMovie(movie);
     setEditingSeries(null);
-    setContentEditorType("movie");
+    setContentEditorType(normalizeContentEditorType(movie.content_type || movie.type));
     setActiveSection("add-movie");
     setMovieMessage(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -990,7 +1014,7 @@ export default function AdminDashboard({
                 <h2>Movies</h2>
                 <p className="muted">Search, edit, view, or archive saved movie listings.</p>
               </div>
-              <button className="button primary" type="button" onClick={showAddMovie}>
+              <button className="button primary" type="button" onClick={() => showAddMovie()}>
                 <Plus size={18} /> Add Movie
               </button>
               <button className="button" type="button" onClick={showAddSeries}>
@@ -1016,6 +1040,7 @@ export default function AdminDashboard({
               <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
                 <option value="">All types</option>
                 <option value="movie">Movie</option>
+                <option value="trailer">Trailer</option>
                 <option value="tv_show">TV Show</option>
                 <option value="cartoon">Cartoon</option>
                 <option value="anime">Anime</option>
@@ -1044,7 +1069,7 @@ export default function AdminDashboard({
                       <p className="muted">{movie.slug}</p>
                       <div className="meta-line">
                         <span className={statusClass(movie.status)}>{movie.status || "draft"}</span>
-                        <span>{movie.type}</span>
+                        <span>{formatType(movie.content_type || movie.type)}</span>
                         <span>{movie.language || "No language"}</span>
                         <span>{platformsLabel || "No platform"}</span>
                         <span>{movie.content_channels?.map((channel) => channel.name).join(", ") || "No channel"}</span>
@@ -1916,39 +1941,41 @@ export default function AdminDashboard({
                 <h2>What are you adding?</h2>
                 <p className="muted">Movie, trailer, TV show, cartoon, and short film use the existing upload flow. Web Series opens a season and episode editor.</p>
                 <div className="option-group compact-options">
-                  <label className="option-card option-card-published">
-                    <input type="radio" checked={contentEditorType === "movie"} onChange={() => setContentEditorType("movie")} />
-                    <span>Movie</span>
-                    <small>Use the current movie upload form</small>
-                  </label>
-                  {["Trailer", "TV Show", "Cartoon", "Short Film"].map((label) => (
-                    <label className="option-card" key={label}>
-                      <input type="radio" checked={false} onChange={() => setContentEditorType("movie")} />
-                      <span>{label}</span>
-                      <small>Select the matching type inside the existing movie form</small>
+                  {addContentTypes.map((type) => (
+                    <label className={type.highlighted ? "option-card option-card-published" : "option-card"} key={type.value}>
+                      <input
+                        checked={contentEditorType === type.value}
+                        name="admin_content_editor_type"
+                        onChange={() => {
+                          setEditingMovie(null);
+                          setEditingSeries(null);
+                          setContentEditorType(type.value);
+                          setMovieMessage(null);
+                        }}
+                        type="radio"
+                        value={type.value}
+                      />
+                      <span>{type.label}</span>
+                      <small>{type.helper}</small>
                     </label>
                   ))}
-                  <label className="option-card option-card-published">
-                    <input type="radio" checked={contentEditorType === "series"} onChange={() => setContentEditorType("series")} />
-                    <span>Web Series</span>
-                    <small>Create seasons and episodes</small>
-                  </label>
                 </div>
               </div>
             ) : null}
-            {contentEditorType === "movie" ? (
+            {contentEditorType !== "series" ? (
               <AdminMovieForm
-                key={editingMovie?.id || "new-movie"}
+                key={editingMovie?.id || `new-${contentEditorType}`}
                 genres={genres}
                 castMembers={castMembers}
                 platforms={platforms}
                 initialMovie={editingMovie}
+                initialContentType={contentEditorType}
                 onSaved={handleSaved}
                 onDuplicateSlug={openMovieById}
                 onArchiveMovie={(movie) => requestMovieAction(movie, "archive")}
                 onDeleteMovie={(movie) => requestMovieAction(movie, "delete")}
                 onBackToMovies={() => setActiveSection("movies")}
-                onAddNew={showAddMovie}
+                onAddNew={() => showAddMovie(contentEditorType)}
                 movieAnalytics={editingMovie ? analyticsStats.movieStatsById.get(editingMovie.id) : undefined}
                 contentChannels={contentChannels}
                 contentChannelsError={contentChannelsError}
@@ -1978,7 +2005,7 @@ export default function AdminDashboard({
                 <h2>Manage Channel Links</h2>
                 <p className="muted">Channel links are stored in Supabase content_channel_items. Open a movie editor to connect cartoons and TV shows to one or more channels.</p>
               </div>
-              <button className="button primary" type="button" onClick={showAddMovie}>
+              <button className="button primary" type="button" onClick={() => showAddMovie()}>
                 <Plus size={18} /> Add Movie
               </button>
             </div>

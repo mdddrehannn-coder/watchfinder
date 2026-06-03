@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ChangeEvent, Dispatch, FormEvent, SetStateAction, useEffect, useRef, useState } from "react";
 import { Eye, Save } from "lucide-react";
 import { getMovieSaveVisibilityMessage, getMovieVisibilityCheck } from "@/lib/admin-visibility";
-import { slugify } from "@/lib/format";
+import { formatType, slugify } from "@/lib/format";
 import { joinLanguages, WATCHFINDER_LANGUAGES } from "@/lib/languages";
 import { isOptionalMovieRelationError, movieSelect, movieSelectWithoutChannels } from "@/lib/movie-select";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
@@ -400,12 +400,14 @@ export default function AdminMovieForm({
   onDeleteMovie,
   movieAnalytics,
   contentChannels = [],
-  contentChannelsError = null
+  contentChannelsError = null,
+  initialContentType = "movie"
 }: {
   genres: Genre[];
   castMembers: CastMember[];
   platforms: Platform[];
   initialMovie?: Movie | null;
+  initialContentType?: string;
   onAddNew?: () => void;
   onBackToMovies?: () => void;
   onSaved?: (movie: Movie) => void;
@@ -424,11 +426,12 @@ export default function AdminMovieForm({
   };
 }) {
   const isEditMode = Boolean(initialMovie?.id);
+  const initialSelectedType = initialMovie?.content_type || initialMovie?.type || initialContentType || "movie";
   const firstPlatformLink = initialMovie?.movie_platform_links?.[0] ?? null;
   const firstChannelItem = initialMovie?.content_channel_items?.[0] ?? null;
   const [title, setTitle] = useState(initialMovie?.title ?? "");
   const [slug, setSlug] = useState(initialMovie?.slug ?? "");
-  const [selectedType, setSelectedType] = useState(initialMovie?.type ?? "movie");
+  const [selectedType, setSelectedType] = useState(initialSelectedType);
   const [selectedStatus, setSelectedStatus] = useState(initialMovie?.status ?? "draft");
   const [primarySection, setPrimarySection] = useState(initialMovie?.primary_section ?? (initialMovie?.is_trending ? "trending" : initialMovie?.is_latest ? "recently_added" : "recently_added"));
   const [showInHero, setShowInHero] = useState(Boolean(initialMovie?.show_in_hero ?? initialMovie?.is_featured));
@@ -487,7 +490,7 @@ export default function AdminMovieForm({
     const link = initialMovie?.movie_platform_links?.[0] ?? null;
     setTitle(initialMovie?.title ?? "");
     setSlug(initialMovie?.slug ?? "");
-    setSelectedType(initialMovie?.type ?? "movie");
+    setSelectedType(initialMovie?.content_type || initialMovie?.type || initialContentType || "movie");
     setSelectedStatus(initialMovie?.status ?? "draft");
     setPrimarySection(initialMovie?.primary_section ?? (initialMovie?.is_trending ? "trending" : initialMovie?.is_latest ? "recently_added" : "recently_added"));
     setShowInHero(Boolean(initialMovie?.show_in_hero ?? initialMovie?.is_featured));
@@ -537,7 +540,7 @@ export default function AdminMovieForm({
     setPosterPreview(null);
     setBannerPreview(null);
     formRef.current?.reset();
-  }, [initialMovie]);
+  }, [initialMovie, initialContentType]);
 
   useEffect(() => {
     return () => {
@@ -666,7 +669,7 @@ export default function AdminMovieForm({
     }
     setTitle("");
     setSlug("");
-    setSelectedType("movie");
+    setSelectedType(initialContentType || "movie");
     setSelectedStatus("draft");
     setPrimarySection("recently_added");
     setShowInHero(false);
@@ -802,7 +805,7 @@ export default function AdminMovieForm({
     setSaving(true);
 
     const formElement = event.currentTarget;
-    setMessage({ type: "info", text: "Saving movie..." });
+    setMessage({ type: "info", text: `Saving ${formatType(selectedType).toLowerCase()}...` });
     setSavedMovieSlug(null);
     let persistedMovieId: string | null = null;
 
@@ -1036,10 +1039,11 @@ export default function AdminMovieForm({
 
       const savedMovie = normalizeConfirmedMovie(confirmedRow);
       const slugNote = !isEditMode ? ` Final slug: ${savedMovie.slug}.` : "";
+      const savedTypeLabel = formatType(savedMovie.content_type || savedMovie.type || selectedType);
 
       setMessage({
         type: "success",
-        text: `${isEditMode ? "Movie updated successfully." : "Movie saved as new listing."}${slugNote} ${getMovieSaveVisibilityMessage(savedMovie)} ${getSaveDebugText(savedMovie)}`
+        text: `${isEditMode ? `${savedTypeLabel} updated successfully.` : `${savedTypeLabel} saved as new listing.`}${slugNote} ${getMovieSaveVisibilityMessage(savedMovie)} ${getSaveDebugText(savedMovie)}`
       });
       setSavedMovieSlug(savedMovie.slug);
       setDuplicateAdvisory(null);
@@ -1074,6 +1078,9 @@ export default function AdminMovieForm({
   const watchMinutes = movieAnalytics ? Math.round(movieAnalytics.watchSeconds / 60) : 0;
   const selectedPlatform = platforms.find((platform) => platform.id === selectedPlatformId) ?? null;
   const selectedPlatformIsExternalOnly = isExternalOnlyPlatform(selectedPlatform);
+  const selectedTypeLabel = formatType(selectedType);
+  const formTitle = isEditMode ? `Edit ${selectedTypeLabel}` : `Add ${selectedTypeLabel}`;
+  const submitLabel = isEditMode ? `Update ${selectedTypeLabel}` : `Save ${selectedTypeLabel}`;
   const draftVisibilityCheck = getMovieVisibilityCheck({
     ...(initialMovie || {}),
     id: initialMovie?.id || "pending",
@@ -1094,9 +1101,9 @@ export default function AdminMovieForm({
   return (
     <form ref={formRef} className="form-grid panel admin-movie-form" onSubmit={submit}>
       <div>
-        <h2>{isEditMode ? "Edit Movie" : "Add Movie"}</h2>
+        <h2>{formTitle}</h2>
         <p className="muted">
-          {isEditMode ? "Update this existing WatchFinder listing." : "Create a new legal movie discovery listing."}
+          {isEditMode ? "Update this existing WatchFinder listing." : `Create a new legal ${selectedTypeLabel.toLowerCase()} discovery listing.`}
         </p>
       </div>
 
@@ -1169,8 +1176,6 @@ export default function AdminMovieForm({
           <div className="option-group">
             <label className="option-card"><input type="radio" name="type" value="movie" checked={selectedType === "movie"} onChange={() => setSelectedType("movie")} /> <span>Movie</span></label>
             <label className="option-card"><input type="radio" name="type" value="trailer" checked={selectedType === "trailer"} onChange={() => setSelectedType("trailer")} /> <span>Trailer</span></label>
-            <label className="option-card"><input type="radio" name="type" value="web_series" checked={selectedType === "web_series"} onChange={() => setSelectedType("web_series")} /> <span>Web Series</span></label>
-            <label className="option-card"><input type="radio" name="type" value="episode" checked={selectedType === "episode"} onChange={() => setSelectedType("episode")} /> <span>Episode</span></label>
             <label className="option-card"><input type="radio" name="type" value="tv_show" checked={selectedType === "tv_show"} onChange={() => setSelectedType("tv_show")} /> <span>TV Show</span></label>
             <label className="option-card"><input type="radio" name="type" value="cartoon" checked={selectedType === "cartoon"} onChange={() => setSelectedType("cartoon")} /> <span>Cartoon</span></label>
             <label className="option-card"><input type="radio" name="type" value="short_film" checked={selectedType === "short_film"} onChange={() => setSelectedType("short_film")} /> <span>Short Film</span></label>
@@ -1537,12 +1542,12 @@ export default function AdminMovieForm({
             </button>
           ) : null}
           <button className="button ghost" type="button" onClick={clearAddAnother}>
-            {isEditMode ? "Add New Movie" : "Add Another Movie"}
+            {isEditMode ? `Add New ${selectedTypeLabel}` : `Add Another ${selectedTypeLabel}`}
           </button>
         </div>
       ) : null}
       <button className="button primary" type="submit" disabled={saving}>
-        <Save size={18} /> {saving ? "Saving..." : isEditMode ? "Update Movie" : "Save Movie"}
+        <Save size={18} /> {saving ? "Saving..." : submitLabel}
       </button>
     </form>
   );
