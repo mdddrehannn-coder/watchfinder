@@ -47,9 +47,10 @@ const AVAILABILITY_OPTIONS = [
 ];
 
 const OPEN_MODE_OPTIONS = [
-  { label: "Trailer modal", value: "trailer_modal" },
+  { label: "Auto", value: "auto" },
   { label: "In-app browser", value: "in_app_browser" },
-  { label: "External", value: "external" }
+  { label: "External official site", value: "external" },
+  { label: "YouTube player", value: "trailer_modal" }
 ];
 
 const HOMEPAGE_SECTION_OPTIONS = [
@@ -68,9 +69,9 @@ const HOMEPAGE_SECTION_OPTIONS = [
 ];
 
 const PLAYBACK_SUPPORT_OPTIONS = [
-  { label: "Unknown", value: "unknown" },
-  { label: "Yes", value: "yes" },
-  { label: "No / App required", value: "no" }
+  { label: "Not sure", value: "unknown" },
+  { label: "Works on mobile web", value: "yes" },
+  { label: "App required", value: "no" }
 ];
 
 const VIDEO_PROVIDER_OPTIONS = [
@@ -99,6 +100,25 @@ function normalizeVideoProvider(value?: string | null) {
 function normalizePlaybackSupport(value?: string | null) {
   const support = String(value || "").trim().toLowerCase();
   return support === "yes" || support === "no" ? support : "unknown";
+}
+
+function platformText(platform?: Platform | null) {
+  return `${platform?.name || ""} ${platform?.slug || ""}`.toLowerCase();
+}
+
+function isYouTubePlatform(platform?: Platform | null) {
+  return platformText(platform).includes("youtube");
+}
+
+function platformOptionScore(platform: Platform) {
+  const text = platformText(platform);
+  const preferred = ["youtube", "jiohotstar", "hotstar", "netflix", "prime", "zee5", "sonyliv", "aha", "apple"];
+  const index = preferred.findIndex((token) => text.includes(token));
+  return index === -1 ? 99 : index;
+}
+
+function mobilePlaybackValue(link?: { app_required?: boolean | null; mobile_web_supported?: string | null } | null) {
+  return link?.app_required ? "no" : normalizePlaybackSupport(link?.mobile_web_supported);
 }
 
 function toNullableString(value: FormDataEntryValue | null) {
@@ -455,12 +475,14 @@ export default function AdminMovieForm({
   const [selectedWatchLanguages, setSelectedWatchLanguages] = useState<string[]>(splitStoredValues(firstPlatformLink?.language));
   const [selectedQualities, setSelectedQualities] = useState<string[]>(splitStoredValues(firstPlatformLink?.quality));
   const [selectedPlatformId, setSelectedPlatformId] = useState(firstPlatformLink?.platform_id ?? "");
+  const [platformHomeUrl, setPlatformHomeUrl] = useState(firstPlatformLink?.platform_home_url ?? "");
+  const [platformSearchUrl, setPlatformSearchUrl] = useState(firstPlatformLink?.platform_search_url ?? "");
   const [availabilityType, setAvailabilityType] = useState(firstPlatformLink?.availability_type ?? "subscription");
   const [watchLinkType, setWatchLinkType] = useState(normalizeWatchLinkType(firstPlatformLink?.link_type));
-  const [openMode, setOpenMode] = useState(firstPlatformLink?.open_mode ?? "in_app_browser");
-  const [mobileWebSupported, setMobileWebSupported] = useState(normalizePlaybackSupport(firstPlatformLink?.mobile_web_supported));
+  const [openMode, setOpenMode] = useState(firstPlatformLink?.open_mode ?? "auto");
+  const [mobileWebSupported, setMobileWebSupported] = useState(mobilePlaybackValue(firstPlatformLink));
   const [desktopWebSupported, setDesktopWebSupported] = useState(normalizePlaybackSupport(firstPlatformLink?.desktop_web_supported));
-  const [appRequired, setAppRequired] = useState(Boolean(firstPlatformLink?.app_required));
+  const [showWatchAdvanced, setShowWatchAdvanced] = useState(false);
   const [appDeeplink, setAppDeeplink] = useState(firstPlatformLink?.app_deeplink ?? "");
   const [appStoreUrl, setAppStoreUrl] = useState(firstPlatformLink?.app_store_url ?? "");
   const [playStoreUrl, setPlayStoreUrl] = useState(firstPlatformLink?.play_store_url ?? "");
@@ -514,12 +536,13 @@ export default function AdminMovieForm({
     setSelectedWatchLanguages(splitStoredValues(link?.language));
     setSelectedQualities(splitStoredValues(link?.quality));
     setSelectedPlatformId(link?.platform_id ?? "");
+    setPlatformHomeUrl(link?.platform_home_url ?? "");
+    setPlatformSearchUrl(link?.platform_search_url ?? "");
     setAvailabilityType(link?.availability_type ?? "subscription");
     setWatchLinkType(normalizeWatchLinkType(link?.link_type));
-    setOpenMode(link?.open_mode ?? "in_app_browser");
-    setMobileWebSupported(normalizePlaybackSupport(link?.mobile_web_supported));
+    setOpenMode(link?.open_mode ?? "auto");
+    setMobileWebSupported(mobilePlaybackValue(link));
     setDesktopWebSupported(normalizePlaybackSupport(link?.desktop_web_supported));
-    setAppRequired(Boolean(link?.app_required));
     setAppDeeplink(link?.app_deeplink ?? "");
     setAppStoreUrl(link?.app_store_url ?? "");
     setPlayStoreUrl(link?.play_store_url ?? "");
@@ -691,12 +714,13 @@ export default function AdminMovieForm({
     setSelectedWatchLanguages([]);
     setSelectedQualities([]);
     setSelectedPlatformId("");
+    setPlatformHomeUrl("");
+    setPlatformSearchUrl("");
     setAvailabilityType("subscription");
     setWatchLinkType("direct_title_page");
-    setOpenMode("in_app_browser");
+    setOpenMode("auto");
     setMobileWebSupported("unknown");
     setDesktopWebSupported("unknown");
-    setAppRequired(false);
     setAppDeeplink("");
     setAppStoreUrl("");
     setPlayStoreUrl("");
@@ -762,12 +786,19 @@ export default function AdminMovieForm({
   function updateOfficialPlatform(platformId: string) {
     const platform = platforms.find((item) => item.id === platformId) ?? null;
     setSelectedPlatformId(platformId);
+    if (platform && isYouTubePlatform(platform) && !firstPlatformLink?.watch_url) {
+      setWatchLinkType("direct_title_page");
+      setOpenMode("trailer_modal");
+      setMobileWebSupported("yes");
+      setAvailabilityType("official");
+      setVideoProvider("youtube");
+      return;
+    }
     if (platform && isExternalOnlyPlatform(platform) && !firstPlatformLink?.watch_url) {
       setWatchLinkType("platform_search");
       setOpenMode("in_app_browser");
       setMobileWebSupported("unknown");
       setDesktopWebSupported("unknown");
-      setAppRequired(false);
       setHasLicensedVideo(false);
       setVideoProvider("direct");
     } else {
@@ -775,34 +806,9 @@ export default function AdminMovieForm({
     }
   }
 
-  async function markSelectedPlatformAppRequired() {
-    setAppRequired(true);
-    setMobileWebSupported("no");
-    setFallbackNote((current) => current || "This title is not supported on mobile web playback. Continue in the official app.");
-
-    if (!firstPlatformLink?.id) {
-      setHelperMessage("Marked as app required. Save the movie to apply this to the watch link.");
-      window.setTimeout(() => setHelperMessage(null), 3500);
-      return;
-    }
-
-    try {
-      const supabase = createSupabaseBrowserClient();
-      const { error } = await supabase
-        .from("movie_platform_links")
-        .update({
-          app_required: true,
-          mobile_web_supported: "no",
-          fallback_note: fallbackNote || "This title is not supported on mobile web playback. Continue in the official app."
-        })
-        .eq("id", firstPlatformLink.id);
-
-      if (error) throw error;
-      setHelperMessage("Marked as App Required. Public pages will show the app fallback after refresh.");
-    } catch (error) {
-      setHelperMessage(error instanceof Error ? error.message : "Could not mark this link as app required.");
-    }
-    window.setTimeout(() => setHelperMessage(null), 4500);
+  function updateMobilePlayback(value: string) {
+    const nextValue = normalizePlaybackSupport(value);
+    setMobileWebSupported(nextValue);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -974,19 +980,20 @@ export default function AdminMovieForm({
       const platformId = selectedPlatformId;
       if (platformId) {
         const savedWatchLinkType = watchUrl ? watchLinkType : watchLinkType === "direct_title_page" ? "platform_search" : watchLinkType;
+        const savedAppRequired = mobileWebSupported === "no";
         const { error: platformError } = await supabase.from("movie_platform_links").insert({
           movie_id: movie.id,
           platform_id: platformId,
           watch_url: watchUrl,
-          platform_home_url: toNullableString(form.get("platform_home_url")),
-          platform_search_url: toNullableString(form.get("platform_search_url")),
+          platform_home_url: toNullableString(platformHomeUrl),
+          platform_search_url: toNullableString(platformSearchUrl),
           app_deeplink: toNullableString(appDeeplink),
           app_store_url: toNullableString(appStoreUrl),
           play_store_url: toNullableString(playStoreUrl),
           fallback_note: toNullableString(fallbackNote),
           mobile_web_supported: mobileWebSupported,
           desktop_web_supported: desktopWebSupported,
-          app_required: appRequired,
+          app_required: savedAppRequired,
           link_type: savedWatchLinkType,
           open_mode: openMode,
           availability_type: availabilityType,
@@ -1084,7 +1091,9 @@ export default function AdminMovieForm({
   );
   const watchMinutes = movieAnalytics ? Math.round(movieAnalytics.watchSeconds / 60) : 0;
   const selectedPlatform = platforms.find((platform) => platform.id === selectedPlatformId) ?? null;
-  const selectedPlatformIsExternalOnly = isExternalOnlyPlatform(selectedPlatform);
+  const officialPlatformOptions = [...platforms].sort(
+    (left, right) => platformOptionScore(left) - platformOptionScore(right) || left.name.localeCompare(right.name)
+  );
   const selectedTypeLabel = formatType(selectedType);
   const formTitle = isEditMode ? `Edit ${selectedTypeLabel}` : `Add ${selectedTypeLabel}`;
   const submitLabel = isEditMode ? `Update ${selectedTypeLabel}` : `Save ${selectedTypeLabel}`;
@@ -1354,106 +1363,126 @@ export default function AdminMovieForm({
         </div>
       </FormSection>
 
-      <FormSection title="Official Watch Link" helper="Optional. Add only official legal platform links. OTT services usually do not allow embedded playback. Add official title/search link. Only YouTube/official embed plays inside WatchFinder.">
+      <FormSection title="Official Watch Link" helper="Add only official legal platform links.">
+        <p className="form-helper">OTT apps may block mobile web playback. If it does not play, mark as App required.</p>
         <div className="form-grid two">
-          <div className="field"><label>Official Platform</label><select name="platform_id" value={selectedPlatformId} onChange={(event) => updateOfficialPlatform(event.target.value)}><option value="">Select platform</option>{platforms.map((platform) => <option value={platform.id} key={platform.id}>{platform.name}</option>)}</select></div>
-          <div className="field"><label>Watch URL</label><input name="watch_url" placeholder="Optional exact title, search, home, or app link" defaultValue={firstPlatformLink?.watch_url ?? ""} /></div>
-          <div className="field"><label>Platform Home URL</label><input name="platform_home_url" placeholder="Optional official home page fallback" defaultValue={firstPlatformLink?.platform_home_url ?? ""} /></div>
-          <div className="field"><label>Platform Search URL</label><input name="platform_search_url" placeholder="Optional official search result URL" defaultValue={firstPlatformLink?.platform_search_url ?? ""} /></div>
-          <div className="field"><label>App Deep Link</label><input name="app_deeplink" placeholder="Optional official app/web deeplink" value={appDeeplink} onChange={(event) => setAppDeeplink(event.target.value)} /></div>
-          <div className="field"><label>Open Mode</label><select name="open_mode" value={openMode} onChange={(event) => setOpenMode(event.target.value)}>{OPEN_MODE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
-          <div className="field"><label>Mobile Web Supported</label><select value={mobileWebSupported} onChange={(event) => setMobileWebSupported(normalizePlaybackSupport(event.target.value))}>{PLAYBACK_SUPPORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
-          <div className="field"><label>Desktop Web Supported</label><select value={desktopWebSupported} onChange={(event) => setDesktopWebSupported(normalizePlaybackSupport(event.target.value))}>{PLAYBACK_SUPPORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
-          <div className="field"><label>Play Store Link</label><input value={playStoreUrl} onChange={(event) => setPlayStoreUrl(event.target.value)} placeholder="Optional Android app listing" /></div>
-          <div className="field"><label>App Store Link</label><input value={appStoreUrl} onChange={(event) => setAppStoreUrl(event.target.value)} placeholder="Optional iOS app listing" /></div>
+          <div className="field">
+            <label>Official Platform</label>
+            <select name="platform_id" value={selectedPlatformId} onChange={(event) => updateOfficialPlatform(event.target.value)}>
+              <option value="">Select platform</option>
+              {officialPlatformOptions.map((platform) => <option value={platform.id} key={platform.id}>{platform.name}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Watch URL</label>
+            <input name="watch_url" placeholder="Paste official movie/show link" defaultValue={firstPlatformLink?.watch_url ?? ""} />
+            <small className="form-helper">Add only official legal platform links.</small>
+          </div>
+          <div className="field">
+            <label>Open Mode</label>
+            <select name="open_mode" value={openMode} onChange={(event) => setOpenMode(event.target.value)}>
+              {OPEN_MODE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Mobile Playback</label>
+            <select value={mobileWebSupported} onChange={(event) => updateMobilePlayback(event.target.value)}>
+              {PLAYBACK_SUPPORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </div>
         </div>
-        {selectedPlatformIsExternalOnly ? (
-          <p className="form-message info">
-            {selectedPlatform?.name} is treated as an external legal platform. OTT platforms may block embedded playback. WatchFinder opens the official page inside an in-app browser when possible, with fallback to official app/site.
-          </p>
-        ) : null}
-        <div className="option-group compact-options">
-          <label className="option-card">
-            <input checked={appRequired} onChange={(event) => setAppRequired(event.target.checked)} type="checkbox" />
-            <span>App Required</span>
-            <small>Use when mobile web playback is blocked by the platform.</small>
-          </label>
-          {selectedPlatformIsExternalOnly ? (
-            <button className="button ghost" type="button" onClick={markSelectedPlatformAppRequired}>
-              Mark as App Required
-            </button>
+
+        <div className="watch-link-advanced">
+          <button
+            className="button ghost"
+            type="button"
+            onClick={() => setShowWatchAdvanced((current) => !current)}
+          >
+            {showWatchAdvanced ? "Hide Advanced Options" : "Show Advanced Options"}
+          </button>
+          {showWatchAdvanced ? (
+            <div className="watch-link-advanced-panel">
+              <div className="form-grid two">
+                <div className="field"><label>Platform Home URL</label><input placeholder="Optional official home page fallback" value={platformHomeUrl} onChange={(event) => setPlatformHomeUrl(event.target.value)} /></div>
+                <div className="field"><label>Platform Search URL</label><input placeholder="Optional official search result URL" value={platformSearchUrl} onChange={(event) => setPlatformSearchUrl(event.target.value)} /></div>
+                <div className="field"><label>App Deep Link</label><input name="app_deeplink" placeholder="Optional official app/web deeplink" value={appDeeplink} onChange={(event) => setAppDeeplink(event.target.value)} /></div>
+                <div className="field"><label>Play Store Link</label><input value={playStoreUrl} onChange={(event) => setPlayStoreUrl(event.target.value)} placeholder="Optional Android app listing" /></div>
+                <div className="field"><label>App Store Link</label><input value={appStoreUrl} onChange={(event) => setAppStoreUrl(event.target.value)} placeholder="Optional iOS app listing" /></div>
+                <div className="field"><label>Desktop Web Supported</label><select value={desktopWebSupported} onChange={(event) => setDesktopWebSupported(normalizePlaybackSupport(event.target.value))}>{PLAYBACK_SUPPORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+              </div>
+              <div className="field">
+                <label>Fallback Note</label>
+                <textarea
+                  value={fallbackNote}
+                  onChange={(event) => setFallbackNote(event.target.value)}
+                  placeholder="Example: This title is not supported on mobile web playback. Continue in the official JioHotstar app."
+                />
+              </div>
+              <div className="field">
+                <label>Link Type</label>
+                <div className="option-group compact-options">
+                  {WATCH_LINK_TYPES.map((type) => (
+                    <label className="option-card" key={type}>
+                      <input checked={watchLinkType === type} onChange={() => setWatchLinkType(type)} name="watch_link_type" type="radio" value={type} />
+                      <span>{watchLinkTypeLabels[type]}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="field">
+                <label>Availability Type</label>
+                <div className="option-group compact-options">
+                  {AVAILABILITY_OPTIONS.map((option) => (
+                    <label className="option-card" key={option.value}>
+                      <input checked={availabilityType === option.value} onChange={() => setAvailabilityType(option.value)} name="availability_type" type="radio" value={option.value} />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="field">
+                <label>Platform Notes</label>
+                <textarea
+                  name="watch_link_notes"
+                  value={watchLinkNotes}
+                  onChange={(event) => setWatchLinkNotes(event.target.value)}
+                  placeholder="Example: Exact title link is not available. Search this title on JioHotstar."
+                />
+              </div>
+              <div className="field">
+                <label>Watch Link Language</label>
+                <div className="language-select-grid compact-chip-grid">
+                  {WATCHFINDER_LANGUAGES.map((language) => (
+                    <label className="language-select-chip" key={language}>
+                      <input
+                        checked={selectedWatchLanguages.includes(language)}
+                        onChange={() => toggleItem(language, setSelectedWatchLanguages)}
+                        type="checkbox"
+                        value={language}
+                      />
+                      <span>{language}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="field">
+                <label>Quality</label>
+                <div className="language-select-grid compact-chip-grid">
+                  {QUALITY_OPTIONS.map((quality) => (
+                    <label className="language-select-chip" key={quality}>
+                      <input
+                        checked={selectedQualities.includes(quality)}
+                        onChange={() => toggleItem(quality, setSelectedQualities)}
+                        type="checkbox"
+                        value={quality}
+                      />
+                      <span>{quality}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
           ) : null}
-        </div>
-        <div className="field">
-          <label>Link Type</label>
-          <div className="option-group compact-options">
-            {WATCH_LINK_TYPES.map((type) => (
-              <label className="option-card" key={type}>
-                <input checked={watchLinkType === type} onChange={() => setWatchLinkType(type)} name="watch_link_type" type="radio" value={type} />
-                <span>{watchLinkTypeLabels[type]}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-        <div className="field">
-          <label>Availability Type</label>
-          <div className="option-group compact-options">
-            {AVAILABILITY_OPTIONS.map((option) => (
-              <label className="option-card" key={option.value}>
-                <input checked={availabilityType === option.value} onChange={() => setAvailabilityType(option.value)} name="availability_type" type="radio" value={option.value} />
-                <span>{option.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-        <div className="field">
-          <label>Platform Notes</label>
-          <textarea
-            name="watch_link_notes"
-            value={watchLinkNotes}
-            onChange={(event) => setWatchLinkNotes(event.target.value)}
-            placeholder="Example: Exact title link is not available. Search this title on JioHotstar."
-          />
-        </div>
-        <div className="field">
-          <label>Fallback Note</label>
-          <textarea
-            value={fallbackNote}
-            onChange={(event) => setFallbackNote(event.target.value)}
-            placeholder="Example: This title is not supported on mobile web playback. Continue in the official JioHotstar app."
-          />
-        </div>
-        <div className="field">
-          <label>Watch Link Language</label>
-          <div className="language-select-grid compact-chip-grid">
-            {WATCHFINDER_LANGUAGES.map((language) => (
-              <label className="language-select-chip" key={language}>
-                <input
-                  checked={selectedWatchLanguages.includes(language)}
-                  onChange={() => toggleItem(language, setSelectedWatchLanguages)}
-                  type="checkbox"
-                  value={language}
-                />
-                <span>{language}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-        <div className="field">
-          <label>Quality</label>
-          <div className="language-select-grid compact-chip-grid">
-            {QUALITY_OPTIONS.map((quality) => (
-              <label className="language-select-chip" key={quality}>
-                <input
-                  checked={selectedQualities.includes(quality)}
-                  onChange={() => toggleItem(quality, setSelectedQualities)}
-                  type="checkbox"
-                  value={quality}
-                />
-                <span>{quality}</span>
-              </label>
-            ))}
-          </div>
         </div>
       </FormSection>
 

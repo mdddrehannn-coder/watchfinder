@@ -3052,6 +3052,24 @@ html.theme-light .field textarea {
   resize: vertical;
 }
 
+.watch-link-advanced {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.watch-link-advanced-panel {
+  display: grid;
+  gap: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+html.theme-light .watch-link-advanced-panel {
+  background: rgba(255, 255, 255, 0.72);
+}
+
 .field select option {
   background: #11131c;
   color: var(--text);
