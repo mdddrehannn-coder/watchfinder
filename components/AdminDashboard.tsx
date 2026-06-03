@@ -27,6 +27,7 @@ import AdminChannelManager from "@/components/AdminChannelManager";
 import AdminLicenseForm from "@/components/AdminLicenseForm";
 import AdminMovieForm from "@/components/AdminMovieForm";
 import AdminSeriesForm from "@/components/AdminSeriesForm";
+import ChannelLogo from "@/components/ChannelLogo";
 import { getMovieVisibilityCheck } from "@/lib/admin-visibility";
 import { deleteMovieById, updateMovieStatusById, type AdminMovieActionStatus } from "@/lib/admin-movie-actions";
 import AdminPromotionForm from "@/components/AdminPromotionForm";
@@ -2022,7 +2023,7 @@ export default function AdminDashboard({
                   {contentChannels.map((channel) => (
                     <article className="admin-movie-row" key={channel.id}>
                       <div className="admin-movie-thumb">
-                        {channel.logo_url ? <img src={channel.logo_url} alt="" /> : <span>{channel.name.slice(0, 1)}</span>}
+                        <ChannelLogo channel={channel} />
                       </div>
                       <div className="admin-movie-main">
                         <strong>{channel.name}</strong>

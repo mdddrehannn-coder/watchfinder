@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import ChannelLogo from "@/components/ChannelLogo";
 import ChannelContentGrid from "@/components/ChannelContentGrid";
 import { hasOfficialYouTube, isLegalFreeMovie } from "@/lib/discovery";
 import { getContentChannelBySlug, getContentChannelItems } from "@/lib/data";
@@ -63,9 +64,7 @@ export default async function CartoonChannelPage({
   return (
     <main className="page-inner">
       <section className="channel-detail-hero">
-        <span className="channel-logo large">
-          {channel.logo_url ? <img src={channel.logo_url} alt="" /> : <span>{channel.name.slice(0, 2).toUpperCase()}</span>}
-        </span>
+        <ChannelLogo channel={channel} large />
         <p className="rating-badge">Cartoon Channel</p>
         <h1>{channel.name}</h1>
         <p className="muted">{channel.description || "Cartoon shows and official links."}</p>
