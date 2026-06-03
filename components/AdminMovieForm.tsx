@@ -7,6 +7,12 @@ import { getMovieSaveVisibilityMessage, getMovieVisibilityCheck } from "@/lib/ad
 import { formatType, slugify } from "@/lib/format";
 import { joinLanguages, WATCHFINDER_LANGUAGES } from "@/lib/languages";
 import { isOptionalMovieRelationError, movieSelect, movieSelectWithoutChannels } from "@/lib/movie-select";
+import {
+  findUnlistedMoviePayloadColumns,
+  formatMovieSchemaMismatchError,
+  missingMovieColumnFromError,
+  MOVIE_REQUIRED_COLUMNS
+} from "@/lib/movie-schema";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { uploadBanner, uploadLicenseDocumentWithPath, uploadPoster } from "@/lib/storage";
 import { WATCH_LINK_TYPES, watchLinkTypeLabels, normalizeWatchLinkType, isExternalOnlyPlatform } from "@/lib/watch-links";
@@ -209,12 +215,14 @@ function formatSaveError(error: unknown) {
   const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
   const normalized = message.toLowerCase();
   if (normalized.includes("migration hint:")) return message;
-  if (
-    code === "PGRST204" &&
-    normalized.includes("content_type") &&
-    normalized.includes("movies")
-  ) {
-    return "Supabase migration missing: content_type column is required. Run supabase/migrations/202606030001_fix_movies_content_type_schema.sql, then try saving again.";
+  const schemaMismatchMessage = formatMovieSchemaMismatchError(error);
+  if (schemaMismatchMessage) {
+    const missingColumn = missingMovieColumnFromError(error);
+    console.warn("WatchFinder movie schema mismatch", {
+      missingColumn,
+      requiredColumns: MOVIE_REQUIRED_COLUMNS
+    });
+    return schemaMismatchMessage;
   }
   if (
     code === "PGRST204" ||
@@ -223,7 +231,7 @@ function formatSaveError(error: unknown) {
     normalized.includes("column") ||
     normalized.includes("relationship")
   ) {
-    return `${message} Migration hint: run supabase/migrations/202605260001_fix_admin_movie_schema_mismatch.sql, then try saving again.`;
+    return `${message} Migration hint: run supabase/migrations/202606030002_fix_movies_admin_upload_schema.sql, then try saving again.`;
   }
   return message;
 }
@@ -872,6 +880,11 @@ export default function AdminMovieForm({
         license_notes: hasLicensedVideo ? toNullableString(form.get("license_notes")) : null,
         distribution_territory: hasLicensedVideo ? toNullableString(form.get("distribution_territory")) : null
       };
+      const unlistedPayloadColumns = findUnlistedMoviePayloadColumns(payload);
+      if (unlistedPayloadColumns.length) {
+        console.warn("Admin movie payload contains columns missing from MOVIE_REQUIRED_COLUMNS", unlistedPayloadColumns);
+        throw new Error(`Admin movie payload schema guard failed. Add these movies columns to MOVIE_REQUIRED_COLUMNS and the latest migration: ${unlistedPayloadColumns.join(", ")}.`);
+      }
 
       let wasUpdate = isEditMode || Boolean(partialSaveMovieId);
       let movie: { id: string; slug: string };
@@ -943,6 +956,11 @@ export default function AdminMovieForm({
       if (poster?.size) updatePayload.poster_url = await uploadPoster(movie.id, poster);
       if (banner?.size) updatePayload.banner_url = await uploadBanner(movie.id, banner);
       if (Object.keys(updatePayload).length) {
+        const unlistedImageColumns = findUnlistedMoviePayloadColumns(updatePayload);
+        if (unlistedImageColumns.length) {
+          console.warn("Admin image payload contains columns missing from MOVIE_REQUIRED_COLUMNS", unlistedImageColumns);
+          throw new Error(`Admin movie payload schema guard failed. Add these movies columns to MOVIE_REQUIRED_COLUMNS and the latest migration: ${unlistedImageColumns.join(", ")}.`);
+        }
         const { error: imageError } = await supabase.from("movies").update(updatePayload).eq("id", movie.id);
         if (imageError) throw saveStepError("Saving poster/banner URLs", imageError);
       }
