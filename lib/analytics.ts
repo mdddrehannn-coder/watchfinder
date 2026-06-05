@@ -39,6 +39,12 @@ export type AnalyticsEventType =
   | "app_install_prompt_shown"
   | "app_install_clicked"
   | "app_installed"
+  | "favorite_added"
+  | "favorite_removed"
+  | "history_recorded"
+  | "history_removed"
+  | "history_cleared"
+  | "continue_watching_clicked"
   | "test_event";
 
 type AnalyticsPayload = {

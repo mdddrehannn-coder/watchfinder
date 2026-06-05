@@ -1,19 +1,23 @@
 import type { Metadata } from "next";
-import MovieGrid from "@/components/MovieGrid";
-import { getUserFavoriteMovies } from "@/lib/data";
+import { FavoritesClient } from "@/components/ProfileLibraryClient";
 
 export const metadata: Metadata = {
   title: "Favorites",
   description: "Your saved WatchFinder favorites."
 };
 
-export default async function FavoritesPage() {
-  const movies = await getUserFavoriteMovies();
+export default function FavoritesPage() {
   return (
     <main className="page-inner">
-      <h1>Favorites</h1>
+      <div className="section-head">
+        <div>
+          <p className="rating-badge">Profile</p>
+          <h1>Favorites</h1>
+          <p className="muted">Movies, shows, cartoons, and series you saved.</p>
+        </div>
+      </div>
       <section className="section">
-        <MovieGrid movies={movies} />
+        <FavoritesClient />
       </section>
     </main>
   );

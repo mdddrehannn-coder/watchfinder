@@ -115,7 +115,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
   return (
     <main className="page-inner">
       <MovieAnalyticsTracker movieId={movie.id} slug={movie.slug} />
-      <WatchHistoryRecorder movieId={movie.id} />
+      <WatchHistoryRecorder movie={movie} />
       <PromotionBanner promotion={topPromos[0]} />
       <AdSlot slot={topAds[0]} />
 
@@ -124,7 +124,13 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
           action={playAction}
           className="detail-banner"
           imageUrl={movie.banner_url || movie.poster_url}
-          movie={{ id: movie.id, slug: movie.slug }}
+          movie={{
+            id: movie.id,
+            slug: movie.slug,
+            title: movie.title,
+            posterUrl: movie.poster_url || movie.banner_url || null,
+            contentType: movie.content_type || movie.type || "movie"
+          }}
           title={movie.title}
         />
         <div className="detail-layout">
@@ -181,7 +187,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
                   {playAction.label}
                 </TrailerModalTrigger>
               ) : null}
-              <FavoriteButton movieId={movie.id} />
+              <FavoriteButton movie={movie} />
               <ShareButton title={movie.title} />
             </div>
           </div>
@@ -241,7 +247,17 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
         </div>
       </section>
 
-      <WatchLinks links={movie.movie_platform_links} movie={{ id: movie.id, slug: movie.slug }} title={movie.title} />
+      <WatchLinks
+        links={movie.movie_platform_links}
+        movie={{
+          id: movie.id,
+          slug: movie.slug,
+          title: movie.title,
+          posterUrl: movie.poster_url || movie.banner_url || null,
+          contentType: movie.content_type || movie.type || "movie"
+        }}
+        title={movie.title}
+      />
       {getYouTubeEmbedUrl(movie.trailer_url) ? (
         <TrailerPlayer
           trailerUrl={movie.trailer_url}

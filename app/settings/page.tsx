@@ -22,7 +22,8 @@ export default function SettingsPage() {
         </div>
         <div className="panel">
           <h2>Language Preference</h2>
-          <p className="muted">Preference storage can be connected to profiles.language_preference.</p>
+          <p className="muted">Coming soon: save preferred languages for personalized discovery.</p>
+          <span className="status-badge status-draft">Coming soon</span>
         </div>
       </section>
     </main>

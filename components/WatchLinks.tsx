@@ -6,6 +6,7 @@ import PlatformLogo from "@/components/PlatformLogo";
 import { trackEvent, trackWatchLinkClick } from "@/lib/analytics";
 import { splitLanguages } from "@/lib/languages";
 import { buildInAppBrowserHref } from "@/lib/platformBehavior";
+import { recordWatchHistory } from "@/lib/user-library";
 import { availabilityLabels, isAppRequiredLink, resolveWatchLinkTarget, watchLinkTypeLabels } from "@/lib/watch-links";
 import type { MoviePlatformLink } from "@/types/watchfinder";
 
@@ -26,7 +27,7 @@ export default function WatchLinks({
   title
 }: {
   links?: MoviePlatformLink[];
-  movie?: { id: string; slug: string };
+  movie?: { id: string; slug: string; title?: string | null; posterUrl?: string | null; contentType?: string | null };
   title?: string;
 }) {
   const [isMobile, setIsMobile] = useState(false);
@@ -122,6 +123,17 @@ export default function WatchLinks({
                 key={link.id}
                 onClick={() => {
                   if (movie) trackWatchLinkClick(movie, target.platformName);
+                  if (movie) {
+                    recordWatchHistory({
+                      content_id: movie.id,
+                      content_slug: movie.slug,
+                      content_type: movie.contentType || "movie",
+                      title: movie.title || title || movie.slug,
+                      poster_url: movie.posterUrl || null,
+                      platform_name: target.platformName,
+                      href: `/movie/${movie.slug}`
+                    }, "platform_open", { platform_name: target.platformName });
+                  }
                   trackEvent({
                     event_type: "platform_app_required_shown",
                     movie_slug: movie?.slug || null,
@@ -157,6 +169,17 @@ export default function WatchLinks({
               key={link.id}
               onClick={() => {
                 if (movie) trackWatchLinkClick(movie, target.platformName);
+                if (movie) {
+                  recordWatchHistory({
+                    content_id: movie.id,
+                    content_slug: movie.slug,
+                    content_type: movie.contentType || "movie",
+                    title: movie.title || title || movie.slug,
+                    poster_url: movie.posterUrl || null,
+                    platform_name: target.platformName,
+                    href: `/movie/${movie.slug}`
+                  }, "platform_open", { platform_name: target.platformName });
+                }
               }}
             >
               {content}
@@ -191,6 +214,17 @@ export default function WatchLinks({
                     platform_name: appFallback.platformName,
                     metadata: { source: "app_required_modal" }
                   });
+                  if (movie) {
+                    recordWatchHistory({
+                      content_id: movie.id,
+                      content_slug: movie.slug,
+                      content_type: movie.contentType || "movie",
+                      title: movie.title || title || movie.slug,
+                      poster_url: movie.posterUrl || null,
+                      platform_name: appFallback.platformName,
+                      href: `/movie/${movie.slug}`
+                    }, "platform_open", { platform_name: appFallback.platformName });
+                  }
                   window.open(appFallback.appUrl || appFallback.officialUrl || "", "_blank", "noopener,noreferrer");
                 }}
               >

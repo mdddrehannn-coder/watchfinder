@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Copy, ExternalLink, RefreshCw, X } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
 import { isAllowedPlatformHost, isSafeLauncherUrl, platformBehaviorFor } from "@/lib/platformBehavior";
+import { recordWatchHistory } from "@/lib/user-library";
 
 type BrowserState = "loading" | "loaded" | "blocked" | "invalid";
 
@@ -141,6 +142,15 @@ export default function InAppBrowser({
       platform_name: platformName,
       metadata: { source: "in_app_browser_external_button" }
     });
+    if (movieSlug) {
+      recordWatchHistory({
+        content_slug: movieSlug,
+        content_type: "movie",
+        title,
+        platform_name: platformName,
+        href: `/movie/${movieSlug}`
+      }, "platform_open", { platform_name: platformName });
+    }
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
@@ -159,6 +169,15 @@ export default function InAppBrowser({
       platform_name: platformName,
       metadata: { platform, source: "app_required_button" }
     });
+    if (movieSlug) {
+      recordWatchHistory({
+        content_slug: movieSlug,
+        content_type: "movie",
+        title,
+        platform_name: platformName,
+        href: `/movie/${movieSlug}`
+      }, "platform_open", { platform_name: platformName });
+    }
     window.open(target, "_blank", "noopener,noreferrer");
   }
 

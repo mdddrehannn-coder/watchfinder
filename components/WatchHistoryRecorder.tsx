@@ -1,26 +1,35 @@
 "use client";
 
 import { useEffect } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { recordWatchHistory, type LibraryContent } from "@/lib/user-library";
+import type { Movie } from "@/types/watchfinder";
 
-export default function WatchHistoryRecorder({ movieId }: { movieId: string }) {
+function contentFromMovie(movie: Movie): LibraryContent {
+  return {
+    content_id: movie.id,
+    content_slug: movie.slug,
+    content_type: movie.content_type || movie.type || "movie",
+    title: movie.title,
+    poster_url: movie.poster_url || movie.banner_url || null,
+    platform_name: movie.platform_name || null,
+    href: `/movie/${movie.slug}`
+  };
+}
+
+export default function WatchHistoryRecorder({
+  movie,
+  content,
+  action = "detail_view"
+}: {
+  movie?: Movie;
+  content?: LibraryContent;
+  action?: string;
+}) {
   useEffect(() => {
-    const supabase = createSupabaseBrowserClient();
-    supabase.auth.getUser().then(async ({ data }) => {
-      const user = data.user;
-      if (!user) return;
-      await supabase
-        .from("watch_history")
-        .upsert(
-          {
-            user_id: user.id,
-            movie_id: movieId,
-            watched_at: new Date().toISOString()
-          },
-          { onConflict: "user_id,movie_id" }
-        );
-    });
-  }, [movieId]);
+    const historyContent = content || (movie ? contentFromMovie(movie) : null);
+    if (!historyContent?.content_slug) return;
+    recordWatchHistory(historyContent, action);
+  }, [action, content, movie]);
 
   return null;
 }

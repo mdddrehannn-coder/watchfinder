@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Play } from "lucide-react";
 import { trackTrailerOpen, trackVideoComplete, trackVideoPlay, trackVideoProgress, trackWatchLinkClick } from "@/lib/analytics";
 import { cx, getYouTubeEmbedUrl } from "@/lib/format";
+import { recordWatchHistory } from "@/lib/user-library";
 import { isKnownExternalWatchPageUrl } from "@/lib/watch-links";
 import TrailerModal, { type TrailerModalSource } from "@/components/TrailerModal";
 
@@ -80,6 +81,8 @@ export default function TrailerModalTrigger({
   officialNote,
   movieId,
   movieSlug,
+  posterUrl,
+  contentType = "movie",
   provider = "youtube",
   title,
   className,
@@ -95,6 +98,8 @@ export default function TrailerModalTrigger({
   officialNote?: string | null;
   movieId: string;
   movieSlug: string;
+  posterUrl?: string | null;
+  contentType?: string | null;
   provider?: string | null;
   title: string;
   className?: string;
@@ -120,10 +125,19 @@ export default function TrailerModalTrigger({
     const movie = { id: movieId, slug: movieSlug };
     const videoProvider = source.kind === "official_link" ? source.platformName : provider || "youtube";
     trackTrailerOpen(movie, videoProvider);
+    recordWatchHistory({
+      content_id: movieId,
+      content_slug: movieSlug,
+      content_type: contentType || "movie",
+      title,
+      poster_url: posterUrl || null,
+      platform_name: videoProvider,
+      href: `/movie/${movieSlug}`
+    }, source.kind === "official_link" ? "platform_open" : "trailer_play", { platform_name: videoProvider });
     if (source.kind === "embed") {
       trackWatchLinkClick(movie, videoEmbedUrl ? "Official video" : "Official trailer");
     }
-  }, [movieId, movieSlug, provider, source, videoEmbedUrl]);
+  }, [contentType, movieId, movieSlug, posterUrl, provider, source, title, videoEmbedUrl]);
 
   const startTracking = useCallback(function startTracking() {
     if (trackingStartedRef.current) return;

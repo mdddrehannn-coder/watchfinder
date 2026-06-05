@@ -6,6 +6,15 @@ import TrailerModalTrigger from "@/components/TrailerModalTrigger";
 import { trackEvent, trackWatchLinkClick } from "@/lib/analytics";
 import { cx } from "@/lib/format";
 import type { ResolvedPlayAction } from "@/lib/play-actions";
+import { recordWatchHistory } from "@/lib/user-library";
+
+type HeroMovie = {
+  id: string;
+  slug: string;
+  title?: string | null;
+  posterUrl?: string | null;
+  contentType?: string | null;
+};
 
 export default function HeroPlayBanner({
   action,
@@ -17,7 +26,7 @@ export default function HeroPlayBanner({
   action: ResolvedPlayAction;
   imageUrl?: string | null;
   title: string;
-  movie?: { id: string; slug: string };
+  movie?: HeroMovie;
   className?: string;
 }) {
   const playButton = (
@@ -36,6 +45,8 @@ export default function HeroPlayBanner({
           videoEmbedUrl={action.videoEmbedUrl}
           movieId={movie.id}
           movieSlug={movie.slug}
+          posterUrl={movie.posterUrl}
+          contentType={movie.contentType}
           provider={action.provider}
           title={title}
           buttonLabel={action.label}
@@ -60,6 +71,15 @@ export default function HeroPlayBanner({
               metadata: { source: "hero_play_banner" }
             });
             trackWatchLinkClick(movie, action.platformName);
+            recordWatchHistory({
+              content_id: movie.id,
+              content_slug: movie.slug,
+              content_type: movie.contentType || "movie",
+              title: movie.title || title,
+              poster_url: movie.posterUrl || null,
+              platform_name: action.platformName,
+              href: `/movie/${movie.slug}`
+            }, "platform_open", { platform_name: action.platformName });
           }}
         >
           {playButton}
@@ -80,4 +100,3 @@ export default function HeroPlayBanner({
     </div>
   );
 }
-

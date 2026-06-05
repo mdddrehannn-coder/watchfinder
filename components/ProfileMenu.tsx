@@ -2,17 +2,28 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Clock, Heart, LogOut, MessageSquare, Share2, Settings, SunMoon } from "lucide-react";
+import { Clock, Heart, LogIn, LogOut, MessageSquare, Share2, Settings, SunMoon } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import InstallAppButton from "@/components/InstallAppButton";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { useFavorites, useWatchHistory } from "@/lib/user-library";
 
-export default function ProfileMenu({ initialEmail }: { initialEmail: string }) {
+export default function ProfileMenu({
+  initialEmail,
+  initiallyLoggedIn = false
+}: {
+  initialEmail: string;
+  initiallyLoggedIn?: boolean;
+}) {
   const [email, setEmail] = useState(initialEmail);
+  const [loggedIn, setLoggedIn] = useState(initiallyLoggedIn);
+  const { favorites } = useFavorites();
+  const { history } = useWatchHistory();
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
     supabase.auth.getUser().then(({ data }) => {
+      setLoggedIn(Boolean(data.user));
       if (data.user?.email) setEmail(data.user.email);
     });
   }, []);
@@ -33,16 +44,22 @@ export default function ProfileMenu({ initialEmail }: { initialEmail: string }) 
     <div className="form-grid">
       <div className="panel">
         <BrandLogo href="" variant="profile" showText={false} />
-        <h2>Your Account</h2>
+        <h2>{loggedIn ? "Your Account" : "Guest Profile"}</h2>
         <p className="muted">{email}</p>
-        <button className="button" onClick={logout} type="button">
-          <LogOut size={18} /> Logout
-        </button>
+        {loggedIn ? (
+          <button className="button" onClick={logout} type="button">
+            <LogOut size={18} /> Logout
+          </button>
+        ) : (
+          <Link className="button primary" href="/login?next=/profile">
+            <LogIn size={18} /> Login to sync
+          </Link>
+        )}
       </div>
 
       <div className="grid">
-        <Link className="panel" href="/favorites"><Heart size={22} /> <strong>Favorites</strong></Link>
-        <Link className="panel" href="/history"><Clock size={22} /> <strong>Watch History</strong></Link>
+        <Link className="panel profile-action-card" href="/favorites"><Heart size={22} /> <strong>Favorites</strong><p className="muted">{favorites.length} saved</p></Link>
+        <Link className="panel profile-action-card" href="/history"><Clock size={22} /> <strong>Watch History</strong><p className="muted">{history.length ? `${history.length} recent` : "No activity yet"}</p></Link>
         <Link className="panel" href="/feedback"><MessageSquare size={22} /> <strong>Feedback</strong></Link>
         <Link className="panel" href="/settings"><Settings size={22} /> <strong>Settings</strong></Link>
         <Link className="panel" href="/settings/theme"><SunMoon size={22} /> <strong>Theme Settings</strong><p className="muted">Auto, Dark/Night, or Day/Light mode</p></Link>

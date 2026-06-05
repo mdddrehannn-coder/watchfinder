@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import EpisodeAnalyticsTracker from "@/components/EpisodeAnalyticsTracker";
+import WatchHistoryRecorder from "@/components/WatchHistoryRecorder";
 import { getSeriesEpisodeByNumbers } from "@/lib/data";
 import { getYouTubeEmbedUrl } from "@/lib/format";
 import { buildInAppBrowserHref, isSafeLauncherUrl } from "@/lib/platformBehavior";
@@ -78,6 +79,18 @@ export default async function WebSeriesEpisodePage({
         eventType={embedSource ? "episode_play" : "episode_view"}
         seasonNumber={season.season_number}
         seriesSlug={series.slug}
+      />
+      <WatchHistoryRecorder
+        action={embedSource ? "episode_play" : "episode_view"}
+        content={{
+          content_id: episode.id,
+          content_slug: `web-series/${series.slug}/season/${season.season_number}/episode/${episode.episode_number}`,
+          content_type: "episode",
+          title: `${series.title} - ${episode.title}`,
+          poster_url: episode.poster_url || episode.thumbnail_url || series.poster_url || null,
+          platform_name: platformName,
+          href: `/web-series/${series.slug}/season/${season.season_number}/episode/${episode.episode_number}`
+        }}
       />
       <div className="series-player-topbar">
         <Link className="button ghost" href={`/web-series/${series.slug}`}>
