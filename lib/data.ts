@@ -203,31 +203,29 @@ export async function getHomepageHeroMovies() {
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return [] as Movie[];
 
-  const { data: eligibleData, error: eligibleError } = await runMovieQuery(supabase, (select) =>
-    supabase
-      .from("movies")
-      .select(select)
-      .eq("status", "published")
-      .eq("show_in_hero", true)
-      .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(6)
-  );
+  const orderColumns = ["created_at", "uploaded_at", "updated_at", "id"];
 
-  if (eligibleError) {
-    if (process.env.NODE_ENV !== "production") console.warn("Homepage hero eligible query failed:", eligibleError);
-    const { data: legacyData } = await runMovieQuery(supabase, (select) =>
+  for (const column of orderColumns) {
+    const { data, error } = await runMovieQuery(supabase, (select) =>
       supabase
         .from("movies")
         .select(select)
         .eq("status", "published")
-        .or("is_featured.eq.true,is_latest.eq.true,is_trending.eq.true")
-        .order("created_at", { ascending: false, nullsFirst: false })
-        .limit(6)
+        .order(column, { ascending: false, nullsFirst: false })
+        .limit(18)
     );
-    return (legacyData ?? []).map(normalizeMovie).slice(0, 6);
+
+    if (error) {
+      if (process.env.NODE_ENV !== "production") console.warn(`Homepage hero ${column} query failed:`, error);
+      continue;
+    }
+
+    const latestMovies = (data ?? []).map(normalizeMovie);
+    const latestWithImages = latestMovies.filter((movie) => movie.banner_url || movie.poster_url);
+    return (latestWithImages.length ? latestWithImages : latestMovies).slice(0, 6);
   }
 
-  return (eligibleData ?? []).map(normalizeMovie).slice(0, 6);
+  return [] as Movie[];
 }
 
 export async function getHomepageSectionMovies(section: string, limit = 12) {

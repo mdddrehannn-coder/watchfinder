@@ -44,6 +44,7 @@ export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
   const [previewAllowed, setPreviewAllowed] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const slides = useMemo(() => movies.slice(0, 6), [movies]);
+  const slideKey = useMemo(() => slides.map((movie) => movie.id).join("|"), [slides]);
 
   useEffect(() => {
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -76,6 +77,10 @@ export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
   useEffect(() => {
     if (slides.length && active >= slides.length) setActive(0);
   }, [active, slides.length]);
+
+  useEffect(() => {
+    setActive(0);
+  }, [slideKey]);
 
   useEffect(() => {
     setPreviewReady(false);
