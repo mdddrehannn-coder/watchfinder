@@ -53,6 +53,8 @@ export type AiImportCandidate = {
   backdropUrl?: string | null;
   rating?: number | null;
   popularity?: number | null;
+  confidence?: number | null;
+  isBestMatch?: boolean;
 };
 
 export type AiImportDraft = {

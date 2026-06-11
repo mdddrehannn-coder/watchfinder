@@ -4276,6 +4276,12 @@ html.theme-light .ai-candidate-card {
   background: rgba(248, 250, 252, 0.86);
 }
 
+.ai-candidate-card.recommended {
+  border-color: rgba(244, 63, 94, 0.72);
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.16), rgba(14, 165, 233, 0.12));
+  box-shadow: 0 16px 36px rgba(244, 63, 94, 0.16);
+}
+
 .ai-candidate-card:hover {
   border-color: rgba(34, 211, 238, 0.58);
   transform: translateY(-1px);
@@ -4300,6 +4306,21 @@ html.theme-light .ai-candidate-card {
   display: grid;
   gap: 0.18rem;
   min-width: 0;
+}
+
+.ai-best-match-badge {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 0.1rem;
+  padding: 0.15rem 0.42rem;
+  border-radius: 999px;
+  background: rgba(244, 63, 94, 0.18);
+  color: #fecdd3;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .ai-candidate-card strong,

@@ -551,7 +551,7 @@ export default function AdminAIAssistant() {
               <div className="ai-candidate-grid">
                 {candidates.map((candidate) => (
                   <button
-                    className="ai-candidate-card"
+                    className={`ai-candidate-card${candidate.isBestMatch ? " recommended" : ""}`}
                     disabled={loading}
                     key={`${candidate.mediaType}-${candidate.tmdbId}`}
                     onClick={() => selectCandidate(candidate)}
@@ -559,9 +559,10 @@ export default function AdminAIAssistant() {
                   >
                     {candidate.posterUrl ? <img alt={candidate.title} src={candidate.posterUrl} /> : <span className="ai-candidate-poster"><ImageIcon size={22} /></span>}
                     <span>
+                      {candidate.isBestMatch ? <em className="ai-best-match-badge">Best match</em> : null}
                       <strong>{candidate.title}</strong>
                       <small>{candidate.mediaType === "tv" ? "Web Series" : "Movie"} {candidate.releaseYear ? `- ${candidate.releaseYear}` : ""}</small>
-                      <small>{candidate.rating ? `Rating ${Number(candidate.rating).toFixed(1)}` : "TMDb result"}</small>
+                      <small>{candidate.rating ? `Rating ${Number(candidate.rating).toFixed(1)}` : "TMDb result"}{candidate.confidence ? ` - ${Math.round(candidate.confidence)}% match` : ""}</small>
                     </span>
                   </button>
                 ))}
