@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Clock, Heart, LogIn, LogOut, MessageSquare, Settings, ShieldCheck, Share2, SunMoon } from "lucide-react";
+import { Clock, Heart, LogIn, MessageSquare, Settings, ShieldCheck, Share2, SunMoon } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import InstallAppButton from "@/components/InstallAppButton";
+import LogoutControl from "@/components/LogoutControl";
 import { isAdminEmail } from "@/lib/admin-access";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useFavorites, useWatchHistory } from "@/lib/user-library";
@@ -35,12 +36,6 @@ export default function ProfileMenu({
     });
   }, []);
 
-  async function logout() {
-    const supabase = createSupabaseBrowserClient();
-    await supabase.auth.signOut();
-    window.location.href = "/login";
-  }
-
   async function share() {
     const title = "WatchFinder";
     if (navigator.share) await navigator.share({ title, url: window.location.origin });
@@ -57,15 +52,11 @@ export default function ProfileMenu({
         <BrandLogo href="" variant="profile" showText={false} />
         <h2>{loggedIn ? "Your Account" : "Guest Profile"}</h2>
         <p className="muted">{email}</p>
-        {loggedIn ? (
-          <button className="button" onClick={logout} type="button">
-            <LogOut size={18} /> Logout
-          </button>
-        ) : (
+        {!loggedIn ? (
           <Link className="button primary" href="/login?next=/profile">
             <LogIn size={18} /> Login to sync
           </Link>
-        )}
+        ) : null}
       </div>
 
       <div className="grid">
@@ -94,6 +85,8 @@ export default function ProfileMenu({
         <h2>Official Contact</h2>
         <p className="muted">Customer service details can be managed later from site settings.</p>
       </div>
+
+      {loggedIn ? <LogoutControl /> : null}
     </div>
   );
 }

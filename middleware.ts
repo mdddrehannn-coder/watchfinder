@@ -32,6 +32,12 @@ export async function middleware(request: NextRequest) {
 
   const { data } = await supabase.auth.getUser();
 
+  if (pathname === "/profile" && !data.user) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", "/profile");
+    return NextResponse.redirect(loginUrl);
+  }
+
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
     if (!data.user) {
       const loginUrl = new URL("/login", request.url);

@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SunMoon } from "lucide-react";
+import LogoutControl from "@/components/LogoutControl";
+import { getCurrentUserAndProfile } from "@/lib/data";
 
 export const metadata: Metadata = {
   title: "Settings",
   description: "WatchFinder preferences."
 };
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const { user } = await getCurrentUserAndProfile();
+
   return (
     <main className="page-inner">
       <h1>Settings</h1>
@@ -26,6 +30,7 @@ export default function SettingsPage() {
           <span className="status-badge status-draft">Coming soon</span>
         </div>
       </section>
+      {user ? <LogoutControl className="panel logout-panel settings-logout-panel" /> : null}
     </main>
   );
 }

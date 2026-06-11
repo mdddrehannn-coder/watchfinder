@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { LogIn, UserPlus } from "lucide-react";
+import { LogIn, Mail, UserPlus } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
@@ -34,6 +34,55 @@ export default function AuthPanel({
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [emailInput, setEmailInput] = useState("");
+
+  function authCallbackUrl() {
+    return `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+  }
+
+  async function continueWithGoogle() {
+    setError(null);
+    setStatus("Opening Google sign in...");
+    setBusy(true);
+    const supabase = createSupabaseBrowserClient();
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: authCallbackUrl() }
+    });
+    if (error) {
+      setError(friendlyAuthError(error.message));
+      setStatus(null);
+      setBusy(false);
+    }
+  }
+
+  async function sendEmailOtp() {
+    setError(null);
+    setStatus(null);
+    const email = emailInput.trim();
+    if (!email || !isValidEmail(email)) {
+      setError("Enter a valid email to receive the login OTP.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: authCallbackUrl(),
+          shouldCreateUser: true
+        }
+      });
+      if (error) {
+        setError(friendlyAuthError(error.message));
+        return;
+      }
+      setStatus("Email OTP sent. Check your inbox to continue.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -107,10 +156,31 @@ export default function AuthPanel({
           </p>
         </div>
 
+        <div className="auth-provider-stack">
+          <button className="button primary auth-submit" type="button" onClick={continueWithGoogle} disabled={busy}>
+            <LogIn size={19} /> Continue with Google
+          </button>
+        </div>
+
+        <div className="auth-divider"><span>or continue with email password</span></div>
+
         <form className="form-grid" onSubmit={submit}>
           <div className="field">
             <label htmlFor={`${mode}-email`}>Email</label>
-            <input id={`${mode}-email`} name="email" type="email" autoComplete="email" required />
+            <input
+              id={`${mode}-email`}
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              value={emailInput}
+              onChange={(event) => setEmailInput(event.target.value)}
+            />
+            {isLogin ? (
+              <button className="button auth-otp-button" type="button" onClick={sendEmailOtp} disabled={busy}>
+                <Mail size={17} /> Send email OTP
+              </button>
+            ) : null}
           </div>
           <div className="field">
             <label htmlFor={`${mode}-password`}>Password</label>
