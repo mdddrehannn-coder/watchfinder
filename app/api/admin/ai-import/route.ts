@@ -80,6 +80,20 @@ const platformRules: Array<AiImportPlatform & { hosts: string[]; searchPattern?:
     searchPattern: "https://www.sonyliv.com/search?q={query}"
   },
   {
+    key: "jiocinema",
+    name: "JioCinema",
+    hosts: ["jiocinema.com"],
+    homeUrl: "https://www.jiocinema.com/",
+    searchPattern: "https://www.jiocinema.com/search/{query}"
+  },
+  {
+    key: "mx-player",
+    name: "MX Player",
+    hosts: ["mxplayer.in", "mxplayer.com"],
+    homeUrl: "https://www.mxplayer.in/",
+    searchPattern: "https://www.mxplayer.in/search/{query}"
+  },
+  {
     key: "aha",
     name: "Aha",
     hosts: ["aha.video"],
@@ -121,10 +135,16 @@ const noisyUrlWords = new Set([
   "zee5",
   "sonyliv",
   "youtube",
+  "jiocinema",
+  "mxplayer",
+  "mx",
   "aha",
   "apple",
   "browse",
   "search",
+  "official",
+  "stream",
+  "streaming",
   "ref",
   "dp"
 ]);
@@ -138,6 +158,8 @@ const platformTitleNoise = [
   "Amazon Prime Video",
   "Zee5",
   "SonyLIV",
+  "JioCinema",
+  "MX Player",
   "YouTube",
   "Aha",
   "Apple TV",
@@ -240,6 +262,21 @@ function detectPlatformFromUrl(input?: string | null): AiImportPlatform | null {
   }
 }
 
+function detectContentTypeFromUrl(input?: string | null): "movie" | "tv" | null {
+  if (!input || !isHttpUrl(input)) return null;
+  try {
+    const segments = new URL(input).pathname
+      .split("/")
+      .map((segment) => segment.trim().toLowerCase())
+      .filter(Boolean);
+    if (segments.some((segment) => ["movie", "movies", "film", "films"].includes(segment))) return "movie";
+    if (segments.some((segment) => ["tv", "show", "shows", "series", "web-series"].includes(segment))) return "tv";
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function decodeHtmlEntities(value: string) {
   const named: Record<string, string> = {
     amp: "&",
@@ -308,7 +345,7 @@ function cleanTitle(rawTitle?: string | null, platform?: AiImportPlatform | null
 
   const pieces = [
     decoded,
-    ...decoded.split(/\s+(?:\||-|–|—|:)\s+/g)
+    ...decoded.split(/\s+(?:\||-|\u2013|\u2014|:)\s+/g)
   ];
 
   const candidates = pieces
@@ -351,12 +388,33 @@ function extractSlugFromUrl(input: string) {
     if (cleaned) return cleaned;
   }
 
-  const pathSegments = url.pathname
+  const rawSegments = url.pathname
     .split("/")
     .map((segment) => segment.trim())
     .filter(Boolean)
     .map((segment) => segment.split("?")[0])
-    .map((segment) => segment.replace(/\.(html?|aspx?)$/i, ""))
+    .map((segment) => segment.replace(/\.(html?|aspx?)$/i, ""));
+
+  const contentMarkers = ["movie", "movies", "film", "films", "show", "shows", "series", "tv", "web-series"];
+  for (const marker of contentMarkers) {
+    const markerIndex = rawSegments.findIndex((segment) => segment.toLowerCase() === marker);
+    if (markerIndex >= 0) {
+      const contentSlug = rawSegments.slice(markerIndex + 1).find((segment) => {
+        const clean = segment.toLowerCase();
+        return (
+          clean &&
+          clean !== "watch" &&
+          !/^\d+$/.test(clean) &&
+          !/^[a-z]*\d{5,}[a-z0-9]*$/i.test(clean) &&
+          !noisyUrlWords.has(clean)
+        );
+      });
+      const title = cleanTitle(contentSlug, platform);
+      if (title) return title;
+    }
+  }
+
+  const pathSegments = rawSegments
     .filter((segment) => !/^\d+$/.test(segment))
     .filter((segment) => !/^tt\d{6,12}$/i.test(segment))
     .filter((segment) => !/^[a-z0-9]{16,}$/i.test(segment))
@@ -371,6 +429,10 @@ function extractSlugFromUrl(input: string) {
     .sort((a, b) => b.length - a.length);
 
   return scored[0] || "";
+}
+
+function extractTitleFromUrl(input: string) {
+  return extractSlugFromUrl(input);
 }
 
 function getTagAttribute(tag: string, attr: string) {
@@ -560,7 +622,17 @@ function missingFields(draft: Partial<AiImportDraft>) {
   ].filter(Boolean) as string[];
 }
 
-async function duplicateWarnings(draft: Pick<AiImportDraft, "title" | "releaseYear" | "contentType" | "tmdbId" | "imdbId">) {
+function validateFetchedData(draft: Partial<AiImportDraft>) {
+  const warnings: string[] = [];
+  if (!draft.posterUrl) warnings.push("TMDb did not provide a poster. Add one before publishing.");
+  if (!draft.bannerUrl) warnings.push("TMDb did not provide a banner/backdrop. Add one before publishing.");
+  if (!draft.trailerUrl) warnings.push("No official YouTube trailer was found on TMDb.");
+  if (!draft.description) warnings.push("Description is missing from TMDb.");
+  if (!draft.genres?.length) warnings.push("Genres are missing from TMDb.");
+  return warnings;
+}
+
+async function duplicateWarnings(draft: Pick<AiImportDraft, "title" | "releaseYear" | "contentType" | "tmdbId" | "imdbId" | "officialWatchUrl">) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) return [] as string[];
   const warnings: string[] = [];
@@ -578,6 +650,17 @@ async function duplicateWarnings(draft: Pick<AiImportDraft, "title" | "releaseYe
       .limit(3);
     if (!exactMovieMatch.error && exactMovieMatch.data?.length) {
       warnings.push(`Exact external ID match already exists: ${exactMovieMatch.data[0].title} (${exactMovieMatch.data[0].slug})`);
+    }
+  }
+
+  if (draft.officialWatchUrl) {
+    const officialUrlMatch = await supabase
+      .from("movies")
+      .select("title, slug, status, watch_url")
+      .eq("watch_url", draft.officialWatchUrl)
+      .limit(1);
+    if (!officialUrlMatch.error && officialUrlMatch.data?.length) {
+      warnings.push(`Same official watch URL already exists: ${officialUrlMatch.data[0].title} (${officialUrlMatch.data[0].slug})`);
     }
   }
 
@@ -682,8 +765,14 @@ function rankCandidatesForTitle(candidates: AiImportCandidate[], detectedTitle: 
   }));
 }
 
-function autoSelectBestMatch(results: AiImportCandidate[], detectedTitle: string) {
-  const [best, second] = results;
+function autoSelectBestMatch(results: AiImportCandidate[], detectedTitle: string, year?: number | null) {
+  const yearAdjusted = year
+    ? results.map((candidate) => ({
+        ...candidate,
+        confidence: (candidate.confidence || 0) + (candidate.releaseYear === year ? 5 : 0)
+      }))
+    : results;
+  const [best, second] = yearAdjusted;
   if (!best) return null;
   const bestScore = best.confidence ?? candidateConfidence(best, detectedTitle);
   const nextScore = second?.confidence ?? (second ? candidateConfidence(second, detectedTitle) : 0);
@@ -708,6 +797,26 @@ async function searchTmdbCandidates(query: string, preferredType: "auto" | "movi
 
 async function searchTMDbByTitle(title: string, preferredType: "auto" | "movie" | "tv" = "auto") {
   return searchTmdbCandidates(title, preferredType);
+}
+
+async function fetchMovieCredits(tmdbId: number) {
+  return tmdbFetch<any>(`/movie/${tmdbId}/credits`, {});
+}
+
+async function fetchTvCredits(tmdbId: number) {
+  return tmdbFetch<any>(`/tv/${tmdbId}/credits`, {});
+}
+
+async function fetchFullMovieDetails(tmdbId: number) {
+  return tmdbFetch<any>(`/movie/${tmdbId}`, {
+    append_to_response: "credits,videos,images,external_ids,release_dates,alternative_titles"
+  });
+}
+
+async function fetchFullTvDetails(tmdbId: number) {
+  return tmdbFetch<any>(`/tv/${tmdbId}`, {
+    append_to_response: "credits,videos,images,external_ids,content_ratings,alternative_titles"
+  });
 }
 
 function baseDraft(
@@ -739,7 +848,7 @@ function baseDraft(
     title,
     originalTitle,
     alternativeTitles: [],
-    slug: slugify(`${title}-${releaseYear || ""}`),
+    slug: slugify(title),
     tagline: item.tagline || null,
     shortDescription: compactText(item.overview, 150),
     description: item.overview || null,
@@ -787,13 +896,12 @@ function baseDraft(
 }
 
 async function importMovie(id: number, input: string, context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null } = {}) {
-  const item = await tmdbFetch<any>(`/movie/${id}`, {
-    append_to_response: "credits,videos,images,external_ids,release_dates,alternative_titles"
-  });
+  const item = await fetchFullMovieDetails(id);
   const draft = baseDraft(item, "movie", input, context);
   draft.alternativeTitles = (item.alternative_titles?.titles ?? []).slice(0, 12).map((entry: any) => entry.title).filter(Boolean);
   draft.duplicateWarnings = await duplicateWarnings(draft);
   draft.missingFields = missingFields(draft);
+  draft.qualityWarnings = validateFetchedData(draft);
   return draft;
 }
 
@@ -803,9 +911,7 @@ async function importSeries(
   includeSeasons = true,
   context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null } = {}
 ) {
-  const item = await tmdbFetch<any>(`/tv/${id}`, {
-    append_to_response: "credits,videos,images,external_ids,content_ratings,alternative_titles"
-  });
+  const item = await fetchFullTvDetails(id);
   const draft = baseDraft(item, "tv", input, context);
   draft.alternativeTitles = (item.alternative_titles?.results ?? []).slice(0, 12).map((entry: any) => entry.title).filter(Boolean);
 
@@ -848,6 +954,7 @@ async function importSeries(
 
   draft.duplicateWarnings = await duplicateWarnings(draft);
   draft.missingFields = missingFields(draft);
+  draft.qualityWarnings = validateFetchedData(draft);
   return draft;
 }
 
@@ -866,6 +973,10 @@ function mapToAdminForm(draft: AiImportDraft, officialUrl?: string | null, platf
   } as AiImportDraft;
 }
 
+function mapTMDbToAdminForm(draft: AiImportDraft, officialUrl?: string | null, platform?: AiImportPlatform | null) {
+  return mapToAdminForm(draft, officialUrl, platform);
+}
+
 async function fetchFullTMDbDetails(
   id: number,
   type: "movie" | "tv",
@@ -874,7 +985,7 @@ async function fetchFullTMDbDetails(
   context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null } = {}
 ) {
   const draft = type === "tv" ? await importSeries(id, input, includeSeasons, context) : await importMovie(id, input, context);
-  return mapToAdminForm(draft, context.officialWatchUrl, context.platform);
+  return mapTMDbToAdminForm(draft, context.officialWatchUrl, context.platform);
 }
 
 async function findByImdb(imdbId: string, input: string) {
@@ -908,12 +1019,12 @@ async function detailsFromSelection(body: ImportRequest) {
 
 async function detectTitleCandidates(input: string, platform: AiImportPlatform | null) {
   const metadata = await fetchPageMetadata(input);
-  const slugTitle = extractSlugFromUrl(input);
-  const canonicalTitle = metadata.canonicalUrl ? extractSlugFromUrl(metadata.canonicalUrl) : "";
+  const slugTitle = extractTitleFromUrl(input);
+  const canonicalTitle = metadata.canonicalUrl ? extractTitleFromUrl(metadata.canonicalUrl) : "";
   const titles = uniqueTitles([
-    ...metadata.titleCandidates.map((title) => cleanTitle(title, platform)),
+    cleanTitle(slugTitle, platform),
     cleanTitle(canonicalTitle, platform),
-    cleanTitle(slugTitle, platform)
+    ...metadata.titleCandidates.map((title) => cleanTitle(title, platform))
   ]).filter((title) => !isLikelyJunkTitle(title));
   return { titles, metadata };
 }
@@ -924,22 +1035,24 @@ async function searchFromInput(input: string, mode: AiImportMode, mediaType: "au
     throw new Error("Invalid URL. Paste an official https URL, or use Movie Name Search for plain titles.");
   }
   const platform = detectPlatformFromUrl(input);
+  const inferredType = detectContentTypeFromUrl(input);
+  const effectiveMediaType = mediaType === "auto" && inferredType ? inferredType : mediaType;
   const officialWatchUrl = isHttpUrl(input) ? input : null;
   const titleCandidates = officialWatchUrl ? (await detectTitleCandidates(input, platform)).titles : [cleanTitle(input, platform)];
   const extractedTitle = titleCandidates[0] || "";
   if (!extractedTitle) {
-    throw new Error("Could not detect title from this link. Try another official link.");
+    throw new Error("Could not detect metadata from this link. Try another official link or check TMDb API key.");
   }
 
   let candidates: AiImportCandidate[] = [];
   for (const title of titleCandidates) {
-    candidates = await searchTMDbByTitle(title, mediaType);
+    candidates = await searchTMDbByTitle(title, effectiveMediaType);
     if (candidates.length) break;
   }
   if (!candidates.length) {
-    throw new Error(`Metadata not found for "${extractedTitle}". Try another official link.`);
+    throw new Error(`No TMDb match found for "${extractedTitle}". Try another official link or check TMDb API key.`);
   }
-  const ranked = rankCandidatesForTitle(candidates, extractedTitle, mediaType);
+  const ranked = rankCandidatesForTitle(candidates, extractedTitle, effectiveMediaType);
   const best = officialWatchUrl ? autoSelectBestMatch(ranked, extractedTitle) : null;
   if (best) {
     const draft = await fetchFullTMDbDetails(best.tmdbId, best.mediaType, input, includeSeasons, {
@@ -962,18 +1075,20 @@ async function searchFromInput(input: string, mode: AiImportMode, mediaType: "au
 
 async function importBestCandidate(input: string, mediaType: "auto" | "movie" | "tv", includeSeasons: boolean) {
   const platform = detectPlatformFromUrl(input);
+  const inferredType = detectContentTypeFromUrl(input);
+  const effectiveMediaType = mediaType === "auto" && inferredType ? inferredType : mediaType;
   const officialWatchUrl = isHttpUrl(input) ? input : null;
   const titleCandidates = officialWatchUrl ? (await detectTitleCandidates(input, platform)).titles : [cleanTitle(input, platform)];
   const extractedTitle = titleCandidates[0] || "";
-  if (!extractedTitle) throw new Error("Could not detect title from this link. Try another official link.");
+  if (!extractedTitle) throw new Error("Could not detect metadata from this link. Try another official link or check TMDb API key.");
   let candidates: AiImportCandidate[] = [];
   for (const title of titleCandidates) {
-    candidates = await searchTMDbByTitle(title, mediaType);
+    candidates = await searchTMDbByTitle(title, effectiveMediaType);
     if (candidates.length) break;
   }
-  candidates = rankCandidatesForTitle(candidates, extractedTitle, mediaType);
+  candidates = rankCandidatesForTitle(candidates, extractedTitle, effectiveMediaType);
   const first = candidates[0];
-  if (!first) throw new Error(`Metadata not found for "${extractedTitle}".`);
+  if (!first) throw new Error(`No TMDb match found for "${extractedTitle}". Try another official link or check TMDb API key.`);
   const context = { extractedTitle, officialWatchUrl, platform };
   return fetchFullTMDbDetails(first.tmdbId, first.mediaType, input, includeSeasons, context);
 }

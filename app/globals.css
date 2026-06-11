@@ -4250,6 +4250,33 @@ html.theme-light .ai-bulk-item {
   margin: 0.25rem 0 0;
 }
 
+.ai-progress-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: -0.25rem;
+}
+
+.ai-progress-steps span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.32rem 0.62rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.ai-progress-steps span.active {
+  border-color: rgba(34, 211, 238, 0.5);
+  background: rgba(34, 211, 238, 0.12);
+  color: var(--text);
+}
+
 .ai-candidate-grid {
   display: grid;
   gap: 0.55rem;
@@ -4744,6 +4771,17 @@ html.theme-light .profile-login-card {
   display: grid;
   gap: 0.4rem;
   min-height: 7rem;
+}
+
+.admin-profile-card {
+  border-color: rgba(34, 211, 238, 0.42);
+  background:
+    linear-gradient(135deg, rgba(34, 211, 238, 0.12), rgba(244, 63, 94, 0.08)),
+    var(--panel);
+}
+
+.admin-profile-card svg {
+  color: #67e8f9;
 }
 
 .favorite-action-wrap {

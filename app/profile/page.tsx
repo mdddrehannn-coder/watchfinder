@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import ProfileMenu from "@/components/ProfileMenu";
+import { isAdminEmail } from "@/lib/admin-access";
 import { getCurrentUserAndProfile } from "@/lib/data";
 
 export const metadata: Metadata = {
@@ -7,13 +8,23 @@ export const metadata: Metadata = {
   description: "Manage your WatchFinder account, favorites and settings."
 };
 
-export default async function ProfilePage() {
+export default async function ProfilePage({
+  searchParams
+}: {
+  searchParams?: Promise<{ error?: string }>;
+}) {
   const { user } = await getCurrentUserAndProfile();
+  const params = searchParams ? await searchParams : {};
 
   return (
     <main className="page-inner">
       <h1>Profile</h1>
-      <ProfileMenu initialEmail={user?.email || "Guest profile"} initiallyLoggedIn={Boolean(user)} />
+      <ProfileMenu
+        accessDenied={params?.error === "access-denied"}
+        initialEmail={user?.email || "Guest profile"}
+        initiallyAdmin={isAdminEmail(user?.email)}
+        initiallyLoggedIn={Boolean(user)}
+      />
     </main>
   );
 }

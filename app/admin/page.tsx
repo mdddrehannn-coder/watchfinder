@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { redirect } from "next/navigation";
 import AdminDashboard from "@/components/AdminDashboard";
 import {
   getAdminAnalyticsData,
@@ -20,31 +20,14 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  const { user, profile, isAdmin } = await requireAdminProfile();
+  const { user, isAdmin } = await requireAdminProfile();
 
   if (!user) {
-    return (
-      <main className="page-inner">
-        <div className="panel">
-          <h1>Admin Login Required</h1>
-          <p className="muted">Login to continue to the WatchFinder admin dashboard.</p>
-          <Link className="button primary" href="/login?next=/admin">
-            Login
-          </Link>
-        </div>
-      </main>
-    );
+    redirect("/login?next=/admin");
   }
 
   if (!isAdmin) {
-    return (
-      <main className="page-inner">
-        <div className="panel">
-          <h1>Access denied</h1>
-          <p className="muted">Your profile role is {profile?.role || "not admin"}. Only profiles.role = admin can access this dashboard.</p>
-        </div>
-      </main>
-    );
+    redirect("/profile?error=access-denied");
   }
 
   const [movies, series, genres, platforms, castMembers, collections, analytics] = await Promise.all([

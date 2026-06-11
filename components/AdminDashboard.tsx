@@ -12,6 +12,7 @@ import {
   Eye,
   Film,
   Link2,
+  LogOut,
   MousePointerClick,
   Plus,
   Radio,
@@ -45,6 +46,7 @@ type AdminSection =
   | "ai-assistant"
   | "analytics"
   | "add-movie"
+  | "users"
   | "genres"
   | "platforms"
   | "cast-members"
@@ -62,12 +64,14 @@ type MovieEditorContentType = "movie" | "trailer" | "tv_show" | "cartoon" | "sho
 type ContentEditorType = MovieEditorContentType | "series";
 
 const sections: Array<{ id: AdminSection; label: string }> = [
-  { id: "dashboard", label: "Dashboard Overview" },
-  { id: "movies", label: "Movies" },
-  { id: "web-series", label: "Web Series" },
-  { id: "ai-assistant", label: "AI Assistant" },
-  { id: "analytics", label: "Analytics" },
+  { id: "dashboard", label: "Dashboard" },
   { id: "add-movie", label: "Add Content" },
+  { id: "ai-assistant", label: "AI Import" },
+  { id: "movies", label: "Movies" },
+  { id: "web-series", label: "Series" },
+  { id: "users", label: "Users" },
+  { id: "site-settings", label: "Settings" },
+  { id: "analytics", label: "Analytics" },
   { id: "genres", label: "Genres" },
   { id: "platforms", label: "Platforms" },
   { id: "cast-members", label: "Cast Members" },
@@ -78,8 +82,7 @@ const sections: Array<{ id: AdminSection; label: string }> = [
   { id: "ad-slots", label: "Ad Slots" },
   { id: "blog-posts", label: "Blog Posts" },
   { id: "feedback-messages", label: "Feedback Messages" },
-  { id: "license-documents", label: "License Documents" },
-  { id: "site-settings", label: "Site Settings" }
+  { id: "license-documents", label: "License Documents" }
 ];
 
 function formatDate(value?: string | null) {
@@ -713,6 +716,12 @@ export default function AdminDashboard({
     setMovieMessage(null);
   }
 
+  async function adminLogout() {
+    const supabase = createSupabaseBrowserClient();
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  }
+
   function showEditSeries(seriesItem: Series) {
     setEditingMovie(null);
     setEditingSeries(seriesItem);
@@ -993,6 +1002,9 @@ export default function AdminDashboard({
           </button>
         ))}
         <Link className="chip" href="/">Public site</Link>
+        <button className="chip" onClick={adminLogout} type="button">
+          <LogOut size={14} /> Logout
+        </button>
       </nav>
 
       <div className="admin-content">
@@ -1007,6 +1019,32 @@ export default function AdminDashboard({
               <div className="admin-card"><strong>{collections.feedbackMessages.length}</strong><p className="muted">Feedback messages</p></div>
               <div className="admin-card"><strong>{analyticsStats.pageViewsToday}</strong><p className="muted">Page views today</p></div>
               <div className="admin-card"><strong>{analyticsStats.activeSessions.length}</strong><p className="muted">Active users now</p></div>
+            </div>
+          </section>
+        ) : null}
+
+        {activeSection === "users" ? (
+          <section className="section">
+            <div className="section-head">
+              <div>
+                <h2>Users</h2>
+                <p className="muted">Admin access is restricted to the configured Gmail only. Normal users never see the Admin Panel entry.</p>
+              </div>
+              <Users size={22} />
+            </div>
+            <div className="grid">
+              <div className="admin-card">
+                <strong>1</strong>
+                <p className="muted">Configured admin email</p>
+              </div>
+              <div className="admin-card">
+                <strong>Email guard</strong>
+                <p className="muted">Supabase Auth user email is checked on middleware, server page, and admin APIs.</p>
+              </div>
+              <div className="admin-card">
+                <strong>Protected</strong>
+                <p className="muted">Direct /admin visits by non-admin users redirect to Profile with Access denied.</p>
+              </div>
             </div>
           </section>
         ) : null}

@@ -1,8 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { publicEnv } from "@/lib/public-env";
+import { isAdminEmail } from "@/lib/admin-access";
+
+const legacyAdminRoutes = ["/dashboard", "/admin-panel", "/manage"];
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  if (legacyAdminRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`))) {
+    return NextResponse.redirect(new URL("/admin", request.url));
+  }
+
   if (!publicEnv.supabaseUrl || !publicEnv.supabaseAnonKey) {
     return NextResponse.next({ request });
   }
@@ -22,7 +30,21 @@ export async function middleware(request: NextRequest) {
     }
   });
 
-  await supabase.auth.getUser();
+  const { data } = await supabase.auth.getUser();
+
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    if (!data.user) {
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("next", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    if (!isAdminEmail(data.user.email)) {
+      const deniedUrl = new URL("/profile", request.url);
+      deniedUrl.searchParams.set("error", "access-denied");
+      return NextResponse.redirect(deniedUrl);
+    }
+  }
+
   return response;
 }
 

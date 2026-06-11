@@ -98,6 +98,7 @@ export type Movie = {
   video_url?: string | null;
   video_embed_url?: string | null;
   video_id?: string | null;
+  official_watch_url?: string | null;
   watch_url?: string | null;
   platform_home_url?: string | null;
   platform_search_url?: string | null;
@@ -190,6 +191,10 @@ export type Series = {
   trailer_url?: string | null;
   video_embed_url?: string | null;
   video_provider?: VideoProvider | string | null;
+  official_watch_url?: string | null;
+  watch_url?: string | null;
+  official_platform?: string | null;
+  open_mode?: string | null;
   is_featured?: boolean | null;
   is_latest?: boolean | null;
   is_trending?: boolean | null;

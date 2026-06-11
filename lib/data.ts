@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient, createSupabaseAnonServerClient, createSupabaseServerClient } from "@/lib/supabase-server";
+import { isAdminEmail } from "@/lib/admin-access";
 import { isActiveWindow } from "@/lib/format";
 import { isOptionalMovieRelationError, movieSelect, movieSelectWithoutChannels } from "@/lib/movie-select";
 import type {
@@ -120,7 +121,7 @@ export async function requireAdminProfile() {
   const session = await getCurrentUserAndProfile();
   return {
     ...session,
-    isAdmin: session.profile?.role === "admin"
+    isAdmin: isAdminEmail(session.user?.email)
   };
 }
 

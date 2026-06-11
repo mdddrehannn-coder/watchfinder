@@ -92,6 +92,7 @@ function movieRowPlatform(movie: Movie): Platform {
   const name =
     cleanUrl(movie.official_platform) ||
     cleanUrl(movie.platform_name) ||
+    inferPlatformNameFromUrl(movie.official_watch_url) ||
     inferPlatformNameFromUrl(movie.watch_url) ||
     inferPlatformNameFromUrl(movie.video_url) ||
     inferPlatformNameFromUrl(movie.trailer_url) ||
@@ -110,12 +111,13 @@ function movieRowPlatform(movie: Movie): Platform {
 
 function movieRowWatchLink(movie: Movie): MoviePlatformLink | null {
   const externalRowUrl = [
+    movie.official_watch_url,
     movie.watch_url,
     movie.video_url,
     movie.trailer_url,
     movie.video_embed_url
   ].map(cleanUrl).find((url) => isKnownExternalWatchPageUrl(url));
-  const rowWatchUrl = cleanUrl(movie.watch_url) || externalRowUrl || null;
+  const rowWatchUrl = cleanUrl(movie.official_watch_url) || cleanUrl(movie.watch_url) || externalRowUrl || null;
   const hasAnyRowWatchTarget = Boolean(
     rowWatchUrl ||
       cleanUrl(movie.platform_home_url) ||

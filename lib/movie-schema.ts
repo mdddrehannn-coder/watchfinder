@@ -31,6 +31,7 @@ export const MOVIE_REQUIRED_COLUMNS = [
   "video_id",
   "official_platform",
   "platform_name",
+  "official_watch_url",
   "watch_url",
   "platform_home_url",
   "platform_search_url",
@@ -68,6 +69,19 @@ export const MOVIE_REQUIRED_COLUMNS = [
   "seo_title",
   "seo_description",
   "og_image_url",
+  "tmdb_id",
+  "imdb_id",
+  "ai_import_source",
+  "ai_import_payload",
+  "tagline",
+  "original_language",
+  "country",
+  "budget",
+  "revenue",
+  "vote_count",
+  "age_rating",
+  "production_companies_json",
+  "external_ids_json",
   "updated_at"
 ] as const;
 

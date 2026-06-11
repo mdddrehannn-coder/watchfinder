@@ -2,21 +2,27 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Clock, Heart, LogIn, LogOut, MessageSquare, Share2, Settings, SunMoon } from "lucide-react";
+import { Clock, Heart, LogIn, LogOut, MessageSquare, Settings, ShieldCheck, Share2, SunMoon } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import InstallAppButton from "@/components/InstallAppButton";
+import { isAdminEmail } from "@/lib/admin-access";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useFavorites, useWatchHistory } from "@/lib/user-library";
 
 export default function ProfileMenu({
+  accessDenied = false,
   initialEmail,
+  initiallyAdmin = false,
   initiallyLoggedIn = false
 }: {
+  accessDenied?: boolean;
   initialEmail: string;
+  initiallyAdmin?: boolean;
   initiallyLoggedIn?: boolean;
 }) {
   const [email, setEmail] = useState(initialEmail);
   const [loggedIn, setLoggedIn] = useState(initiallyLoggedIn);
+  const [isAdmin, setIsAdmin] = useState(initiallyAdmin);
   const { favorites } = useFavorites();
   const { history } = useWatchHistory();
 
@@ -24,6 +30,7 @@ export default function ProfileMenu({
     const supabase = createSupabaseBrowserClient();
     supabase.auth.getUser().then(({ data }) => {
       setLoggedIn(Boolean(data.user));
+      setIsAdmin(isAdminEmail(data.user?.email));
       if (data.user?.email) setEmail(data.user.email);
     });
   }, []);
@@ -42,6 +49,10 @@ export default function ProfileMenu({
 
   return (
     <div className="form-grid">
+      {accessDenied ? (
+        <div className="status-error">Access denied. This Admin Panel is available only for the configured admin Gmail.</div>
+      ) : null}
+
       <div className="panel">
         <BrandLogo href="" variant="profile" showText={false} />
         <h2>{loggedIn ? "Your Account" : "Guest Profile"}</h2>
@@ -58,6 +69,13 @@ export default function ProfileMenu({
       </div>
 
       <div className="grid">
+        {loggedIn && isAdmin ? (
+          <Link className="panel profile-action-card admin-profile-card" href="/admin">
+            <ShieldCheck size={22} />
+            <strong>Admin Panel</strong>
+            <p className="muted">Manage content, AI Import, movies, series, users and settings</p>
+          </Link>
+        ) : null}
         <Link className="panel profile-action-card" href="/favorites"><Heart size={22} /> <strong>Favorites</strong><p className="muted">{favorites.length} saved</p></Link>
         <Link className="panel profile-action-card" href="/history"><Clock size={22} /> <strong>Watch History</strong><p className="muted">{history.length ? `${history.length} recent` : "No activity yet"}</p></Link>
         <Link className="panel" href="/feedback"><MessageSquare size={22} /> <strong>Feedback</strong></Link>

@@ -44,6 +44,14 @@ const importTabs: Array<{
   { id: "publish", title: "Publish", helper: "Save as draft or publish after review." }
 ];
 
+const AI_IMPORT_STEPS = [
+  "Detecting platform",
+  "Extracting title",
+  "Searching metadata",
+  "Fetching cast and trailer",
+  "Preparing review"
+];
+
 function toNullableString(value?: string | null) {
   const clean = String(value || "").trim();
   return clean || null;
@@ -166,6 +174,7 @@ function draftToMoviePayload(draft: AiImportDraft, status: "draft" | "published"
     video_id: null,
     official_platform: hasOfficialWatchUrl ? importedPlatform : draft.trailerUrl ? "YouTube" : null,
     platform_name: hasOfficialWatchUrl ? importedPlatform : draft.trailerUrl ? "YouTube" : null,
+    official_watch_url: toNullableString(draft.officialWatchUrl),
     watch_url: toNullableString(draft.officialWatchUrl),
     platform_home_url: toNullableString(draft.platform?.homeUrl),
     platform_search_url: toNullableString(platformSearchUrl),
@@ -188,11 +197,29 @@ function draftToMoviePayload(draft: AiImportDraft, status: "draft" | "published"
     status,
     seo_title: toNullableString(draft.seoTitle),
     seo_description: toNullableString(draft.seoDescription),
-    og_image_url: toNullableString(draft.bannerUrl || draft.posterUrl)
+    og_image_url: toNullableString(draft.bannerUrl || draft.posterUrl),
+    tmdb_id: toNumber(draft.tmdbId),
+    imdb_id: toNullableString(draft.imdbId),
+    ai_import_source: draft.source,
+    ai_import_payload: draft,
+    tagline: toNullableString(draft.tagline),
+    original_language: toNullableString(draft.originalLanguage),
+    country: toNullableString(draft.country),
+    budget: toNumber(draft.budget),
+    revenue: toNumber(draft.revenue),
+    vote_count: toNumber(draft.voteCount),
+    age_rating: toNullableString(draft.ageRating),
+    production_companies_json: draft.productionCompanies,
+    external_ids_json: {
+      tmdb_id: draft.tmdbId ?? null,
+      imdb_id: draft.imdbId ?? null
+    }
   };
 }
 
 function draftToSeriesPayload(draft: AiImportDraft, status: "draft" | "published", finalSlug: string) {
+  const importedPlatform = platformLabel(draft.platform);
+  const hasOfficialWatchUrl = Boolean(draft.officialWatchUrl);
   return {
     title: draft.title.trim(),
     slug: finalSlug,
@@ -207,6 +234,10 @@ function draftToSeriesPayload(draft: AiImportDraft, status: "draft" | "published
     trailer_url: toNullableString(draft.trailerUrl),
     video_embed_url: null,
     video_provider: safeProvider(draft.trailerUrl),
+    official_watch_url: toNullableString(draft.officialWatchUrl),
+    watch_url: toNullableString(draft.officialWatchUrl),
+    official_platform: hasOfficialWatchUrl ? importedPlatform : draft.trailerUrl ? "YouTube" : null,
+    open_mode: hasOfficialWatchUrl ? "external" : draft.trailerUrl ? "trailer_modal" : "auto",
     status,
     is_featured: false,
     is_latest: true,
@@ -235,6 +266,7 @@ export default function AdminAIAssistant() {
   const [bulkResults, setBulkResults] = useState<AiImportResult[]>([]);
   const [message, setMessage] = useState<Message | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
+  const [importStageIndex, setImportStageIndex] = useState<number | null>(null);
 
   useEffect(() => {
     try {
@@ -277,7 +309,14 @@ export default function AdminAIAssistant() {
     }
 
     setLoading(true);
-    setMessage({ type: "info", text: "AI Assistant is searching TMDb from your URL/title. Select the correct result to fetch full metadata." });
+    setImportStageIndex(0);
+    setMessage({ type: "info", text: "Detecting platform and title from the official link..." });
+    const stageTimer = window.setInterval(() => {
+      setImportStageIndex((current) => {
+        if (current === null) return 0;
+        return Math.min(current + 1, AI_IMPORT_STEPS.length - 1);
+      });
+    }, 900);
     try {
       const response = await fetch("/api/admin/ai-import", {
         method: "POST",
@@ -316,11 +355,14 @@ export default function AdminAIAssistant() {
         setBulkResults([]);
         setMessage({ type: "success", text: `${json.draft.sourceLabel} draft ready. Review before publishing.` });
       }
+      setImportStageIndex(AI_IMPORT_STEPS.length - 1);
       setActiveTab("review");
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "AI import failed." });
     } finally {
+      window.clearInterval(stageTimer);
       setLoading(false);
+      window.setTimeout(() => setImportStageIndex(null), 900);
     }
   }
 
@@ -530,6 +572,20 @@ export default function AdminAIAssistant() {
               <ClipboardList size={18} /> {manualOpen ? "Hide notes" : "Show workflow"}
             </button>
           </div>
+
+          {importStageIndex !== null ? (
+            <div className="ai-progress-steps" aria-live="polite">
+              {AI_IMPORT_STEPS.map((step, index) => (
+                <span
+                  className={index <= importStageIndex ? "active" : ""}
+                  key={step}
+                >
+                  {index < importStageIndex ? <CheckCircle2 size={13} /> : index === importStageIndex && loading ? <Loader2 className="spin-icon" size={13} /> : null}
+                  {step}
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           {manualOpen ? (
             <div className="notice-card">
