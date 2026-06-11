@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { slugify } from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
-import type { AiImportDraft, AiImportMode, AiImportResponse, AiImportResult } from "@/lib/ai-import-types";
+import type { AiImportCandidate, AiImportDraft, AiImportMode, AiImportPlatform, AiImportResponse, AiImportResult } from "@/lib/ai-import-types";
 
 type Message = {
   type: "success" | "error" | "info" | "warning";
@@ -89,6 +89,10 @@ function safeProvider(url?: string | null) {
   return url?.includes("youtube.com") || url?.includes("youtu.be") ? "youtube" : "direct";
 }
 
+function platformLabel(platform?: AiImportPlatform | null) {
+  return platform?.name || "Official Platform";
+}
+
 async function resolveUniqueSlug(table: "movies" | "web_series", requestedSlug: string, title: string) {
   const supabase = createSupabaseBrowserClient();
   const base = slugify(requestedSlug || title) || `watchfinder-${Date.now().toString(36)}`;
@@ -125,6 +129,11 @@ function schemaHint(error: unknown) {
 
 function draftToMoviePayload(draft: AiImportDraft, status: "draft" | "published", finalSlug: string) {
   const trailerProvider = safeProvider(draft.trailerUrl);
+  const importedPlatform = platformLabel(draft.platform);
+  const hasOfficialWatchUrl = Boolean(draft.officialWatchUrl);
+  const platformSearchUrl = draft.platform?.searchUrl && draft.extractedTitle
+    ? draft.platform.searchUrl.replace("{query}", encodeURIComponent(draft.title || draft.extractedTitle))
+    : null;
   return {
     title: draft.title.trim(),
     slug: finalSlug,
@@ -155,18 +164,18 @@ function draftToMoviePayload(draft: AiImportDraft, status: "draft" | "published"
     video_embed_url: null,
     video_provider: trailerProvider,
     video_id: null,
-    official_platform: draft.trailerUrl ? "YouTube" : null,
-    platform_name: draft.trailerUrl ? "YouTube" : null,
-    watch_url: null,
-    platform_home_url: null,
-    platform_search_url: null,
+    official_platform: hasOfficialWatchUrl ? importedPlatform : draft.trailerUrl ? "YouTube" : null,
+    platform_name: hasOfficialWatchUrl ? importedPlatform : draft.trailerUrl ? "YouTube" : null,
+    watch_url: toNullableString(draft.officialWatchUrl),
+    platform_home_url: toNullableString(draft.platform?.homeUrl),
+    platform_search_url: toNullableString(platformSearchUrl),
     app_deeplink: null,
-    open_mode: draft.trailerUrl ? "trailer_modal" : "auto",
+    open_mode: hasOfficialWatchUrl ? "external" : draft.trailerUrl ? "trailer_modal" : "auto",
     mobile_web_supported: "unknown",
     desktop_web_supported: "unknown",
     app_required: false,
     quality: null,
-    availability_type: draft.trailerUrl ? "official" : "unknown",
+    availability_type: hasOfficialWatchUrl ? "unknown" : draft.trailerUrl ? "official" : "unknown",
     director: toNullableString(draft.director),
     popularity_score: toNumber(draft.popularityScore) ?? 0,
     is_featured: false,
@@ -174,7 +183,7 @@ function draftToMoviePayload(draft: AiImportDraft, status: "draft" | "published"
     is_trending: false,
     is_hindi_dubbed: false,
     is_free_legal: false,
-    is_official: Boolean(draft.trailerUrl),
+    is_official: Boolean(draft.trailerUrl || hasOfficialWatchUrl),
     has_licensed_video: false,
     status,
     seo_title: toNullableString(draft.seoTitle),
@@ -191,7 +200,7 @@ function draftToSeriesPayload(draft: AiImportDraft, status: "draft" | "published
     poster_url: toNullableString(draft.posterUrl),
     banner_url: toNullableString(draft.bannerUrl),
     genre: draft.genres.join(", ") || null,
-    platform_name: null,
+    platform_name: draft.platform?.name || null,
     language: toNullableString(draft.language),
     release_year: toNumber(draft.releaseYear),
     rating: draft.rating ? String(Number(draft.rating).toFixed(1)) : null,
@@ -219,6 +228,10 @@ export default function AdminAIAssistant() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<AiImportDraft | null>(null);
+  const [candidates, setCandidates] = useState<AiImportCandidate[]>([]);
+  const [extractedTitle, setExtractedTitle] = useState<string | null>(null);
+  const [detectedPlatform, setDetectedPlatform] = useState<AiImportPlatform | null>(null);
+  const [officialWatchUrl, setOfficialWatchUrl] = useState<string | null>(null);
   const [bulkResults, setBulkResults] = useState<AiImportResult[]>([]);
   const [message, setMessage] = useState<Message | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
@@ -264,12 +277,12 @@ export default function AdminAIAssistant() {
     }
 
     setLoading(true);
-    setMessage({ type: "info", text: "AI Assistant is fetching public metadata, images, trailer, SEO, and duplicate warnings..." });
+    setMessage({ type: "info", text: "AI Assistant is searching TMDb from your URL/title. Select the correct result to fetch full metadata." });
     try {
       const response = await fetch("/api/admin/ai-import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, input, mediaType, includeSeasons })
+        body: JSON.stringify({ action: "search", mode, input, mediaType, includeSeasons })
       });
       const json = (await response.json()) as AiImportResponse;
       if (!response.ok || !json.ok) throw new Error(json.error || "Import failed.");
@@ -278,18 +291,65 @@ export default function AdminAIAssistant() {
         setBulkResults(json.results);
         const first = json.results.find((item) => item.ok && item.draft)?.draft || null;
         setDraft(first);
+        setCandidates([]);
         setMessage({
           type: "success",
           text: `Bulk import finished. ${json.results.filter((item) => item.ok).length}/${json.results.length} drafts are ready for review.`
         });
+      } else if (json.candidates?.length) {
+        setCandidates(json.candidates);
+        setExtractedTitle(json.extractedTitle || null);
+        setDetectedPlatform(json.platform || null);
+        setOfficialWatchUrl(input.trim().startsWith("http") ? input.trim() : null);
+        setDraft(null);
+        setBulkResults([]);
+        setMessage({
+          type: "success",
+          text: `Found ${json.candidates.length} TMDb match${json.candidates.length === 1 ? "" : "es"} for "${json.extractedTitle || input}". Select the correct title to auto-fill.`
+        });
       } else if (json.draft) {
         setDraft(json.draft);
+        setCandidates([]);
+        setExtractedTitle(json.draft.extractedTitle || null);
+        setDetectedPlatform(json.draft.platform || null);
+        setOfficialWatchUrl(json.draft.officialWatchUrl || (input.trim().startsWith("http") ? input.trim() : null));
         setBulkResults([]);
         setMessage({ type: "success", text: `${json.draft.sourceLabel} draft ready. Review before publishing.` });
       }
       setActiveTab("review");
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "AI import failed." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function selectCandidate(candidate: AiImportCandidate) {
+    setLoading(true);
+    setMessage({ type: "info", text: `Fetching full TMDb details for ${candidate.title}...` });
+    try {
+      const response = await fetch("/api/admin/ai-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "details",
+          input,
+          includeSeasons,
+          tmdbId: candidate.tmdbId,
+          selectedMediaType: candidate.mediaType,
+          officialWatchUrl,
+          extractedTitle,
+          platform: detectedPlatform
+        })
+      });
+      const json = (await response.json()) as AiImportResponse;
+      if (!response.ok || !json.ok || !json.draft) throw new Error(json.error || "Full TMDb details could not be fetched.");
+      setDraft(json.draft);
+      setCandidates([]);
+      setMessage({ type: "success", text: `${json.draft.title} is auto-filled from TMDb. Review before saving.` });
+      setActiveTab("review");
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Full TMDb details could not be fetched." });
     } finally {
       setLoading(false);
     }
@@ -474,7 +534,38 @@ export default function AdminAIAssistant() {
           {manualOpen ? (
             <div className="notice-card">
               <strong>Import to AI Processing to Review to Publish</strong>
-              <p className="muted">IMDb/Wikipedia/official-site fallbacks need their own API/provider configuration. Without TMDb credentials, the assistant creates a reviewable fallback draft instead of blocking admin work.</p>
+              <p className="muted">TMDb is the required metadata source. If a pasted OTT URL does not contain a readable title, use Movie Name Search and select the correct TMDb match.</p>
+            </div>
+          ) : null}
+
+          {candidates.length ? (
+            <div className="ai-candidate-panel">
+              <div>
+                <strong>TMDb matches</strong>
+                <p className="muted">
+                  {detectedPlatform ? `${detectedPlatform.name} URL detected. ` : ""}
+                  {extractedTitle ? `Searching for "${extractedTitle}". ` : ""}
+                  Select the exact movie/show to fetch full metadata.
+                </p>
+              </div>
+              <div className="ai-candidate-grid">
+                {candidates.map((candidate) => (
+                  <button
+                    className="ai-candidate-card"
+                    disabled={loading}
+                    key={`${candidate.mediaType}-${candidate.tmdbId}`}
+                    onClick={() => selectCandidate(candidate)}
+                    type="button"
+                  >
+                    {candidate.posterUrl ? <img alt={candidate.title} src={candidate.posterUrl} /> : <span className="ai-candidate-poster"><ImageIcon size={22} /></span>}
+                    <span>
+                      <strong>{candidate.title}</strong>
+                      <small>{candidate.mediaType === "tv" ? "Web Series" : "Movie"} {candidate.releaseYear ? `- ${candidate.releaseYear}` : ""}</small>
+                      <small>{candidate.rating ? `Rating ${Number(candidate.rating).toFixed(1)}` : "TMDb result"}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
         </div>
@@ -534,6 +625,18 @@ export default function AdminAIAssistant() {
                 <label className="field">
                   <span>Banner URL</span>
                   <input value={draft.bannerUrl || ""} onChange={(event) => updateDraft("bannerUrl", event.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Official watch URL</span>
+                  <input value={draft.officialWatchUrl || ""} onChange={(event) => updateDraft("officialWatchUrl", event.target.value)} placeholder="Original Hotstar/Netflix/Prime/YouTube official URL" />
+                </label>
+                <label className="field">
+                  <span>Detected platform</span>
+                  <input
+                    value={draft.platform?.name || ""}
+                    onChange={(event) => updateDraft("platform", { key: slugify(event.target.value), name: event.target.value })}
+                    placeholder="JioHotstar, Netflix, Prime Video"
+                  />
                 </label>
                 <label className="field">
                   <span>Official trailer URL</span>

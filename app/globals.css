@@ -4239,6 +4239,82 @@ html.theme-light .ai-bulk-item {
   color: var(--text);
 }
 
+.ai-candidate-panel {
+  display: grid;
+  gap: 0.75rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.85rem;
+}
+
+.ai-candidate-panel p {
+  margin: 0.25rem 0 0;
+}
+
+.ai-candidate-grid {
+  display: grid;
+  gap: 0.55rem;
+  max-height: 28rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.ai-candidate-card {
+  display: grid;
+  grid-template-columns: 3.2rem minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  padding: 0.55rem;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+html.theme-light .ai-candidate-card {
+  background: rgba(248, 250, 252, 0.86);
+}
+
+.ai-candidate-card:hover {
+  border-color: rgba(34, 211, 238, 0.58);
+  transform: translateY(-1px);
+}
+
+.ai-candidate-card img,
+.ai-candidate-poster {
+  width: 3.2rem;
+  aspect-ratio: 2 / 3;
+  border-radius: 0.55rem;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ai-candidate-poster {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.ai-candidate-card span {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.ai-candidate-card strong,
+.ai-candidate-card small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-candidate-card small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .ai-review-stack {
   display: grid;
   gap: 1rem;

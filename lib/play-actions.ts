@@ -177,7 +177,7 @@ function toPlatformPlayAction(link: MoviePlatformLink, movie: Movie): ResolvedPl
         fallbackNote: target.fallbackNote
       })
       : target.url,
-    label: target.appRequired ? `Open ${target.platformName} App` : "Open on Official Platform",
+    label: target.appRequired ? `Open ${target.platformName} App` : "Watch on Official Platform",
     platformName: target.platformName,
     target: target.openMode === "in_app_browser" ? undefined : "_blank",
     note: target.note

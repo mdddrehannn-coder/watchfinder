@@ -34,10 +34,36 @@ export type AiImportedSeason = {
   episodes: AiImportedEpisode[];
 };
 
+export type AiImportPlatform = {
+  key: string;
+  name: string;
+  homeUrl?: string | null;
+  searchUrl?: string | null;
+};
+
+export type AiImportCandidate = {
+  tmdbId: number;
+  mediaType: "movie" | "tv";
+  title: string;
+  originalTitle?: string | null;
+  overview?: string | null;
+  releaseDate?: string | null;
+  releaseYear?: number | null;
+  posterUrl?: string | null;
+  backdropUrl?: string | null;
+  rating?: number | null;
+  popularity?: number | null;
+};
+
 export type AiImportDraft = {
   source: "tmdb" | "fallback";
   sourceLabel: string;
   input: string;
+  extractedTitle?: string | null;
+  officialWatchUrl?: string | null;
+  platform?: AiImportPlatform | null;
+  linkType?: "direct_title_page" | "platform_search" | "platform_home" | "app_deeplink";
+  openMode?: "auto" | "in_app_browser" | "external" | "trailer_modal";
   contentType: AiImportedContentType;
   title: string;
   originalTitle?: string | null;
@@ -92,12 +118,19 @@ export type AiImportResult = {
   input: string;
   ok: boolean;
   draft?: AiImportDraft;
+  candidates?: AiImportCandidate[];
+  extractedTitle?: string | null;
+  platform?: AiImportPlatform | null;
   error?: string;
 };
 
 export type AiImportResponse = {
   ok: boolean;
   draft?: AiImportDraft;
+  candidates?: AiImportCandidate[];
+  extractedTitle?: string | null;
+  platform?: AiImportPlatform | null;
+  needsSelection?: boolean;
   results?: AiImportResult[];
   error?: string;
   warnings?: string[];

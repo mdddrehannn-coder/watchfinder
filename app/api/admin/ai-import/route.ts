@@ -2,18 +2,126 @@ import { NextResponse } from "next/server";
 import { slugify } from "@/lib/format";
 import { requireAdminProfile } from "@/lib/data";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
-import type { AiImportDraft, AiImportMode, AiImportResult, AiImportedCredit, AiImportedImage, AiImportedSeason } from "@/lib/ai-import-types";
+import type {
+  AiImportCandidate,
+  AiImportDraft,
+  AiImportMode,
+  AiImportPlatform,
+  AiImportResult,
+  AiImportedCredit,
+  AiImportedImage,
+  AiImportedSeason
+} from "@/lib/ai-import-types";
 
 const TMDB_API_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 const MAX_BULK_ITEMS = 50;
 
 type ImportRequest = {
+  action?: "search" | "details" | "import";
   mode?: AiImportMode;
   input?: string;
   mediaType?: "auto" | "movie" | "tv";
   includeSeasons?: boolean;
+  tmdbId?: number;
+  selectedMediaType?: "movie" | "tv";
+  officialWatchUrl?: string | null;
+  extractedTitle?: string | null;
+  platform?: AiImportPlatform | null;
 };
+
+const platformRules: Array<AiImportPlatform & { hosts: string[]; searchPattern?: string }> = [
+  {
+    key: "jiohotstar",
+    name: "JioHotstar",
+    hosts: ["hotstar.com", "jiohotstar.com"],
+    homeUrl: "https://www.hotstar.com/",
+    searchPattern: "https://www.hotstar.com/in/search?q={query}"
+  },
+  {
+    key: "netflix",
+    name: "Netflix",
+    hosts: ["netflix.com"],
+    homeUrl: "https://www.netflix.com/",
+    searchPattern: "https://www.netflix.com/search?q={query}"
+  },
+  {
+    key: "prime-video",
+    name: "Prime Video",
+    hosts: ["primevideo.com", "amazon.com", "amazon.in"],
+    homeUrl: "https://www.primevideo.com/",
+    searchPattern: "https://www.primevideo.com/search/ref=atv_nb_sr?phrase={query}"
+  },
+  {
+    key: "youtube",
+    name: "YouTube",
+    hosts: ["youtube.com", "youtu.be", "youtube-nocookie.com"],
+    homeUrl: "https://www.youtube.com/",
+    searchPattern: "https://www.youtube.com/results?search_query={query}"
+  },
+  {
+    key: "zee5",
+    name: "Zee5",
+    hosts: ["zee5.com"],
+    homeUrl: "https://www.zee5.com/",
+    searchPattern: "https://www.zee5.com/search?q={query}"
+  },
+  {
+    key: "sonyliv",
+    name: "SonyLIV",
+    hosts: ["sonyliv.com"],
+    homeUrl: "https://www.sonyliv.com/",
+    searchPattern: "https://www.sonyliv.com/search?q={query}"
+  },
+  {
+    key: "aha",
+    name: "Aha",
+    hosts: ["aha.video"],
+    homeUrl: "https://www.aha.video/",
+    searchPattern: "https://www.aha.video/search?q={query}"
+  },
+  {
+    key: "apple-tv",
+    name: "Apple TV",
+    hosts: ["tv.apple.com"],
+    homeUrl: "https://tv.apple.com/",
+    searchPattern: "https://tv.apple.com/search?term={query}"
+  }
+];
+
+const noisyUrlWords = new Set([
+  "watch",
+  "movie",
+  "movies",
+  "show",
+  "shows",
+  "tv",
+  "series",
+  "title",
+  "detail",
+  "video",
+  "videos",
+  "in",
+  "en",
+  "us",
+  "gb",
+  "www",
+  "hotstar",
+  "jiohotstar",
+  "netflix",
+  "primevideo",
+  "prime",
+  "amazon",
+  "zee5",
+  "sonyliv",
+  "youtube",
+  "aha",
+  "apple",
+  "browse",
+  "search",
+  "ref",
+  "dp"
+]);
 
 function tmdbAuthHeaders(): Record<string, string> {
   const token = process.env.TMDB_ACCESS_TOKEN || process.env.TMDB_API_READ_ACCESS_TOKEN;
@@ -26,14 +134,6 @@ function tmdbApiKey() {
 
 function hasTmdbConfig() {
   return Boolean(tmdbApiKey() || Object.keys(tmdbAuthHeaders()).length);
-}
-
-function titleCase(value?: string | null) {
-  return String(value || "")
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1).toLowerCase())
-    .join(" ");
 }
 
 function compactText(value?: string | null, max = 155) {
@@ -62,17 +162,108 @@ function parsePlainTmdbId(input: string, mediaType?: "auto" | "movie" | "tv") {
   return { mediaType: mediaType === "tv" ? "tv" : "movie", id: Number(trimmed) };
 }
 
+function isHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function ensureTmdbConfigured() {
+  if (!hasTmdbConfig()) {
+    throw new Error("TMDb API key missing. Add TMDB_API_KEY in env, restart the app, then try AI Fetch again.");
+  }
+}
+
 async function tmdbFetch<T>(path: string, params: Record<string, string | number | boolean | undefined> = {}) {
-  if (!hasTmdbConfig()) throw new Error("TMDb API key is not configured. Add TMDB_API_KEY or TMDB_ACCESS_TOKEN.");
+  ensureTmdbConfigured();
   const url = new URL(`${TMDB_API_BASE}${path}`);
   const key = tmdbApiKey();
   if (key) url.searchParams.set("api_key", key);
   Object.entries(params).forEach(([name, value]) => {
     if (value !== undefined && value !== "") url.searchParams.set(name, String(value));
   });
+
   const response = await fetch(url, { headers: tmdbAuthHeaders(), next: { revalidate: 60 * 60 } });
-  if (!response.ok) throw new Error(`TMDb request failed (${response.status}) for ${path}`);
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("TMDb rejected the API key. Check TMDB_API_KEY and restart the app.");
+  }
+  if (response.status === 429) {
+    throw new Error("TMDb rate limit reached. Wait a minute and try again.");
+  }
+  if (!response.ok) {
+    throw new Error(`TMDb request failed (${response.status}). Try again or search by movie name.`);
+  }
   return response.json() as Promise<T>;
+}
+
+function detectPlatformFromUrl(input?: string | null): AiImportPlatform | null {
+  if (!input || !isHttpUrl(input)) return null;
+
+  try {
+    const host = new URL(input).hostname.replace(/^www\./, "").toLowerCase();
+    const rule = platformRules.find((platform) =>
+      platform.hosts.some((domain) => host === domain || host.endsWith(`.${domain}`))
+    );
+    if (!rule) return null;
+    return {
+      key: rule.key,
+      name: rule.name,
+      homeUrl: rule.homeUrl,
+      searchUrl: rule.searchPattern
+    };
+  } catch {
+    return null;
+  }
+}
+
+function cleanTitleToken(value: string) {
+  return decodeURIComponent(value)
+    .replace(/\+/g, " ")
+    .replace(/[_|]+/g, " ")
+    .replace(/[-]+/g, " ")
+    .replace(/\.(html?|aspx?)$/i, "")
+    .replace(/\b(season|episode|ep|s\d+|e\d+)\b/gi, " ")
+    .replace(/\b(19|20)\d{2}\b/g, " ")
+    .replace(/\b\d{4,}\b/g, " ")
+    .replace(/[^a-zA-Z0-9\s:'&.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractTitleFromUrl(input: string) {
+  if (!isHttpUrl(input)) return input.trim();
+
+  const url = new URL(input);
+  const titleParams = ["q", "query", "search", "term", "keyword", "phrase", "title"];
+  for (const param of titleParams) {
+    const value = url.searchParams.get(param);
+    if (value && value.trim().length > 1) return cleanTitleToken(value);
+  }
+
+  const pathSegments = url.pathname
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .map((segment) => segment.split("?")[0])
+    .filter((segment) => !/^\d+$/.test(segment))
+    .filter((segment) => !/^[a-z]{2}(-[a-z]{2})?$/i.test(segment))
+    .filter((segment) => !noisyUrlWords.has(segment.toLowerCase()));
+
+  const scored = pathSegments
+    .map((segment) => cleanTitleToken(segment))
+    .filter((segment) => segment.length > 1)
+    .filter((segment) => !noisyUrlWords.has(segment.toLowerCase()))
+    .sort((a, b) => b.length - a.length);
+
+  return scored[0] || "";
+}
+
+function platformSearchUrl(platform: AiImportPlatform | null, title: string) {
+  if (!platform?.searchUrl) return null;
+  return platform.searchUrl.replace("{query}", encodeURIComponent(title));
 }
 
 function youtubeTrailer(videos?: { results?: any[] }) {
@@ -190,8 +381,52 @@ function seoDescription(title: string, description?: string | null) {
   return compactText(description || `Watch official trailers and legal availability for ${title} on WatchFinder.`, 155);
 }
 
-function baseDraft(item: any, mediaType: "movie" | "tv", sourceInput: string): AiImportDraft {
-  const title = item.title || item.name || item.original_title || item.original_name || sourceInput;
+function candidateFromTmdb(item: any): AiImportCandidate | null {
+  if (item.media_type && item.media_type !== "movie" && item.media_type !== "tv") return null;
+  const mediaType = (item.media_type || (item.title ? "movie" : "tv")) as "movie" | "tv";
+  const releaseDate = item.release_date || item.first_air_date || null;
+  const title = item.title || item.name || item.original_title || item.original_name;
+  if (!item.id || !title) return null;
+
+  return {
+    tmdbId: item.id,
+    mediaType,
+    title,
+    originalTitle: item.original_title || item.original_name || null,
+    overview: item.overview || null,
+    releaseDate,
+    releaseYear: releaseDate ? Number(String(releaseDate).slice(0, 4)) : null,
+    posterUrl: imageUrl(item.poster_path, "w342"),
+    backdropUrl: imageUrl(item.backdrop_path, "w780"),
+    rating: item.vote_average ?? null,
+    popularity: item.popularity ?? null
+  };
+}
+
+function scoreCandidate(candidate: AiImportCandidate, preferredType: "auto" | "movie" | "tv") {
+  return (candidate.popularity || 0) + (preferredType !== "auto" && candidate.mediaType === preferredType ? 1000 : 0);
+}
+
+async function searchTmdbCandidates(query: string, preferredType: "auto" | "movie" | "tv" = "auto") {
+  const cleanQuery = query.trim();
+  if (!cleanQuery) throw new Error("Metadata not found. Try searching by movie name.");
+  const data = await tmdbFetch<any>("/search/multi", { query: cleanQuery, include_adult: false, page: 1 });
+  const candidates = (data.results ?? [])
+    .map(candidateFromTmdb)
+    .filter(Boolean) as AiImportCandidate[];
+  return candidates
+    .filter((item) => preferredType === "auto" || item.mediaType === preferredType)
+    .sort((a, b) => scoreCandidate(b, preferredType) - scoreCandidate(a, preferredType))
+    .slice(0, 12);
+}
+
+function baseDraft(
+  item: any,
+  mediaType: "movie" | "tv",
+  sourceInput: string,
+  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null } = {}
+): AiImportDraft {
+  const title = item.title || item.name || item.original_title || item.original_name || context.extractedTitle || sourceInput;
   const originalTitle = item.original_title || item.original_name || title;
   const releaseDate = item.release_date || item.first_air_date || null;
   const releaseYear = releaseDate ? Number(String(releaseDate).slice(0, 4)) : null;
@@ -199,11 +434,17 @@ function baseDraft(item: any, mediaType: "movie" | "tv", sourceInput: string): A
   const genres = (item.genres ?? []).map((genre: any) => genre.name).filter(Boolean);
   const productionCompanies = (item.production_companies ?? []).map((company: any) => company.name).filter(Boolean);
   const contentType = mediaType === "tv" ? "web_series" : "movie";
+  const platform = context.platform || detectPlatformFromUrl(context.officialWatchUrl);
 
   return {
     source: "tmdb",
     sourceLabel: "TMDb",
     input: sourceInput,
+    extractedTitle: context.extractedTitle || null,
+    officialWatchUrl: context.officialWatchUrl || null,
+    platform,
+    linkType: context.officialWatchUrl ? "direct_title_page" : "platform_search",
+    openMode: context.officialWatchUrl ? "external" : "auto",
     contentType,
     title,
     originalTitle,
@@ -255,22 +496,27 @@ function baseDraft(item: any, mediaType: "movie" | "tv", sourceInput: string): A
   };
 }
 
-async function importMovie(id: number, input: string) {
+async function importMovie(id: number, input: string, context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null } = {}) {
   const item = await tmdbFetch<any>(`/movie/${id}`, {
     append_to_response: "credits,videos,images,external_ids,release_dates,alternative_titles"
   });
-  const draft = baseDraft(item, "movie", input);
+  const draft = baseDraft(item, "movie", input, context);
   draft.alternativeTitles = (item.alternative_titles?.titles ?? []).slice(0, 12).map((entry: any) => entry.title).filter(Boolean);
   draft.duplicateWarnings = await duplicateWarnings(draft);
   draft.missingFields = missingFields(draft);
   return draft;
 }
 
-async function importSeries(id: number, input: string, includeSeasons = true) {
+async function importSeries(
+  id: number,
+  input: string,
+  includeSeasons = true,
+  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null } = {}
+) {
   const item = await tmdbFetch<any>(`/tv/${id}`, {
     append_to_response: "credits,videos,images,external_ids,content_ratings,alternative_titles"
   });
-  const draft = baseDraft(item, "tv", input);
+  const draft = baseDraft(item, "tv", input, context);
   draft.alternativeTitles = (item.alternative_titles?.results ?? []).slice(0, 12).map((entry: any) => entry.title).filter(Boolean);
 
   if (includeSeasons) {
@@ -295,7 +541,7 @@ async function importSeries(id: number, input: string, includeSeasons = true) {
               posterUrl: imageUrl(episode.still_path, "w500")
             }))
           } as AiImportedSeason;
-        } catch (error) {
+        } catch {
           return {
             seasonNumber: season.season_number,
             title: season.name || `Season ${season.season_number}`,
@@ -315,105 +561,85 @@ async function importSeries(id: number, input: string, includeSeasons = true) {
   return draft;
 }
 
-async function searchTmdb(query: string, preferredType: "auto" | "movie" | "tv" = "auto") {
-  const data = await tmdbFetch<any>("/search/multi", { query, include_adult: false, page: 1 });
-  const results = (data.results ?? [])
-    .filter((item: any) => item.media_type === "movie" || item.media_type === "tv")
-    .sort((a: any, b: any) => {
-      const typeBoostA = preferredType !== "auto" && a.media_type === preferredType ? 1000 : 0;
-      const typeBoostB = preferredType !== "auto" && b.media_type === preferredType ? 1000 : 0;
-      return (b.popularity + typeBoostB) - (a.popularity + typeBoostA);
-    });
-  const first = results[0];
-  if (!first) throw new Error("No TMDb result found for this title.");
-  return first.media_type === "tv" ? importSeries(first.id, query) : importMovie(first.id, query);
-}
-
 async function findByImdb(imdbId: string, input: string) {
   const data = await tmdbFetch<any>(`/find/${imdbId}`, { external_source: "imdb_id" });
   const movie = data.movie_results?.[0];
   if (movie) return importMovie(movie.id, input);
   const tv = data.tv_results?.[0];
   if (tv) return importSeries(tv.id, input);
-  throw new Error("No TMDb match found for this IMDb ID.");
+  throw new Error("No TMDb match found for this IMDb ID. Try searching by movie name.");
 }
 
-function fallbackDraft(input: string): AiImportDraft {
-  const title = titleCase(input.replace(/^https?:\/\//, "").split(/[/?#]/)[0]) || input;
-  const draft: AiImportDraft = {
-    source: "fallback",
-    sourceLabel: "Generated fallback",
-    input,
-    contentType: "movie",
-    title,
-    originalTitle: title,
-    alternativeTitles: [],
-    slug: slugify(title),
-    tagline: null,
-    shortDescription: `Official metadata could not be fetched for ${title}. Review and complete this draft before publishing.`,
-    description: `Add the official description, cast, poster, banner, trailer, and legal watch link for ${title}.`,
-    storyOverview: null,
-    releaseDate: null,
-    releaseYear: null,
-    runtimeMinutes: null,
-    status: "Draft",
-    genres: [],
-    subGenres: [],
-    language: null,
-    originalLanguage: null,
-    country: null,
-    budget: null,
-    revenue: null,
-    productionCompanies: [],
-    director: null,
-    writers: [],
-    producers: [],
-    cast: [],
-    crew: [],
-    awards: [],
-    rating: null,
-    voteCount: null,
-    ageRating: null,
-    popularityScore: null,
-    tmdbId: null,
-    imdbId: parseImdbId(input),
-    posterUrl: null,
-    bannerUrl: null,
-    thumbnailUrl: null,
-    logoUrl: null,
-    images: [],
-    trailerUrl: null,
-    trailerName: null,
-    seoTitle: `${title} - Trailer, Cast & Legal Watch Guide`,
-    seoDescription: seoDescription(title),
-    keywords: [title],
-    tags: ["movie"],
-    seasons: [],
-    duplicateWarnings: [],
-    qualityWarnings: ["TMDb is not configured or no source matched. Complete required fields manually."],
-    missingFields: []
+async function detailsFromSelection(body: ImportRequest) {
+  const id = Number(body.tmdbId);
+  const mediaType = body.selectedMediaType;
+  if (!Number.isFinite(id) || (mediaType !== "movie" && mediaType !== "tv")) {
+    throw new Error("Select a valid TMDb result first.");
+  }
+  const context = {
+    extractedTitle: body.extractedTitle || null,
+    officialWatchUrl: body.officialWatchUrl || null,
+    platform: body.platform || detectPlatformFromUrl(body.officialWatchUrl)
   };
-  draft.missingFields = missingFields(draft);
-  return draft;
+  return mediaType === "tv"
+    ? importSeries(id, body.input || context.extractedTitle || String(id), body.includeSeasons !== false, context)
+    : importMovie(id, body.input || context.extractedTitle || String(id), context);
 }
 
-async function importOne(input: string, mode: AiImportMode = "auto", mediaType: "auto" | "movie" | "tv" = "auto", includeSeasons = true): Promise<AiImportDraft> {
-  const cleanInput = input.trim();
-  if (!cleanInput) throw new Error("Enter a URL, IMDb ID, TMDb ID, or title.");
-
-  if (!hasTmdbConfig()) return fallbackDraft(cleanInput);
-
-  const imdbId = parseImdbId(cleanInput);
-  if (mode === "imdb" || imdbId) return findByImdb(imdbId || cleanInput, cleanInput);
-
-  const parsedTmdb = parseTmdbFromUrl(cleanInput) || parsePlainTmdbId(cleanInput, mediaType);
-  if (mode === "tmdb" || parsedTmdb) {
-    const target = parsedTmdb || { mediaType: mediaType === "tv" ? "tv" : "movie", id: Number(cleanInput) };
-    if (!Number.isFinite(target.id)) throw new Error("Enter a valid TMDb ID.");
-    return target.mediaType === "tv" ? importSeries(target.id, cleanInput, includeSeasons) : importMovie(target.id, cleanInput);
+async function searchFromInput(input: string, mode: AiImportMode, mediaType: "auto" | "movie" | "tv") {
+  ensureTmdbConfigured();
+  if (mode === "url" && !isHttpUrl(input)) {
+    throw new Error("Invalid URL. Paste an official https URL, or use Movie Name Search for plain titles.");
+  }
+  const platform = detectPlatformFromUrl(input);
+  const officialWatchUrl = isHttpUrl(input) ? input : null;
+  const extractedTitle = officialWatchUrl ? extractTitleFromUrl(input) : input.trim();
+  if (!extractedTitle) {
+    throw new Error("Metadata not found. This URL does not contain a readable title. Try searching by movie name.");
   }
 
-  return searchTmdb(cleanInput, mediaType);
+  const candidates = await searchTmdbCandidates(extractedTitle, mediaType);
+  if (!candidates.length) {
+    throw new Error(`Metadata not found for "${extractedTitle}". Try searching by exact movie name.`);
+  }
+
+  return {
+    ok: true,
+    needsSelection: true,
+    candidates,
+    extractedTitle,
+    platform,
+    warnings: officialWatchUrl && !platform ? ["Official URL kept, but platform was not recognized. Review platform before publishing."] : []
+  };
+}
+
+async function importBestCandidate(input: string, mediaType: "auto" | "movie" | "tv", includeSeasons: boolean) {
+  const platform = detectPlatformFromUrl(input);
+  const officialWatchUrl = isHttpUrl(input) ? input : null;
+  const extractedTitle = officialWatchUrl ? extractTitleFromUrl(input) : input.trim();
+  if (!extractedTitle) throw new Error("Metadata not found. Try searching by movie name.");
+  const candidates = await searchTmdbCandidates(extractedTitle, mediaType);
+  const first = candidates[0];
+  if (!first) throw new Error(`Metadata not found for "${extractedTitle}".`);
+  const context = { extractedTitle, officialWatchUrl, platform };
+  return first.mediaType === "tv"
+    ? importSeries(first.tmdbId, input, includeSeasons, context)
+    : importMovie(first.tmdbId, input, context);
+}
+
+async function importDirect(input: string, mode: AiImportMode, mediaType: "auto" | "movie" | "tv", includeSeasons: boolean) {
+  ensureTmdbConfigured();
+  const imdbId = parseImdbId(input);
+  if (mode === "imdb" || imdbId) return findByImdb(imdbId || input, input);
+
+  const parsedTmdb = parseTmdbFromUrl(input) || parsePlainTmdbId(input, mediaType);
+  if (mode === "tmdb" || parsedTmdb) {
+    const target = parsedTmdb || { mediaType: mediaType === "tv" ? "tv" : "movie", id: Number(input) };
+    if (!Number.isFinite(target.id)) throw new Error("Enter a valid TMDb movie/TV ID or URL.");
+    return target.mediaType === "tv" ? importSeries(target.id, input, includeSeasons) : importMovie(target.id, input);
+  }
+
+  return importBestCandidate(input, mediaType, includeSeasons);
 }
 
 export async function POST(request: Request) {
@@ -422,17 +648,25 @@ export async function POST(request: Request) {
 
   try {
     const body = (await request.json()) as ImportRequest;
+    const action = body.action || "search";
     const mode = body.mode || "auto";
     const input = String(body.input || "").trim();
     const mediaType = body.mediaType || "auto";
     const includeSeasons = body.includeSeasons !== false;
+
+    if (action === "details") {
+      const draft = await detailsFromSelection(body);
+      return NextResponse.json({ ok: true, draft });
+    }
+
+    if (!input) throw new Error("Enter a URL, IMDb ID, TMDb ID, or title.");
 
     if (mode === "bulk") {
       const inputs = input.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, MAX_BULK_ITEMS);
       const results: AiImportResult[] = [];
       for (const item of inputs) {
         try {
-          results.push({ input: item, ok: true, draft: await importOne(item, "auto", mediaType, includeSeasons) });
+          results.push({ input: item, ok: true, draft: await importDirect(item, "auto", mediaType, includeSeasons) });
         } catch (error) {
           results.push({ input: item, ok: false, error: error instanceof Error ? error.message : "Import failed." });
         }
@@ -440,8 +674,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, results, warnings: inputs.length === MAX_BULK_ITEMS ? ["Bulk import was capped at 50 items."] : [] });
     }
 
-    const draft = await importOne(input, mode, mediaType, includeSeasons);
-    return NextResponse.json({ ok: true, draft });
+    if (mode === "imdb" || mode === "tmdb" || parseImdbId(input) || parseTmdbFromUrl(input) || parsePlainTmdbId(input, mediaType)) {
+      const draft = await importDirect(input, mode, mediaType, includeSeasons);
+      return NextResponse.json({ ok: true, draft });
+    }
+
+    return NextResponse.json(await searchFromInput(input, mode, mediaType));
   } catch (error) {
     return NextResponse.json({
       ok: false,
