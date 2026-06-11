@@ -21,6 +21,7 @@ import {
   TrendingUp,
   Users
 } from "lucide-react";
+import AdminAIAssistant from "@/components/AdminAIAssistant";
 import AdminAdSlotForm from "@/components/AdminAdSlotForm";
 import AdminBlogForm from "@/components/AdminBlogForm";
 import AdminChannelManager from "@/components/AdminChannelManager";
@@ -41,6 +42,7 @@ type AdminSection =
   | "dashboard"
   | "movies"
   | "web-series"
+  | "ai-assistant"
   | "analytics"
   | "add-movie"
   | "genres"
@@ -63,6 +65,7 @@ const sections: Array<{ id: AdminSection; label: string }> = [
   { id: "dashboard", label: "Dashboard Overview" },
   { id: "movies", label: "Movies" },
   { id: "web-series", label: "Web Series" },
+  { id: "ai-assistant", label: "AI Assistant" },
   { id: "analytics", label: "Analytics" },
   { id: "add-movie", label: "Add Content" },
   { id: "genres", label: "Genres" },
@@ -1193,6 +1196,8 @@ export default function AdminDashboard({
             </div>
           </section>
         ) : null}
+
+        {activeSection === "ai-assistant" ? <AdminAIAssistant /> : null}
 
         {activeSection === "analytics" ? (
           <section className="section analytics-dashboard analytics-dashboard-v2">
