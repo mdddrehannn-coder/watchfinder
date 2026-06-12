@@ -10,12 +10,10 @@ import { isOptionalMovieRelationError, movieSelect, movieSelectWithoutChannels }
 import {
   findUnlistedMoviePayloadColumns,
   formatMovieSchemaMismatchError,
-  isCoreMovieSaveColumn,
   missingMovieColumnFromError,
   MOVIE_REQUIRED_COLUMNS,
   sanitizeMovieBasePayload,
-  sanitizeMovieMetadataPayload,
-  sanitizeMoviePayload
+  sanitizeMovieMetadataPayload
 } from "@/lib/movie-schema";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { uploadBanner, uploadLicenseDocumentWithPath, uploadPoster } from "@/lib/storage";
@@ -311,36 +309,6 @@ function sameNullableNumber(left: unknown, right: unknown) {
   return leftValue === rightValue;
 }
 
-function isSlugConflictError(error: unknown) {
-  const message = formatSupabaseError(error).toLowerCase();
-  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
-  return code === "23505" || (message.includes("duplicate") && message.includes("slug"));
-}
-
-async function resolveUniqueMovieSlug(supabase: any, requestedSlug: string, excludeMovieId?: string | null) {
-  const base = slugify(requestedSlug) || `movie-${Date.now().toString(36)}`;
-  const { data, error } = await supabase
-    .from("movies")
-    .select("id, slug")
-    .like("slug", `${base}%`);
-
-  if (error) throw saveStepError("Checking available slug", error);
-
-  const exactSlugPattern = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:-(\\d+))?$`);
-  const existingSlugs = new Set(
-    (data || [])
-      .filter((item: { id?: string | null; slug?: string | null }) => item.id !== excludeMovieId)
-      .map((item: { slug?: string | null }) => item.slug || "")
-      .filter((existingSlug: string) => exactSlugPattern.test(existingSlug))
-  );
-
-  if (!existingSlugs.has(base)) return base;
-
-  let suffix = 2;
-  while (existingSlugs.has(`${base}-${suffix}`)) suffix += 1;
-  return `${base}-${suffix}`;
-}
-
 async function findMovieBySlug(supabase: any, requestedSlug: string) {
   const normalizedSlug = slugify(requestedSlug);
   if (!normalizedSlug) return null;
@@ -355,112 +323,40 @@ async function findMovieBySlug(supabase: any, requestedSlug: string) {
   return data ? toDuplicateAdvisory(data, "slug") : null;
 }
 
-async function insertMovieRowWithSchemaRetry(
-  supabase: any,
-  payload: Record<string, unknown>,
-  onDroppedColumn?: (column: string) => void
-) {
-  const safePayload = sanitizeMoviePayload(payload);
-  const droppedColumns: string[] = [];
+async function saveMovieRowViaAdminApi({
+  movieId,
+  payload,
+  metadataPayload
+}: {
+  movieId?: string | null;
+  payload: Record<string, unknown>;
+  metadataPayload?: Record<string, unknown>;
+}) {
+  const response = await fetch("/api/admin/movies/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      movieId: movieId || null,
+      payload,
+      metadataPayload: metadataPayload || {}
+    })
+  });
+  const result = await response.json().catch(() => null) as {
+    ok?: boolean;
+    success?: boolean;
+    movie?: any;
+    skippedColumns?: string[];
+    error?: string;
+  } | null;
 
-  for (let attempt = 0; attempt < Object.keys(safePayload).length + 8; attempt += 1) {
-    const { data, error } = await supabase
-      .from("movies")
-      .insert(safePayload)
-      .select("id, slug")
-      .single();
-
-    if (!error && data) {
-      if (droppedColumns.length) {
-        console.warn("WatchFinder saved movie after skipping unavailable optional columns", droppedColumns);
-      }
-      return data;
-    }
-
-    const missingColumn = missingMovieColumnFromError(error);
-    if (
-      missingColumn &&
-      !isCoreMovieSaveColumn(missingColumn) &&
-      Object.prototype.hasOwnProperty.call(safePayload, missingColumn)
-    ) {
-      delete safePayload[missingColumn];
-      droppedColumns.push(missingColumn);
-      onDroppedColumn?.(missingColumn);
-      continue;
-    }
-
-    throw error;
+  if (!response.ok || !result?.ok || !result.movie) {
+    throw new Error(result?.error || `Movie server save failed (${response.status}).`);
   }
 
-  throw new Error("Creating movie row failed: Supabase schema cache did not settle after removing unavailable optional columns.");
-}
-
-async function updateMovieRowWithSchemaRetry(
-  supabase: any,
-  movieId: string,
-  payload: Record<string, unknown>,
-  step = "Updating movie row",
-  onDroppedColumn?: (column: string) => void
-) {
-  const safePayload = sanitizeMoviePayload(payload);
-  const droppedColumns: string[] = [];
-  if (!Object.keys(safePayload).length) return null;
-
-  for (let attempt = 0; attempt < Object.keys(safePayload).length + 8; attempt += 1) {
-    const { data, error } = await supabase
-      .from("movies")
-      .update(safePayload)
-      .eq("id", movieId)
-      .select("id, slug")
-      .single();
-
-    if (!error && data) {
-      if (droppedColumns.length) {
-        console.warn(`WatchFinder ${step.toLowerCase()} after skipping unavailable optional columns`, droppedColumns);
-      }
-      return data;
-    }
-
-    const missingColumn = missingMovieColumnFromError(error);
-    if (
-      missingColumn &&
-      !isCoreMovieSaveColumn(missingColumn) &&
-      Object.prototype.hasOwnProperty.call(safePayload, missingColumn)
-    ) {
-      delete safePayload[missingColumn];
-      droppedColumns.push(missingColumn);
-      onDroppedColumn?.(missingColumn);
-      continue;
-    }
-
-    throw error;
-  }
-
-  throw new Error(`${step} failed: Supabase schema cache did not settle after removing unavailable optional columns.`);
-}
-
-async function insertMovieWithUniqueSlug(
-  supabase: any,
-  payload: Record<string, unknown>,
-  onDroppedColumn?: (column: string) => void
-) {
-  const requestedSlug = String(payload.slug || payload.title || "movie");
-  let finalSlug = await resolveUniqueMovieSlug(supabase, requestedSlug);
-
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    try {
-      const data = await insertMovieRowWithSchemaRetry(supabase, { ...payload, slug: finalSlug }, onDroppedColumn);
-      return { movie: data, finalSlug };
-    } catch (error) {
-      if (!isSlugConflictError(error)) throw saveStepError("Creating movie row", error);
-    }
-
-    finalSlug = attempt >= 4
-      ? `${slugify(requestedSlug) || "movie"}-${Date.now().toString(36)}`
-      : await resolveUniqueMovieSlug(supabase, requestedSlug);
-  }
-
-  throw new Error("Creating movie row failed: Could not create a unique slug after multiple attempts.");
+  return {
+    movie: result.movie as { id: string; slug: string },
+    skippedColumns: result.skippedColumns || []
+  };
 }
 
 async function findExactDuplicateMovie(
@@ -1348,15 +1244,28 @@ export default function AdminMovieForm({
 
       let wasUpdate = isEditMode || Boolean(partialSaveMovieId);
       let movie: { id: string; slug: string };
+      let serverSavedMovie: Movie | null = null;
 
       if (isEditMode && initialMovie?.id) {
-        payload.slug = await resolveUniqueMovieSlug(supabase, String(payload.slug || payload.title || "movie"), initialMovie.id);
-        setSlug(String(payload.slug));
-        movie = await updateMovieRowWithSchemaRetry(supabase, initialMovie.id, payload, "Updating movie row", rememberSkippedColumn) as { id: string; slug: string };
+        const saved = await saveMovieRowViaAdminApi({
+          movieId: initialMovie.id,
+          payload,
+          metadataPayload
+        });
+        saved.skippedColumns.forEach(rememberSkippedColumn);
+        movie = { id: saved.movie.id, slug: saved.movie.slug };
+        serverSavedMovie = normalizeConfirmedMovie(saved.movie);
+        setSlug(String(saved.movie.slug));
       } else if (partialSaveMovieId) {
-        payload.slug = await resolveUniqueMovieSlug(supabase, String(payload.slug || payload.title || "movie"), partialSaveMovieId);
-        setSlug(String(payload.slug));
-        movie = await updateMovieRowWithSchemaRetry(supabase, partialSaveMovieId, payload, "Retrying saved movie row", rememberSkippedColumn) as { id: string; slug: string };
+        const saved = await saveMovieRowViaAdminApi({
+          movieId: partialSaveMovieId,
+          payload,
+          metadataPayload
+        });
+        saved.skippedColumns.forEach(rememberSkippedColumn);
+        movie = { id: saved.movie.id, slug: saved.movie.slug };
+        serverSavedMovie = normalizeConfirmedMovie(saved.movie);
+        setSlug(String(saved.movie.slug));
       } else {
         const slugConflict = await findMovieBySlug(supabase, String(payload.slug || ""));
         if (slugConflict && allowExactDuplicateIdRef.current !== slugConflict.movieId && allowExactDuplicateId !== slugConflict.movieId) {
@@ -1402,23 +1311,17 @@ export default function AdminMovieForm({
         }
 
         wasUpdate = false;
-        const inserted = await insertMovieWithUniqueSlug(supabase, payload, rememberSkippedColumn);
-        payload.slug = inserted.finalSlug;
-        setSlug(inserted.finalSlug);
-        movie = inserted.movie;
+        const saved = await saveMovieRowViaAdminApi({
+          payload,
+          metadataPayload
+        });
+        saved.skippedColumns.forEach(rememberSkippedColumn);
+        movie = { id: saved.movie.id, slug: saved.movie.slug };
+        serverSavedMovie = normalizeConfirmedMovie(saved.movie);
+        setSlug(String(saved.movie.slug));
       }
 
       persistedMovieId = movie.id;
-
-      if (Object.keys(metadataPayload).length) {
-        await updateMovieRowWithSchemaRetry(
-          supabase,
-          movie.id,
-          metadataPayload,
-          "Saving AI/TMDb metadata",
-          rememberSkippedColumn
-        );
-      }
 
       const updatePayload: Record<string, string> = {};
       if (poster?.size) updatePayload.poster_url = await uploadPoster(movie.id, poster);
@@ -1432,7 +1335,12 @@ export default function AdminMovieForm({
         if (unlistedImageColumns.length) {
           console.warn("Admin image payload contains columns missing from MOVIE_REQUIRED_COLUMNS", unlistedImageColumns);
         }
-        await updateMovieRowWithSchemaRetry(supabase, movie.id, updatePayload, "Saving poster/banner URLs", rememberSkippedColumn);
+        const imageSaved = await saveMovieRowViaAdminApi({
+          movieId: movie.id,
+          payload: updatePayload
+        });
+        imageSaved.skippedColumns.forEach(rememberSkippedColumn);
+        serverSavedMovie = normalizeConfirmedMovie(imageSaved.movie);
       }
 
       if (wasUpdate) {
@@ -1533,13 +1441,18 @@ export default function AdminMovieForm({
       }
 
       const confirmedRow = await fetchConfirmedMovie(supabase, movie.id).catch((confirmError: unknown) => {
+        if (serverSavedMovie) {
+          console.warn("Client confirmation read was blocked or unavailable; using server-confirmed movie row.", confirmError);
+          return serverSavedMovie;
+        }
         throw saveStepError("Confirming saved movie row", confirmError);
       });
-      if (!confirmedRow) {
+      const confirmedMovieRow = confirmedRow || serverSavedMovie;
+      if (!confirmedMovieRow) {
         throw new Error("Movie save confirmation failed. Movie was not found after saving.");
       }
 
-      const savedMovie = normalizeConfirmedMovie(confirmedRow);
+      const savedMovie = normalizeConfirmedMovie(confirmedMovieRow);
       const slugNote = !isEditMode ? ` Final slug: ${savedMovie.slug}.` : "";
       const savedTypeLabel = formatType(savedMovie.content_type || savedMovie.type || selectedType);
       const skippedOptionalColumns = Array.from(skippedOptionalMovieColumns);
