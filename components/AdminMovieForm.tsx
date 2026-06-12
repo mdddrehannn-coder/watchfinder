@@ -10,12 +10,17 @@ import { isOptionalMovieRelationError, movieSelect, movieSelectWithoutChannels }
 import {
   findUnlistedMoviePayloadColumns,
   formatMovieSchemaMismatchError,
+  isCoreMovieSaveColumn,
   missingMovieColumnFromError,
-  MOVIE_REQUIRED_COLUMNS
+  MOVIE_REQUIRED_COLUMNS,
+  sanitizeMovieBasePayload,
+  sanitizeMovieMetadataPayload,
+  sanitizeMoviePayload
 } from "@/lib/movie-schema";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { uploadBanner, uploadLicenseDocumentWithPath, uploadPoster } from "@/lib/storage";
 import { WATCH_LINK_TYPES, watchLinkTypeLabels, normalizeWatchLinkType, isExternalOnlyPlatform } from "@/lib/watch-links";
+import type { AiImportDraft } from "@/lib/ai-import-types";
 import type { CastMember, ContentChannel, Genre, Movie, Platform } from "@/types/watchfinder";
 
 type Message = {
@@ -29,7 +34,7 @@ type DuplicateAdvisory = {
   slug: string;
   status?: string | null;
   createdAt?: string | null;
-  reason: "slug" | "exact";
+  reason: "slug" | "exact" | "potential";
 };
 
 const QUALITY_OPTIONS = [
@@ -158,6 +163,15 @@ function toNullableString(value: FormDataEntryValue | null) {
 function toNullableNumber(value: FormDataEntryValue | null) {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) && String(value || "").trim() ? numberValue : null;
+}
+
+function toJsonSafeValue<T>(value: T): T | null {
+  if (value == null) return null;
+  try {
+    return JSON.parse(JSON.stringify(value)) as T;
+  } catch {
+    return null;
+  }
 }
 
 function splitStoredValues(value?: string | null) {
@@ -341,19 +355,105 @@ async function findMovieBySlug(supabase: any, requestedSlug: string) {
   return data ? toDuplicateAdvisory(data, "slug") : null;
 }
 
-async function insertMovieWithUniqueSlug(supabase: any, payload: Record<string, unknown>) {
+async function insertMovieRowWithSchemaRetry(
+  supabase: any,
+  payload: Record<string, unknown>,
+  onDroppedColumn?: (column: string) => void
+) {
+  const safePayload = sanitizeMoviePayload(payload);
+  const droppedColumns: string[] = [];
+
+  for (let attempt = 0; attempt < Object.keys(safePayload).length + 8; attempt += 1) {
+    const { data, error } = await supabase
+      .from("movies")
+      .insert(safePayload)
+      .select("id, slug")
+      .single();
+
+    if (!error && data) {
+      if (droppedColumns.length) {
+        console.warn("WatchFinder saved movie after skipping unavailable optional columns", droppedColumns);
+      }
+      return data;
+    }
+
+    const missingColumn = missingMovieColumnFromError(error);
+    if (
+      missingColumn &&
+      !isCoreMovieSaveColumn(missingColumn) &&
+      Object.prototype.hasOwnProperty.call(safePayload, missingColumn)
+    ) {
+      delete safePayload[missingColumn];
+      droppedColumns.push(missingColumn);
+      onDroppedColumn?.(missingColumn);
+      continue;
+    }
+
+    throw error;
+  }
+
+  throw new Error("Creating movie row failed: Supabase schema cache did not settle after removing unavailable optional columns.");
+}
+
+async function updateMovieRowWithSchemaRetry(
+  supabase: any,
+  movieId: string,
+  payload: Record<string, unknown>,
+  step = "Updating movie row",
+  onDroppedColumn?: (column: string) => void
+) {
+  const safePayload = sanitizeMoviePayload(payload);
+  const droppedColumns: string[] = [];
+  if (!Object.keys(safePayload).length) return null;
+
+  for (let attempt = 0; attempt < Object.keys(safePayload).length + 8; attempt += 1) {
+    const { data, error } = await supabase
+      .from("movies")
+      .update(safePayload)
+      .eq("id", movieId)
+      .select("id, slug")
+      .single();
+
+    if (!error && data) {
+      if (droppedColumns.length) {
+        console.warn(`WatchFinder ${step.toLowerCase()} after skipping unavailable optional columns`, droppedColumns);
+      }
+      return data;
+    }
+
+    const missingColumn = missingMovieColumnFromError(error);
+    if (
+      missingColumn &&
+      !isCoreMovieSaveColumn(missingColumn) &&
+      Object.prototype.hasOwnProperty.call(safePayload, missingColumn)
+    ) {
+      delete safePayload[missingColumn];
+      droppedColumns.push(missingColumn);
+      onDroppedColumn?.(missingColumn);
+      continue;
+    }
+
+    throw error;
+  }
+
+  throw new Error(`${step} failed: Supabase schema cache did not settle after removing unavailable optional columns.`);
+}
+
+async function insertMovieWithUniqueSlug(
+  supabase: any,
+  payload: Record<string, unknown>,
+  onDroppedColumn?: (column: string) => void
+) {
   const requestedSlug = String(payload.slug || payload.title || "movie");
   let finalSlug = await resolveUniqueMovieSlug(supabase, requestedSlug);
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
-    const { data, error } = await supabase
-      .from("movies")
-      .insert({ ...payload, slug: finalSlug })
-      .select("id, slug")
-      .single();
-
-    if (!error && data) return { movie: data, finalSlug };
-    if (!isSlugConflictError(error)) throw saveStepError("Creating movie row", error);
+    try {
+      const data = await insertMovieRowWithSchemaRetry(supabase, { ...payload, slug: finalSlug }, onDroppedColumn);
+      return { movie: data, finalSlug };
+    } catch (error) {
+      if (!isSlugConflictError(error)) throw saveStepError("Creating movie row", error);
+    }
 
     finalSlug = attempt >= 4
       ? `${slugify(requestedSlug) || "movie"}-${Date.now().toString(36)}`
@@ -427,6 +527,48 @@ async function findExactDuplicateMovie(
   return duplicate ? toDuplicateAdvisory(duplicate, "exact") : null;
 }
 
+async function findPotentialDuplicateMovie(
+  supabase: any,
+  payload: Record<string, unknown>,
+  watchUrl: string | null,
+  excludeMovieId?: string | null
+) {
+  const baseQuery = () => supabase.from("movies").select("id, title, slug, status, created_at").limit(1);
+  const externalChecks = [
+    payload.tmdb_id ? baseQuery().eq("tmdb_id", payload.tmdb_id) : null,
+    payload.imdb_id ? baseQuery().eq("imdb_id", payload.imdb_id) : null,
+    watchUrl ? baseQuery().eq("watch_url", watchUrl) : null,
+    watchUrl ? baseQuery().eq("official_watch_url", watchUrl) : null
+  ].filter(Boolean);
+
+  for (const query of externalChecks) {
+    const { data, error } = await query;
+    if (!error && data?.[0] && data[0].id !== excludeMovieId) return toDuplicateAdvisory(data[0], "potential");
+  }
+
+  if (watchUrl) {
+    const { data: links, error: linkError } = await supabase
+      .from("movie_platform_links")
+      .select("movie_id, movies(id, title, slug, status, created_at)")
+      .eq("watch_url", watchUrl)
+      .limit(1);
+    const movie = Array.isArray(links?.[0]?.movies) ? links?.[0]?.movies?.[0] : links?.[0]?.movies;
+    if (!linkError && movie && movie.id !== excludeMovieId) return toDuplicateAdvisory(movie, "potential");
+  }
+
+  if (payload.title && payload.release_year) {
+    const { data, error } = await supabase
+      .from("movies")
+      .select("id, title, slug, status, created_at")
+      .eq("title", payload.title)
+      .eq("release_year", payload.release_year)
+      .limit(1);
+    if (!error && data?.[0] && data[0].id !== excludeMovieId) return toDuplicateAdvisory(data[0], "potential");
+  }
+
+  return null;
+}
+
 function FormSection({
   title,
   helper,
@@ -459,7 +601,9 @@ export default function AdminMovieForm({
   movieAnalytics,
   contentChannels = [],
   contentChannelsError = null,
-  initialContentType = "movie"
+  initialContentType = "movie",
+  aiDraft = null,
+  aiDraftVersion = 0
 }: {
   genres: Genre[];
   castMembers: CastMember[];
@@ -474,6 +618,8 @@ export default function AdminMovieForm({
   onDeleteMovie?: (movie: Movie) => void | Promise<void>;
   contentChannels?: ContentChannel[];
   contentChannelsError?: string | null;
+  aiDraft?: AiImportDraft | null;
+  aiDraftVersion?: number;
   movieAnalytics?: {
     views: number;
     todayViews: number;
@@ -543,6 +689,10 @@ export default function AdminMovieForm({
   const [bannerPreview, setBannerPreview] = useState<string | null>(null);
   const [selectedPositioning, setSelectedPositioning] = useState<string[]>([]);
   const [helperMessage, setHelperMessage] = useState<string | null>(null);
+  const [aiImportedGenres, setAiImportedGenres] = useState<string[]>([]);
+  const [aiImportedCast, setAiImportedCast] = useState<Array<{ name: string; role?: string | null; character?: string | null }>>([]);
+  const [aiImportedTags, setAiImportedTags] = useState<string[]>([]);
+  const [aiImportedExternalIds, setAiImportedExternalIds] = useState<{ tmdbId?: number | null; imdbId?: string | null }>({});
   const formRef = useRef<HTMLFormElement>(null);
   const savingRef = useRef(false);
 
@@ -598,6 +748,10 @@ export default function AdminMovieForm({
     setSavedMovieSlug(null);
     setSelectedPositioning([]);
     setHelperMessage(null);
+    setAiImportedGenres([]);
+    setAiImportedCast([]);
+    setAiImportedTags([]);
+    setAiImportedExternalIds({});
     setPosterPreview(null);
     setBannerPreview(null);
     formRef.current?.reset();
@@ -609,6 +763,12 @@ export default function AdminMovieForm({
       if (bannerPreview) URL.revokeObjectURL(bannerPreview);
     };
   }, [posterPreview, bannerPreview]);
+
+  useEffect(() => {
+    if (!aiDraft || isEditMode) return;
+    applyAiDraftToForm(aiDraft);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiDraftVersion]);
 
   function updateTitle(value: string) {
     setTitle(value);
@@ -629,14 +789,149 @@ export default function AdminMovieForm({
     setBannerPreview(preview);
   }
 
+  function setNamedField(name: string, value?: string | number | null) {
+    const element = formRef.current?.elements.namedItem(name);
+    if (!element) return;
+    const nextValue = value == null ? "" : String(value);
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
+      element.value = nextValue;
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+
+  function normalizedLabel(value?: string | null) {
+    return String(value || "").toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, " ").trim();
+  }
+
+  function findPlatformForDraft(draft: AiImportDraft) {
+    const platformName = normalizedLabel(`${draft.platform?.name || ""} ${draft.platform?.key || ""}`);
+    if (!platformName) return null;
+    return platforms.find((platform) => {
+      const option = normalizedLabel(`${platform.name} ${platform.slug || ""}`);
+      return option.includes(platformName) || platformName.includes(option) || platformName.split(" ").some((token) => token.length > 3 && option.includes(token));
+    }) ?? null;
+  }
+
+  function languageMatches(value?: string | null) {
+    const normalized = normalizedLabel(value);
+    if (!normalized) return null;
+    return WATCHFINDER_LANGUAGES.find((language) => normalizedLabel(language) === normalized || normalized.includes(normalizedLabel(language))) ?? null;
+  }
+
+  function htmlDateValue(value?: string | null) {
+    const clean = String(value || "").trim();
+    return /^\d{4}-\d{2}-\d{2}/.test(clean) ? clean.slice(0, 10) : "";
+  }
+
+  function applyAiDraftToForm(draft: AiImportDraft) {
+    const nextTitle = draft.title || draft.extractedTitle || "";
+    const nextSlug = slugify(draft.slug || nextTitle);
+    const nextType = draft.contentType === "tv_show" || draft.contentType === "cartoon" || draft.contentType === "short_film"
+      ? draft.contentType
+      : "movie";
+    const matchedPlatform = findPlatformForDraft(draft);
+    const draftGenres = Array.from(new Set([...(draft.genres || []), ...(draft.subGenres || [])].filter(Boolean)));
+    const matchingGenreIds = genres
+      .filter((genre) => draftGenres.some((imported) => normalizedLabel(genre.name) === normalizedLabel(imported)))
+      .map((genre) => genre.id);
+    const importedCast = (draft.cast || []).map((person) => ({
+      name: person.name,
+      role: person.role || "Cast",
+      character: person.character || null
+    })).filter((person) => person.name);
+    const matchingCastIds = castMembers
+      .filter((member) => importedCast.some((person) => normalizedLabel(person.name) === normalizedLabel(member.name)))
+      .map((member) => member.id);
+    const language = languageMatches(draft.language || draft.originalLanguage);
+    const inferredLanguages = language ? [language] : [];
+    const joinedMetadata = [
+      draft.title,
+      draft.originalTitle,
+      ...(draft.tags || []),
+      ...(draft.keywords || []),
+      ...(draft.genres || [])
+    ].join(" ").toLowerCase();
+    if (joinedMetadata.includes("hindi dubbed") && !inferredLanguages.includes("Hindi Dubbed")) {
+      inferredLanguages.push("Hindi Dubbed");
+    }
+
+    setTitle(nextTitle);
+    setSlug(nextSlug);
+    setSelectedType(nextType);
+    setSelectedStatus("draft");
+    setPrimarySection(draft.suggestedPlacement?.primarySection || (nextType === "cartoon" ? "cartoon" : nextType === "tv_show" ? "tv_show" : "recently_added"));
+    setShowInHero(Boolean(draft.suggestedPlacement?.showInHero));
+    setPrimaryLanguage(inferredLanguages[0] || "");
+    setSelectedLanguages(inferredLanguages);
+    setSelectedGenres(Array.from(new Set(matchingGenreIds)));
+    setSelectedCast(Array.from(new Set(matchingCastIds)));
+    setAiImportedGenres(draftGenres);
+    setAiImportedCast(importedCast);
+    setAiImportedTags(Array.from(new Set([...(draft.tags || []), ...(draft.keywords || [])].filter(Boolean).map(String))));
+    setAiImportedExternalIds({ tmdbId: draft.tmdbId ?? null, imdbId: draft.imdbId ?? null });
+    setHasLicensedVideo(false);
+    setVideoProvider(draft.trailerUrl ? "youtube" : "direct");
+    setLicenseType("");
+    setIsLatest(false);
+    setIsTrending(false);
+    setIsFeatured(false);
+    setSelectedPlatformId(matchedPlatform?.id || "");
+    setPlatformHomeUrl(draft.platform?.homeUrl || "");
+    setPlatformSearchUrl(draft.platform?.searchUrl && nextTitle ? draft.platform.searchUrl.replace("{query}", encodeURIComponent(nextTitle)) : "");
+    setOpenMode("auto");
+    setMobileWebSupported("unknown");
+    setDesktopWebSupported("unknown");
+    setWatchLinkType(draft.officialWatchUrl ? "direct_title_page" : "platform_search");
+    setAvailabilityType("unknown");
+    setSelectedWatchLanguages(inferredLanguages);
+    setSelectedQualities([]);
+    setWatchLinkNotes("");
+    setFallbackNote("");
+    setAppDeeplink("");
+    setAppStoreUrl("");
+    setPlayStoreUrl("");
+    setNamedField("release_year", draft.releaseYear ?? "");
+    setNamedField("release_date", htmlDateValue(draft.releaseDate));
+    setNamedField("duration_minutes", draft.runtimeMinutes ?? "");
+    setNamedField("rating", draft.rating ?? "");
+    setNamedField("director", draft.director || "");
+    setNamedField("popularity_score", draft.popularityScore ?? "");
+    setNamedField("description", draft.description || draft.storyOverview || "");
+    setNamedField("poster_url", draft.posterUrl || "");
+    setNamedField("banner_url", draft.bannerUrl || "");
+    setNamedField("trailer_url", draft.trailerUrl || "");
+    setNamedField("trailer_provider", draft.trailerUrl ? "youtube" : "");
+    setNamedField("watch_url", draft.officialWatchUrl || "");
+    setNamedField("seo_title", draft.seoTitle || "");
+    setNamedField("seo_description", draft.seoDescription || "");
+    setNamedField("og_image_url", draft.bannerUrl || draft.posterUrl || "");
+    setPosterPreview(draft.posterUrl || null);
+    setBannerPreview(draft.bannerUrl || null);
+    setMessage({
+      type: "success",
+      text: `AI Auto Fill filled ${nextTitle}. Status is Draft. Review images, trailer, official link, genres and cast before saving.`
+    });
+    if (draft.officialWatchUrl && !matchedPlatform) {
+      setHelperMessage(`AI detected ${draft.platform?.name || "an official platform"}, but no matching platform exists in Admin Platforms. Select or create it before saving the watch link.`);
+    } else {
+      setHelperMessage("AI filled the form from public metadata. Missing fields were left empty for manual review.");
+    }
+  }
+
   function validate(form: FormData) {
     if (!title.trim()) return "Title is required.";
     if (!slug.trim()) return "Slug is required.";
     if (!selectedStatus) return "Status is required.";
+    if (!selectedType) return "Content type is required.";
 
     const watchUrl = toNullableString(form.get("watch_url"));
+    const trailerUrl = toNullableString(form.get("trailer_url"));
     const platformId = selectedPlatformId;
     if (watchUrl && !platformId) return "Select an official platform before adding a watch link.";
+    if (selectedStatus === "published" && !watchUrl && !trailerUrl) {
+      return "Publish needs an official watch link or trailer URL. Save as Draft if links are not ready yet.";
+    }
 
     if (hasLicensedVideo) {
       if (!normalizeVideoProvider(videoProvider)) return "Video provider is required for licensed video.";
@@ -770,6 +1065,10 @@ export default function AdminMovieForm({
     setIsFeatured(false);
     setSelectedPositioning([]);
     setHelperMessage(null);
+    setAiImportedGenres([]);
+    setAiImportedCast([]);
+    setAiImportedTags([]);
+    setAiImportedExternalIds({});
     try {
       if (posterPreview) URL.revokeObjectURL(posterPreview);
       if (bannerPreview) URL.revokeObjectURL(bannerPreview);
@@ -863,35 +1162,165 @@ export default function AdminMovieForm({
 
       const supabase = createSupabaseBrowserClient();
       const { data: auth } = await supabase.auth.getUser();
+      const skippedOptionalMovieColumns = new Set<string>();
+      const rememberSkippedColumn = (column: string) => skippedOptionalMovieColumns.add(column);
       const poster = form.get("poster") as File;
       const banner = form.get("banner") as File;
       const watchUrl = toNullableString(form.get("watch_url"));
-      const payload = {
+      const posterUrl = toNullableString(form.get("poster_url"));
+      const bannerUrl = toNullableString(form.get("banner_url"));
+      const trailerUrl = toNullableString(form.get("trailer_url"));
+      const selectedGenreNames = selectedGenres
+        .map((genreId) => genres.find((genre) => genre.id === genreId)?.name)
+        .filter(Boolean) as string[];
+      const selectedCastNames = selectedCast
+        .map((castId) => castMembers.find((member) => member.id === castId))
+        .filter((member): member is CastMember => Boolean(member))
+        .map((member) => ({ name: member.name, role: member.role_label || "Cast" }));
+      const aiTags = Array.from(new Set([...(aiImportedTags || []), ...(aiDraft?.keywords || []), ...(aiDraft?.tags || [])].filter(Boolean).map(String)));
+      const aiBackdropUrl = aiDraft?.images?.find((image) => image.kind === "backdrop" || image.kind === "banner")?.url || bannerUrl || aiDraft?.bannerUrl || null;
+      const aiImportPayload = toJsonSafeValue({
+        rawAiDraft: aiDraft,
+        rawTmdbData: aiDraft?.source === "tmdb" ? aiDraft : null,
+        credits: {
+          cast: aiDraft?.cast || aiImportedCast,
+          crew: aiDraft?.crew || [],
+          director: aiDraft?.director || toNullableString(form.get("director")),
+          writers: aiDraft?.writers || [],
+          producers: aiDraft?.producers || []
+        },
+        externalIds: {
+          tmdbId: aiImportedExternalIds.tmdbId ?? aiDraft?.tmdbId ?? null,
+          imdbId: aiImportedExternalIds.imdbId ?? aiDraft?.imdbId ?? null
+        },
+        videos: {
+          trailerUrl,
+          trailerName: aiDraft?.trailerName || null,
+          provider: trailerUrl ? "youtube" : null
+        },
+        budget: aiDraft?.budget ?? null,
+        revenue: aiDraft?.revenue ?? null,
+        ageRating: aiDraft?.ageRating || null,
+        voteCount: aiDraft?.voteCount ?? null,
+        originalTitle: aiDraft?.originalTitle || title.trim(),
+        originalLanguage: aiDraft?.originalLanguage || null,
+        tagline: aiDraft?.tagline || null,
+        country: aiDraft?.country || null,
+        productionCompanies: aiDraft?.productionCompanies || [],
+        genres: Array.from(new Set([...selectedGenreNames, ...aiImportedGenres])),
+        languages: selectedLanguages,
+        homepage: {
+          placement: primarySection || "recently_added",
+          showInHero
+        },
+        platform: {
+          name: selectedPlatform?.name || aiDraft?.platform?.name || null,
+          watchUrl,
+          homeUrl: platformHomeUrl || aiDraft?.platform?.homeUrl || null,
+          searchUrl: platformSearchUrl || aiDraft?.platform?.searchUrl || null,
+          openMode,
+          mobileWebSupported,
+          desktopWebSupported
+        },
+        license: {
+          hasLicensedVideo,
+          videoProvider: normalizeVideoProvider(videoProvider),
+          videoEmbedUrl: hasLicensedVideo ? toNullableString(form.get("video_embed_url")) : null,
+          videoId: hasLicensedVideo ? toNullableString(form.get("video_id")) : null,
+          licenseType: hasLicensedVideo ? licenseType : null,
+          ownerName: hasLicensedVideo ? toNullableString(form.get("license_owner_name")) : null,
+          startDate: hasLicensedVideo ? toNullableString(form.get("license_start_date")) : null,
+          expiryDate: hasLicensedVideo ? toNullableString(form.get("license_expiry_date")) : null,
+          notes: hasLicensedVideo ? toNullableString(form.get("license_notes")) : null,
+          territory: hasLicensedVideo ? toNullableString(form.get("distribution_territory")) : null
+        },
+        flags: {
+          isTrending,
+          isFeatured,
+          isLatest,
+          isHindiDubbed: selectedLanguages.includes("Hindi Dubbed"),
+          isFreeLegal: availabilityType === "free",
+          isOfficial: Boolean(trailerUrl || watchUrl)
+        }
+      });
+      const rawPayload = {
         title: title.trim(),
         slug: slug.trim(),
         type: selectedType,
-        content_type: selectedType,
-        primary_section: primarySection,
+        status: selectedStatus || "draft",
+        content_type: selectedType || "movie",
+        homepage_placement: primarySection || "recently_added",
+        primary_section: primarySection || "recently_added",
         show_in_hero: showInHero,
+        display_title: title.trim(),
+        original_title: aiDraft?.originalTitle || title.trim(),
+        tagline: aiDraft?.tagline || null,
         primary_language: toNullableString(primaryLanguage),
         languages_json: selectedLanguages,
+        genres_json: Array.from(new Set([...selectedGenreNames, ...aiImportedGenres])),
+        tags_json: aiTags,
+        tags: aiTags.length ? aiTags : null,
+        cast_json: aiImportedCast.length ? aiImportedCast : selectedCastNames,
+        poster_url: posterUrl,
+        backdrop_url: aiBackdropUrl,
+        banner_url: bannerUrl,
+        thumbnail_url: posterUrl || bannerUrl || aiDraft?.thumbnailUrl || null,
         platform_name: selectedPlatform?.name || null,
         description: toNullableString(form.get("description")),
+        short_description: toNullableString(form.get("description"))?.slice(0, 180) || null,
+        release_date: toNullableString(form.get("release_date")),
         release_year: toNullableNumber(form.get("release_year")),
         duration_minutes: toNullableNumber(form.get("duration_minutes")),
         rating: toNullableNumber(form.get("rating")),
+        imdb_rating: toNullableNumber(form.get("rating")),
         language: joinLanguages(selectedLanguages) || null,
+        original_language: aiDraft?.originalLanguage || null,
+        country: aiDraft?.country || null,
+        budget: aiDraft?.budget ?? null,
+        revenue: aiDraft?.revenue ?? null,
+        vote_count: aiDraft?.voteCount ?? null,
+        age_rating: aiDraft?.ageRating || null,
+        production_companies_json: aiDraft?.productionCompanies || [],
+        external_ids_json: {
+          tmdb_id: aiImportedExternalIds.tmdbId ?? aiDraft?.tmdbId ?? null,
+          imdb_id: aiImportedExternalIds.imdbId ?? aiDraft?.imdbId ?? null,
+          source: aiDraft?.source || null
+        },
         director: toNullableString(form.get("director")),
-        trailer_url: toNullableString(form.get("trailer_url")),
+        trailer_url: trailerUrl,
         trailer_provider: toNullableString(form.get("trailer_provider")),
         is_trending: isTrending,
         is_featured: isFeatured,
         is_latest: isLatest,
-        popularity_score: toNullableNumber(form.get("popularity_score")) ?? 0,
-        status: selectedStatus,
+        is_hindi_dubbed: selectedLanguages.includes("Hindi Dubbed"),
+        is_free_legal: availabilityType === "free",
+        is_official: Boolean(trailerUrl || watchUrl),
+        popularity_score: toNullableNumber(form.get("popularity_score")) ?? aiDraft?.popularityScore ?? 0,
         seo_title: toNullableString(form.get("seo_title")),
         seo_description: toNullableString(form.get("seo_description")),
         og_image_url: toNullableString(form.get("og_image_url")),
+        tmdb_id: aiImportedExternalIds.tmdbId ?? aiDraft?.tmdbId ?? null,
+        imdb_id: aiImportedExternalIds.imdbId ?? aiDraft?.imdbId ?? null,
+        ai_import_source: aiDraft?.source || null,
+        ai_import_payload: aiImportPayload,
+        metadata_source: aiDraft?.sourceLabel || aiDraft?.source || null,
+        metadata_confidence: aiDraft ? aiDraft.qualityScore?.score ?? null : null,
+        quality_score: aiDraft?.qualityScore?.score ?? null,
+        official_platform: selectedPlatform?.name || null,
+        official_watch_url: watchUrl,
+        watch_url: watchUrl,
+        platform_home_url: toNullableString(platformHomeUrl),
+        platform_search_url: toNullableString(platformSearchUrl),
+        app_deeplink: toNullableString(appDeeplink),
+        open_mode: openMode,
+        mobile_web_supported: mobileWebSupported,
+        desktop_web_supported: desktopWebSupported,
+        app_required: mobileWebSupported === "no",
+        play_store_url: toNullableString(playStoreUrl),
+        app_store_url: toNullableString(appStoreUrl),
+        fallback_note: toNullableString(fallbackNote),
+        availability_type: availabilityType,
+        quality: selectedQualities.join(", ") || null,
         has_licensed_video: hasLicensedVideo,
         video_provider: normalizeVideoProvider(videoProvider),
         video_embed_url: hasLicensedVideo ? toNullableString(form.get("video_embed_url")) : null,
@@ -903,43 +1332,33 @@ export default function AdminMovieForm({
         license_notes: hasLicensedVideo ? toNullableString(form.get("license_notes")) : null,
         distribution_territory: hasLicensedVideo ? toNullableString(form.get("distribution_territory")) : null
       };
-      const unlistedPayloadColumns = findUnlistedMoviePayloadColumns(payload);
+      const unlistedPayloadColumns = findUnlistedMoviePayloadColumns(rawPayload);
       if (unlistedPayloadColumns.length) {
-        console.warn("Admin movie payload contains columns missing from MOVIE_REQUIRED_COLUMNS", unlistedPayloadColumns);
-        throw new Error(`Admin movie payload schema guard failed. Add these movies columns to MOVIE_REQUIRED_COLUMNS and the latest migration: ${unlistedPayloadColumns.join(", ")}.`);
+        console.info("WatchFinder movie save removed non-allowlisted payload keys", unlistedPayloadColumns);
       }
+      const basePayload = sanitizeMovieBasePayload(rawPayload);
+      const metadataPayload = sanitizeMovieMetadataPayload(rawPayload);
+      const payload = basePayload;
+      console.info("WatchFinder movie save payload", {
+        sentBaseKeys: Object.keys(basePayload),
+        sentMetadataKeys: Object.keys(metadataPayload),
+        removedKeys: unlistedPayloadColumns,
+        hasAiImportPayload: Object.prototype.hasOwnProperty.call(metadataPayload, "ai_import_payload")
+      });
 
       let wasUpdate = isEditMode || Boolean(partialSaveMovieId);
       let movie: { id: string; slug: string };
 
       if (isEditMode && initialMovie?.id) {
-        payload.slug = await resolveUniqueMovieSlug(supabase, payload.slug, initialMovie.id);
-        setSlug(payload.slug);
-        const { data, error } = await supabase
-          .from("movies")
-          .update(payload)
-          .eq("id", initialMovie.id)
-          .select("id, slug")
-          .single();
-        if (error || !data) {
-          throw error ? saveStepError("Updating movie row", error) : new Error("Movie update failed.");
-        }
-        movie = data;
+        payload.slug = await resolveUniqueMovieSlug(supabase, String(payload.slug || payload.title || "movie"), initialMovie.id);
+        setSlug(String(payload.slug));
+        movie = await updateMovieRowWithSchemaRetry(supabase, initialMovie.id, payload, "Updating movie row", rememberSkippedColumn) as { id: string; slug: string };
       } else if (partialSaveMovieId) {
-        payload.slug = await resolveUniqueMovieSlug(supabase, payload.slug, partialSaveMovieId);
-        setSlug(payload.slug);
-        const { data, error } = await supabase
-          .from("movies")
-          .update(payload)
-          .eq("id", partialSaveMovieId)
-          .select("id, slug")
-          .single();
-        if (error || !data) {
-          throw error ? saveStepError("Retrying saved movie row", error) : new Error("Movie retry failed.");
-        }
-        movie = data;
+        payload.slug = await resolveUniqueMovieSlug(supabase, String(payload.slug || payload.title || "movie"), partialSaveMovieId);
+        setSlug(String(payload.slug));
+        movie = await updateMovieRowWithSchemaRetry(supabase, partialSaveMovieId, payload, "Retrying saved movie row", rememberSkippedColumn) as { id: string; slug: string };
       } else {
-        const slugConflict = await findMovieBySlug(supabase, payload.slug);
+        const slugConflict = await findMovieBySlug(supabase, String(payload.slug || ""));
         if (slugConflict && allowExactDuplicateIdRef.current !== slugConflict.movieId && allowExactDuplicateId !== slugConflict.movieId) {
           setDuplicateAdvisory(slugConflict);
           setMessage({
@@ -966,8 +1385,24 @@ export default function AdminMovieForm({
           return;
         }
 
+        const potentialDuplicate = await findPotentialDuplicateMovie(
+          supabase,
+          { ...payload, ...metadataPayload },
+          watchUrl,
+          initialMovie?.id ?? null
+        );
+
+        if (potentialDuplicate && allowExactDuplicateIdRef.current !== potentialDuplicate.movieId && allowExactDuplicateId !== potentialDuplicate.movieId) {
+          setDuplicateAdvisory(potentialDuplicate);
+          setMessage({
+            type: "info",
+            text: "This title may already exist. Open it, save this as a new listing, or cancel by editing the fields."
+          });
+          return;
+        }
+
         wasUpdate = false;
-        const inserted = await insertMovieWithUniqueSlug(supabase, payload);
+        const inserted = await insertMovieWithUniqueSlug(supabase, payload, rememberSkippedColumn);
         payload.slug = inserted.finalSlug;
         setSlug(inserted.finalSlug);
         movie = inserted.movie;
@@ -975,17 +1410,29 @@ export default function AdminMovieForm({
 
       persistedMovieId = movie.id;
 
+      if (Object.keys(metadataPayload).length) {
+        await updateMovieRowWithSchemaRetry(
+          supabase,
+          movie.id,
+          metadataPayload,
+          "Saving AI/TMDb metadata",
+          rememberSkippedColumn
+        );
+      }
+
       const updatePayload: Record<string, string> = {};
       if (poster?.size) updatePayload.poster_url = await uploadPoster(movie.id, poster);
-      if (banner?.size) updatePayload.banner_url = await uploadBanner(movie.id, banner);
+      if (banner?.size) {
+        const uploadedBannerUrl = await uploadBanner(movie.id, banner);
+        updatePayload.banner_url = uploadedBannerUrl;
+        updatePayload.backdrop_url = uploadedBannerUrl;
+      }
       if (Object.keys(updatePayload).length) {
         const unlistedImageColumns = findUnlistedMoviePayloadColumns(updatePayload);
         if (unlistedImageColumns.length) {
           console.warn("Admin image payload contains columns missing from MOVIE_REQUIRED_COLUMNS", unlistedImageColumns);
-          throw new Error(`Admin movie payload schema guard failed. Add these movies columns to MOVIE_REQUIRED_COLUMNS and the latest migration: ${unlistedImageColumns.join(", ")}.`);
         }
-        const { error: imageError } = await supabase.from("movies").update(updatePayload).eq("id", movie.id);
-        if (imageError) throw saveStepError("Saving poster/banner URLs", imageError);
+        await updateMovieRowWithSchemaRetry(supabase, movie.id, updatePayload, "Saving poster/banner URLs", rememberSkippedColumn);
       }
 
       if (wasUpdate) {
@@ -1095,10 +1542,14 @@ export default function AdminMovieForm({
       const savedMovie = normalizeConfirmedMovie(confirmedRow);
       const slugNote = !isEditMode ? ` Final slug: ${savedMovie.slug}.` : "";
       const savedTypeLabel = formatType(savedMovie.content_type || savedMovie.type || selectedType);
+      const skippedOptionalColumns = Array.from(skippedOptionalMovieColumns);
+      const skippedColumnsNote = skippedOptionalColumns.length
+        ? ` Skipped unavailable optional metadata columns: ${skippedOptionalColumns.join(", ")}. If those columns were just added in Supabase, run notify pgrst, 'reload schema'; then save again to store them.`
+        : "";
 
       setMessage({
         type: "success",
-        text: `${isEditMode ? `${savedTypeLabel} updated successfully.` : `${savedTypeLabel} saved as new listing.`}${slugNote} ${getMovieSaveVisibilityMessage(savedMovie)} ${getSaveDebugText(savedMovie)}`
+        text: `${isEditMode ? `${savedTypeLabel} updated successfully.` : `${savedTypeLabel} saved as new listing.`}${slugNote} ${getMovieSaveVisibilityMessage(savedMovie)} ${getSaveDebugText(savedMovie)}${skippedColumnsNote}`
       });
       setSavedMovieSlug(savedMovie.slug);
       setDuplicateAdvisory(null);
@@ -1223,6 +1674,7 @@ export default function AdminMovieForm({
         <div className="form-grid two">
           <div className="field"><label>Title <span className="required">*</span></label><input required value={title} onChange={(e) => updateTitle(e.target.value)} /></div>
           <div className="field"><label>Slug <span className="required">*</span></label><input ref={slugInputRef} required value={slug} onChange={(e) => setSlug(slugify(e.target.value))} /></div>
+          <div className="field"><label>Release Date</label><input name="release_date" type="date" defaultValue={initialMovie?.release_date ?? ""} /></div>
           <div className="field"><label>Release Year</label><input name="release_year" inputMode="numeric" defaultValue={initialMovie?.release_year ?? ""} /></div>
           <div className="field"><label>Duration Minutes</label><input name="duration_minutes" inputMode="numeric" defaultValue={initialMovie?.duration_minutes ?? ""} /></div>
           <div className="field"><label>Rating</label><input name="rating" inputMode="decimal" defaultValue={initialMovie?.rating ?? ""} /></div>
@@ -1346,6 +1798,14 @@ export default function AdminMovieForm({
 
       <FormSection title="Images" helper="Upload strong artwork. Poster recommended 600x900. Banner recommended 1600x700.">
         <div className="form-grid two">
+          <div className="field">
+            <label>Poster URL</label>
+            <input name="poster_url" placeholder="Auto-filled poster URL or paste one manually" defaultValue={initialMovie?.poster_url ?? ""} />
+          </div>
+          <div className="field">
+            <label>Banner URL</label>
+            <input name="banner_url" placeholder="Auto-filled banner/backdrop URL or paste one manually" defaultValue={initialMovie?.banner_url ?? ""} />
+          </div>
           <div className="field">
             <label>Poster image</label>
             <input name="poster" type="file" accept="image/*" onChange={(event) => setPreview(event, "poster")} />
@@ -1590,7 +2050,13 @@ export default function AdminMovieForm({
       ) : null}
       {duplicateAdvisory ? (
         <div className="form-message info duplicate-advisory">
-          <strong>{duplicateAdvisory.reason === "slug" ? "Similar slug already exists" : "This looks like an exact duplicate"}</strong>
+          <strong>
+            {duplicateAdvisory.reason === "slug"
+              ? "Similar slug already exists"
+              : duplicateAdvisory.reason === "potential"
+                ? "This title may already exist"
+                : "This looks like an exact duplicate"}
+          </strong>
           <p>You can open the existing listing, save this upload as a new listing with a unique slug, or change the slug manually.</p>
           <div className="meta-line">
             <span>Existing title: {duplicateAdvisory.title}</span>

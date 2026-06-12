@@ -41,6 +41,24 @@ export type AiImportPlatform = {
   searchUrl?: string | null;
 };
 
+export type AiQualityScore = {
+  score: number;
+  label: string;
+  warnings: string[];
+};
+
+export type AiOfficialLinkValidation = {
+  status: "valid" | "unknown" | "missing";
+  platformName?: string | null;
+  message: string;
+};
+
+export type AiPlacementSuggestion = {
+  primarySection: string;
+  showInHero: boolean;
+  reasons: string[];
+};
+
 export type AiImportCandidate = {
   tmdbId: number;
   mediaType: "movie" | "tv";
@@ -77,6 +95,9 @@ export type AiImportDraft = {
   storyOverview?: string | null;
   releaseDate?: string | null;
   releaseYear?: number | null;
+  lastAirDate?: string | null;
+  seasonCount?: number | null;
+  episodeCount?: number | null;
   runtimeMinutes?: number | null;
   status?: string | null;
   genres: string[];
@@ -114,6 +135,10 @@ export type AiImportDraft = {
   duplicateWarnings: string[];
   qualityWarnings: string[];
   missingFields: string[];
+  qualityScore?: AiQualityScore;
+  officialLinkValidation?: AiOfficialLinkValidation;
+  suggestedPlacement?: AiPlacementSuggestion;
+  assistantNotes?: string[];
 };
 
 export type AiImportResult = {
@@ -136,4 +161,6 @@ export type AiImportResponse = {
   results?: AiImportResult[];
   error?: string;
   warnings?: string[];
+  fixedFields?: string[];
+  stillMissing?: string[];
 };

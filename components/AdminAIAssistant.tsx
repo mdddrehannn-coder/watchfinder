@@ -1,90 +1,39 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ClipboardList,
-  Database,
-  Film,
-  Image as ImageIcon,
-  Loader2,
-  PlayCircle,
-  Rocket,
-  Search,
-  Sparkles,
-  UploadCloud
-} from "lucide-react";
-import { slugify } from "@/lib/format";
-import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
-import type { AiImportCandidate, AiImportDraft, AiImportMode, AiImportPlatform, AiImportResponse, AiImportResult } from "@/lib/ai-import-types";
+import { useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle2, Image as ImageIcon, Loader2, Search, Sparkles } from "lucide-react";
+import type { AiImportCandidate, AiImportDraft, AiImportPlatform, AiImportResponse } from "@/lib/ai-import-types";
+
+type AiContentType = "movie" | "web_series" | "tv_show" | "cartoon";
 
 type Message = {
   type: "success" | "error" | "info" | "warning";
   text: string;
 };
 
-type ImportTab = AiImportMode | "review" | "publish";
+type MetadataProviderStatus = {
+  configured: boolean;
+  connected: boolean | null;
+  message: string;
+  maskedKey?: string | null;
+};
 
-const STORAGE_KEY = "watchfinder_ai_import_review_draft";
-
-const importTabs: Array<{
-  id: ImportTab;
-  title: string;
-  helper: string;
-}> = [
-  { id: "url", title: "URL Import", helper: "Paste TMDb, IMDb, or official source URL." },
-  { id: "imdb", title: "IMDb Import", helper: "Paste an IMDb title ID like tt0111161." },
-  { id: "tmdb", title: "TMDb Import", helper: "Paste TMDb movie/TV ID or URL." },
-  { id: "name", title: "Movie Name Search", helper: "Search by title, actor, director, or year." },
-  { id: "bulk", title: "Bulk Import", helper: "Process up to 50 URLs, IDs, or titles." },
-  { id: "auto", title: "Auto Generate", helper: "Generate a safe draft from whatever you paste." },
-  { id: "review", title: "Review Data", helper: "Preview images, trailer, SEO, warnings." },
-  { id: "publish", title: "Publish", helper: "Save as draft or publish after review." }
-];
-
-const AI_IMPORT_STEPS = [
-  "Detecting platform",
-  "Extracting title",
+const AI_AUTOFILL_STEPS = [
+  "Detecting title",
   "Searching metadata",
-  "Fetching cast and trailer",
-  "Preparing review"
+  "Fetching credits",
+  "Finding trailer",
+  "Generating SEO",
+  "Filling form",
+  "Ready for review"
 ];
 
-function toNullableString(value?: string | null) {
-  const clean = String(value || "").trim();
-  return clean || null;
-}
-
-function toNumber(value?: number | string | null) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
-}
-
-function compactList(values: Array<string | null | undefined>, limit = 5) {
-  const clean = values.map((item) => String(item || "").trim()).filter(Boolean);
-  if (!clean.length) return "Not fetched yet";
-  const visible = clean.slice(0, limit);
-  return clean.length > limit ? `${visible.join(", ")} +${clean.length - limit}` : visible.join(", ");
-}
-
-function formatMoney(value?: number | null) {
-  if (!value) return "Not fetched";
-  return new Intl.NumberFormat("en", {
-    notation: "compact",
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 1
-  }).format(value);
-}
-
-function formatRuntime(minutes?: number | null) {
-  if (!minutes) return "Not fetched";
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return hours ? `${hours}h ${mins}m` : `${mins}m`;
-}
+const contentTypeOptions: Array<{ label: string; value: AiContentType }> = [
+  { label: "Movie", value: "movie" },
+  { label: "Web Series", value: "web_series" },
+  { label: "TV Show", value: "tv_show" },
+  { label: "Cartoon", value: "cartoon" }
+];
 
 function statusClass(type: Message["type"]) {
   if (type === "success") return "form-message success";
@@ -93,766 +42,445 @@ function statusClass(type: Message["type"]) {
   return "form-message info";
 }
 
-function safeProvider(url?: string | null) {
-  return url?.includes("youtube.com") || url?.includes("youtu.be") ? "youtube" : "direct";
+function mediaTypeForContentType(contentType: AiContentType) {
+  if (contentType === "web_series" || contentType === "tv_show") return "tv";
+  if (contentType === "movie") return "movie";
+  return "auto";
 }
 
-function platformLabel(platform?: AiImportPlatform | null) {
-  return platform?.name || "Official Platform";
+function compactList(values?: string[], limit = 5) {
+  const clean = (values || []).map((item) => item.trim()).filter(Boolean);
+  if (!clean.length) return "Not found";
+  return clean.length > limit ? `${clean.slice(0, limit).join(", ")} +${clean.length - limit}` : clean.join(", ");
 }
 
-async function resolveUniqueSlug(table: "movies" | "web_series", requestedSlug: string, title: string) {
-  const supabase = createSupabaseBrowserClient();
-  const base = slugify(requestedSlug || title) || `watchfinder-${Date.now().toString(36)}`;
-  const { data, error } = await supabase.from(table).select("id, slug").like("slug", `${base}%`);
-  if (error) throw error;
-
-  const exactPattern = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:-(\\d+))?$`);
-  const existing = new Set(
-    (data || [])
-      .map((item: { slug?: string | null }) => item.slug || "")
-      .filter((item: string) => exactPattern.test(item))
-  );
-  if (!existing.has(base)) return base;
-
-  let suffix = 2;
-  while (existing.has(`${base}-${suffix}`)) suffix += 1;
-  return `${base}-${suffix}`;
-}
-
-function schemaHint(error: unknown) {
-  const value = error as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown };
-  const message = [
-    value?.message ? String(value.message) : error instanceof Error ? error.message : "Save failed.",
-    value?.code ? `Code: ${String(value.code)}` : "",
-    value?.details ? `Details: ${String(value.details)}` : "",
-    value?.hint ? `Hint: ${String(value.hint)}` : ""
-  ].filter(Boolean).join(" ");
-
-  if (message.includes("schema cache") || message.includes("Could not find") || String(value?.code) === "PGRST204") {
-    return `${message} Run the latest WatchFinder migrations, then reload Supabase/PostgREST schema.`;
-  }
-  return message;
-}
-
-function draftToMoviePayload(draft: AiImportDraft, status: "draft" | "published", finalSlug: string) {
-  const trailerProvider = safeProvider(draft.trailerUrl);
-  const importedPlatform = platformLabel(draft.platform);
-  const hasOfficialWatchUrl = Boolean(draft.officialWatchUrl);
-  const platformSearchUrl = draft.platform?.searchUrl && draft.extractedTitle
-    ? draft.platform.searchUrl.replace("{query}", encodeURIComponent(draft.title || draft.extractedTitle))
-    : null;
-  return {
-    title: draft.title.trim(),
-    slug: finalSlug,
-    type: draft.contentType === "movie" ? "movie" : draft.contentType,
-    content_type: draft.contentType === "web_series" ? "web_series" : draft.contentType,
-    primary_section: "recently_added",
-    show_in_hero: false,
-    display_title: draft.title.trim(),
-    original_title: toNullableString(draft.originalTitle),
-    description: toNullableString(draft.description),
-    short_description: toNullableString(draft.shortDescription),
-    release_year: toNumber(draft.releaseYear),
-    duration_minutes: toNumber(draft.runtimeMinutes),
-    rating: toNumber(draft.rating),
-    imdb_rating: toNumber(draft.rating),
-    language: toNullableString(draft.language),
-    primary_language: toNullableString(draft.language),
-    languages_json: draft.language ? [draft.language] : [],
-    genres_json: draft.genres,
-    tags_json: draft.tags,
-    cast_json: draft.cast,
-    poster_url: toNullableString(draft.posterUrl),
-    banner_url: toNullableString(draft.bannerUrl),
-    thumbnail_url: toNullableString(draft.thumbnailUrl || draft.posterUrl),
-    trailer_url: toNullableString(draft.trailerUrl),
-    trailer_provider: draft.trailerUrl ? "youtube" : null,
-    video_url: null,
-    video_embed_url: null,
-    video_provider: trailerProvider,
-    video_id: null,
-    official_platform: hasOfficialWatchUrl ? importedPlatform : draft.trailerUrl ? "YouTube" : null,
-    platform_name: hasOfficialWatchUrl ? importedPlatform : draft.trailerUrl ? "YouTube" : null,
-    official_watch_url: toNullableString(draft.officialWatchUrl),
-    watch_url: toNullableString(draft.officialWatchUrl),
-    platform_home_url: toNullableString(draft.platform?.homeUrl),
-    platform_search_url: toNullableString(platformSearchUrl),
-    app_deeplink: null,
-    open_mode: hasOfficialWatchUrl ? "external" : draft.trailerUrl ? "trailer_modal" : "auto",
-    mobile_web_supported: "unknown",
-    desktop_web_supported: "unknown",
-    app_required: false,
-    quality: null,
-    availability_type: hasOfficialWatchUrl ? "unknown" : draft.trailerUrl ? "official" : "unknown",
-    director: toNullableString(draft.director),
-    popularity_score: toNumber(draft.popularityScore) ?? 0,
-    is_featured: false,
-    is_latest: true,
-    is_trending: false,
-    is_hindi_dubbed: false,
-    is_free_legal: false,
-    is_official: Boolean(draft.trailerUrl || hasOfficialWatchUrl),
-    has_licensed_video: false,
-    status,
-    seo_title: toNullableString(draft.seoTitle),
-    seo_description: toNullableString(draft.seoDescription),
-    og_image_url: toNullableString(draft.bannerUrl || draft.posterUrl),
-    tmdb_id: toNumber(draft.tmdbId),
-    imdb_id: toNullableString(draft.imdbId),
-    ai_import_source: draft.source,
-    ai_import_payload: draft,
-    tagline: toNullableString(draft.tagline),
-    original_language: toNullableString(draft.originalLanguage),
-    country: toNullableString(draft.country),
-    budget: toNumber(draft.budget),
-    revenue: toNumber(draft.revenue),
-    vote_count: toNumber(draft.voteCount),
-    age_rating: toNullableString(draft.ageRating),
-    production_companies_json: draft.productionCompanies,
-    external_ids_json: {
-      tmdb_id: draft.tmdbId ?? null,
-      imdb_id: draft.imdbId ?? null
-    }
-  };
-}
-
-function draftToSeriesPayload(draft: AiImportDraft, status: "draft" | "published", finalSlug: string) {
-  const importedPlatform = platformLabel(draft.platform);
-  const hasOfficialWatchUrl = Boolean(draft.officialWatchUrl);
-  return {
-    title: draft.title.trim(),
-    slug: finalSlug,
-    description: toNullableString(draft.description),
-    poster_url: toNullableString(draft.posterUrl),
-    banner_url: toNullableString(draft.bannerUrl),
-    genre: draft.genres.join(", ") || null,
-    platform_name: draft.platform?.name || null,
-    language: toNullableString(draft.language),
-    release_year: toNumber(draft.releaseYear),
-    rating: draft.rating ? String(Number(draft.rating).toFixed(1)) : null,
-    trailer_url: toNullableString(draft.trailerUrl),
-    video_embed_url: null,
-    video_provider: safeProvider(draft.trailerUrl),
-    official_watch_url: toNullableString(draft.officialWatchUrl),
-    watch_url: toNullableString(draft.officialWatchUrl),
-    official_platform: hasOfficialWatchUrl ? importedPlatform : draft.trailerUrl ? "YouTube" : null,
-    open_mode: hasOfficialWatchUrl ? "external" : draft.trailerUrl ? "trailer_modal" : "auto",
-    status,
-    is_featured: false,
-    is_latest: true,
-    is_trending: false,
-    is_hindi_dubbed: false,
-    is_free_legal: false,
-    is_official: Boolean(draft.trailerUrl),
-    seo_title: toNullableString(draft.seoTitle),
-    seo_description: toNullableString(draft.seoDescription)
-  };
-}
-
-export default function AdminAIAssistant() {
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState<ImportTab>("url");
-  const [input, setInput] = useState("");
-  const [mediaType, setMediaType] = useState<"auto" | "movie" | "tv">("auto");
-  const [includeSeasons, setIncludeSeasons] = useState(true);
+export default function AdminAIAssistant({
+  onDraftReady,
+  initialContentType = "movie",
+  embedded = false
+}: {
+  onDraftReady?: (draft: AiImportDraft) => void;
+  initialContentType?: AiContentType;
+  embedded?: boolean;
+}) {
+  const [contentType, setContentType] = useState<AiContentType>(initialContentType);
+  const [titleInput, setTitleInput] = useState("");
+  const [officialLinkInput, setOfficialLinkInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  const [message, setMessage] = useState<Message | null>(null);
+  const [fixSummary, setFixSummary] = useState<{ fixed: string[]; missing: string[] } | null>(null);
+  const [progressIndex, setProgressIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState<AiImportDraft | null>(null);
   const [candidates, setCandidates] = useState<AiImportCandidate[]>([]);
   const [extractedTitle, setExtractedTitle] = useState<string | null>(null);
   const [detectedPlatform, setDetectedPlatform] = useState<AiImportPlatform | null>(null);
   const [officialWatchUrl, setOfficialWatchUrl] = useState<string | null>(null);
-  const [bulkResults, setBulkResults] = useState<AiImportResult[]>([]);
-  const [message, setMessage] = useState<Message | null>(null);
-  const [manualOpen, setManualOpen] = useState(false);
-  const [importStageIndex, setImportStageIndex] = useState<number | null>(null);
+  const [tmdbStatus, setTmdbStatus] = useState<MetadataProviderStatus | null>(null);
+  const [checkingProviders, setCheckingProviders] = useState(true);
 
-  useEffect(() => {
+  async function checkMetadataProviders() {
+    setCheckingProviders(true);
     try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved) setDraft(JSON.parse(saved) as AiImportDraft);
-    } catch {
-      // Ignore a corrupt local review draft.
+      const response = await fetch("/api/admin/metadata-providers", { cache: "no-store" });
+      const json = await response.json();
+      if (!response.ok || !json.ok) throw new Error(json.error || "Metadata provider check failed.");
+      setTmdbStatus(json.providers?.tmdb || {
+        configured: false,
+        connected: false,
+        message: "TMDb API key is not configured."
+      });
+    } catch (error) {
+      setTmdbStatus({
+        configured: false,
+        connected: false,
+        message: error instanceof Error ? error.message : "Metadata provider check failed."
+      });
+    } finally {
+      setCheckingProviders(false);
     }
-  }, []);
-
-  useEffect(() => {
-    if (!draft) return;
-    const timeout = window.setTimeout(() => {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-    }, 1800);
-    return () => window.clearTimeout(timeout);
-  }, [draft]);
-
-  const selectedDraftStats = useMemo(() => {
-    if (!draft) return null;
-    const episodeCount = draft.seasons.reduce((sum, season) => sum + season.episodes.length, 0);
-    return {
-      imageCount: draft.images.length,
-      seasonCount: draft.seasons.length,
-      episodeCount,
-      missingCount: draft.missingFields.length,
-      warningCount: draft.qualityWarnings.length + draft.duplicateWarnings.length
-    };
-  }, [draft]);
-
-  function updateDraft<K extends keyof AiImportDraft>(key: K, value: AiImportDraft[K]) {
-    setDraft((current) => current ? { ...current, [key]: value } : current);
   }
 
-  async function runImport(tabOverride?: AiImportMode) {
-    const mode = tabOverride || (activeTab === "review" || activeTab === "publish" ? "auto" : activeTab);
-    if (!input.trim()) {
-      setMessage({ type: "error", text: "Paste a URL, IMDb ID, TMDb ID, or movie/series name first." });
+  useEffect(() => {
+    checkMetadataProviders();
+  }, []);
+
+  function startProgress() {
+    setProgressIndex(0);
+    let index = 0;
+    const timer = window.setInterval(() => {
+      index = Math.min(index + 1, AI_AUTOFILL_STEPS.length - 2);
+      setProgressIndex(index);
+    }, 650);
+    return timer;
+  }
+
+  function applyDraft(nextDraft: AiImportDraft) {
+    setDraft(nextDraft);
+    setCandidates([]);
+    setExtractedTitle(nextDraft.extractedTitle || null);
+    setDetectedPlatform(nextDraft.platform || null);
+    setOfficialWatchUrl(nextDraft.officialWatchUrl || null);
+    setMessage({
+      type: "success",
+      text: `${nextDraft.title} is ready. Review the filled form before saving.`
+    });
+    onDraftReady?.(nextDraft);
+  }
+
+  async function generateDetails() {
+    if (tmdbStatus?.connected !== true) {
+      setMessage({ type: "error", text: tmdbStatus?.message || "TMDb API key is not configured." });
+      return;
+    }
+
+    const title = titleInput.trim();
+    const officialLink = officialLinkInput.trim();
+    const source = title || officialLink;
+    if (!source) {
+      setMessage({ type: "error", text: "Enter a movie/show name or paste an official OTT/YouTube link first." });
       return;
     }
 
     setLoading(true);
-    setImportStageIndex(0);
-    setMessage({ type: "info", text: "Detecting platform and title from the official link..." });
-    const stageTimer = window.setInterval(() => {
-      setImportStageIndex((current) => {
-        if (current === null) return 0;
-        return Math.min(current + 1, AI_IMPORT_STEPS.length - 1);
-      });
-    }, 900);
+    setDraft(null);
+    setCandidates([]);
+    setMessage({ type: "info", text: "Generating details from public metadata..." });
+    const timer = startProgress();
+
     try {
       const response = await fetch("/api/admin/ai-import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "search", mode, input, mediaType, includeSeasons })
+        body: JSON.stringify({
+          action: "search",
+          mode: "auto",
+          input: source,
+          title,
+          officialWatchUrl: officialLink || null,
+          mediaType: mediaTypeForContentType(contentType),
+          requestedContentType: contentType,
+          includeSeasons: contentType === "web_series"
+        })
       });
       const json = (await response.json()) as AiImportResponse;
-      if (!response.ok || !json.ok) throw new Error(json.error || "Import failed.");
+      if (!response.ok || !json.ok) throw new Error(json.error || "AI Auto Fill failed.");
 
-      if (json.results) {
-        setBulkResults(json.results);
-        const first = json.results.find((item) => item.ok && item.draft)?.draft || null;
-        setDraft(first);
-        setCandidates([]);
-        setMessage({
-          type: "success",
-          text: `Bulk import finished. ${json.results.filter((item) => item.ok).length}/${json.results.length} drafts are ready for review.`
-        });
+      if (json.draft) {
+        applyDraft(json.draft);
       } else if (json.candidates?.length) {
         setCandidates(json.candidates);
         setExtractedTitle(json.extractedTitle || null);
         setDetectedPlatform(json.platform || null);
-        setOfficialWatchUrl(input.trim().startsWith("http") ? input.trim() : null);
-        setDraft(null);
-        setBulkResults([]);
+        setOfficialWatchUrl(officialLink || (source.startsWith("http") ? source : null));
         setMessage({
-          type: "success",
-          text: `Found ${json.candidates.length} TMDb match${json.candidates.length === 1 ? "" : "es"} for "${json.extractedTitle || input}". Select the correct title to auto-fill.`
+          type: "warning",
+          text: `Multiple matches found for "${json.extractedTitle || source}". Select the correct one to fill the form.`
         });
-      } else if (json.draft) {
-        setDraft(json.draft);
-        setCandidates([]);
-        setExtractedTitle(json.draft.extractedTitle || null);
-        setDetectedPlatform(json.draft.platform || null);
-        setOfficialWatchUrl(json.draft.officialWatchUrl || (input.trim().startsWith("http") ? input.trim() : null));
-        setBulkResults([]);
-        setMessage({ type: "success", text: `${json.draft.sourceLabel} draft ready. Review before publishing.` });
+      } else {
+        throw new Error("Metadata not found. Try another official link or movie/show name.");
       }
-      setImportStageIndex(AI_IMPORT_STEPS.length - 1);
-      setActiveTab("review");
+      setProgressIndex(AI_AUTOFILL_STEPS.length - 1);
     } catch (error) {
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "AI import failed." });
+      setProgressIndex(null);
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "AI Auto Fill failed." });
     } finally {
-      window.clearInterval(stageTimer);
+      window.clearInterval(timer);
       setLoading(false);
-      window.setTimeout(() => setImportStageIndex(null), 900);
+      window.setTimeout(() => setProgressIndex(null), 1100);
     }
   }
 
   async function selectCandidate(candidate: AiImportCandidate) {
     setLoading(true);
-    setMessage({ type: "info", text: `Fetching full TMDb details for ${candidate.title}...` });
+    setMessage({ type: "info", text: `Fetching ${candidate.title} details...` });
+    const timer = startProgress();
     try {
       const response = await fetch("/api/admin/ai-import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "details",
-          input,
-          includeSeasons,
+          input: titleInput.trim() || officialLinkInput.trim(),
+          title: titleInput.trim(),
           tmdbId: candidate.tmdbId,
           selectedMediaType: candidate.mediaType,
-          officialWatchUrl,
+          requestedContentType: contentType,
+          includeSeasons: contentType === "web_series",
+          officialWatchUrl: officialLinkInput.trim() || officialWatchUrl,
           extractedTitle,
           platform: detectedPlatform
         })
       });
       const json = (await response.json()) as AiImportResponse;
-      if (!response.ok || !json.ok || !json.draft) throw new Error(json.error || "Full TMDb details could not be fetched.");
-      setDraft(json.draft);
-      setCandidates([]);
-      setMessage({ type: "success", text: `${json.draft.title} is auto-filled from TMDb. Review before saving.` });
-      setActiveTab("review");
+      if (!response.ok || !json.ok || !json.draft) throw new Error(json.error || "Full details could not be fetched.");
+      applyDraft(json.draft);
+      setProgressIndex(AI_AUTOFILL_STEPS.length - 1);
     } catch (error) {
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "Full TMDb details could not be fetched." });
+      setProgressIndex(null);
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Full details could not be fetched." });
     } finally {
+      window.clearInterval(timer);
       setLoading(false);
+      window.setTimeout(() => setProgressIndex(null), 1100);
     }
   }
 
-  async function saveDraft(status: "draft" | "published") {
+  async function fixMissingData() {
+    if (tmdbStatus?.connected !== true) {
+      setMessage({ type: "error", text: tmdbStatus?.message || "TMDb API key is not configured." });
+      return;
+    }
+
     if (!draft) {
-      setMessage({ type: "error", text: "Fetch or select an import draft before saving." });
+      setMessage({ type: "error", text: "Generate details first, then fix missing data." });
       return;
     }
-    if (!draft.title.trim()) {
-      setMessage({ type: "error", text: "Title is required before saving." });
+    if (!window.confirm("Fix Missing Data will update empty or weak AI-filled fields. Continue?")) {
       return;
     }
 
-    setSaving(true);
-    setMessage({ type: "info", text: status === "published" ? "Publishing reviewed import..." : "Saving reviewed import as draft..." });
+    setFixing(true);
+    setMessage({ type: "info", text: "Retrying missing metadata only..." });
+    const timer = startProgress();
     try {
-      const supabase = createSupabaseBrowserClient();
-      const isSeries = draft.contentType === "web_series";
-      if (isSeries) {
-        const finalSlug = await resolveUniqueSlug("web_series", draft.slug, draft.title);
-        const { data: seriesRow, error: seriesError } = await supabase
-          .from("web_series")
-          .insert(draftToSeriesPayload(draft, status, finalSlug))
-          .select("id, slug")
-          .single();
-        if (seriesError || !seriesRow) throw seriesError || new Error("Series row was not saved.");
-
-        for (const season of draft.seasons) {
-          const { data: seasonRow, error: seasonError } = await supabase
-            .from("web_series_seasons")
-            .insert({
-              series_id: seriesRow.id,
-              season_number: season.seasonNumber,
-              title: toNullableString(season.title),
-              description: toNullableString(season.description),
-              poster_url: toNullableString(season.posterUrl),
-              banner_url: toNullableString(draft.bannerUrl),
-              release_year: season.airDate ? Number(String(season.airDate).slice(0, 4)) : null,
-              status,
-              sort_order: season.seasonNumber
-            })
-            .select("id")
-            .single();
-          if (seasonError || !seasonRow) throw seasonError || new Error(`Season ${season.seasonNumber} was not saved.`);
-
-          const episodeRows = season.episodes.map((episode) => ({
-            series_id: seriesRow.id,
-            season_id: seasonRow.id,
-            episode_number: episode.episodeNumber,
-            title: episode.title,
-            description: toNullableString(episode.description),
-            duration_minutes: toNumber(episode.runtimeMinutes),
-            release_date: toNullableString(episode.airDate),
-            poster_url: toNullableString(episode.posterUrl || episode.stillUrl || season.posterUrl || draft.posterUrl),
-            banner_url: toNullableString(episode.stillUrl || draft.bannerUrl),
-            trailer_url: toNullableString(episode.trailerUrl),
-            video_embed_url: null,
-            watch_url: null,
-            video_provider: safeProvider(episode.trailerUrl),
-            platform_name: episode.trailerUrl ? "YouTube" : null,
-            availability_type: episode.trailerUrl ? "official" : "unknown",
-            language: toNullableString(draft.language),
-            quality: null,
-            status,
-            sort_order: episode.episodeNumber
-          }));
-          if (episodeRows.length) {
-            const { error: episodesError } = await supabase.from("web_series_episodes").insert(episodeRows);
-            if (episodesError) throw episodesError;
-          }
-        }
-
-        setMessage({ type: "success", text: `Web series ${status === "published" ? "published" : "saved as draft"}: ${seriesRow.slug}` });
-      } else {
-        const finalSlug = await resolveUniqueSlug("movies", draft.slug, draft.title);
-        const { data: movieRow, error: movieError } = await supabase
-          .from("movies")
-          .insert(draftToMoviePayload(draft, status, finalSlug))
-          .select("id, slug")
-          .single();
-        if (movieError || !movieRow) throw movieError || new Error("Movie row was not saved.");
-
-        setMessage({ type: "success", text: `${draft.contentType === "movie" ? "Movie" : draft.contentType} ${status === "published" ? "published" : "saved as draft"}: ${movieRow.slug}` });
-      }
-
-      window.localStorage.removeItem(STORAGE_KEY);
-      router.refresh();
-      setActiveTab("publish");
+      const response = await fetch("/api/admin/ai-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "fix_missing",
+          input: titleInput.trim() || officialLinkInput.trim() || draft.input,
+          title: titleInput.trim(),
+          draft,
+          mediaType: mediaTypeForContentType(contentType),
+          requestedContentType: contentType,
+          includeSeasons: contentType === "web_series",
+          officialWatchUrl: officialLinkInput.trim() || draft.officialWatchUrl || null
+        })
+      });
+      const json = (await response.json()) as AiImportResponse;
+      if (!response.ok || !json.ok || !json.draft) throw new Error(json.error || "Missing data could not be fixed.");
+      applyDraft(json.draft);
+      setFixSummary({
+        fixed: json.fixedFields || [],
+        missing: json.stillMissing || json.draft.missingFields || []
+      });
+      setMessage({
+        type: "success",
+        text: (json.fixedFields || []).length
+          ? `Fixed: ${(json.fixedFields || []).join(", ")}.`
+          : "No new missing data was found from available sources."
+      });
+      setProgressIndex(AI_AUTOFILL_STEPS.length - 1);
     } catch (error) {
-      setMessage({ type: "error", text: schemaHint(error) });
+      setProgressIndex(null);
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Missing data could not be fixed." });
     } finally {
-      setSaving(false);
+      window.clearInterval(timer);
+      setFixing(false);
+      window.setTimeout(() => setProgressIndex(null), 1100);
     }
   }
 
   return (
-    <section className="section ai-assistant-shell">
+    <section className={embedded ? "panel ai-assistant-shell ai-autofill-panel" : "section ai-assistant-shell"}>
       <div className="section-head">
         <div>
           <p className="rating-badge">Admin only</p>
-          <h2><Sparkles size={24} /> AI Assistant</h2>
-          <p className="muted">Import public metadata from TMDb/IMDb IDs or title search, review the draft, then save or publish safely.</p>
+          <h2><Sparkles size={24} /> AI Auto Fill</h2>
+          <p className="muted">
+            Paste one official link or a title. WatchFinder fills the existing Add Content form as a draft for review.
+          </p>
         </div>
         <div className="ai-source-stack">
-          <span className="chip active">TMDb priority</span>
-          <span className="chip">IMDb lookup</span>
+          <span className="chip active">TMDb</span>
+          <span className={tmdbStatus?.configured ? "chip active" : "chip"}>
+            TMDb configured = {tmdbStatus?.configured ? "true" : "false"}
+          </span>
           <span className="chip">YouTube trailer</span>
         </div>
       </div>
 
       {message ? <p className={statusClass(message.type)}>{message.text}</p> : null}
 
-      <div className="ai-mode-grid">
-        {importTabs.map((tab) => (
-          <button
-            className={activeTab === tab.id ? "ai-mode-card active" : "ai-mode-card"}
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            type="button"
-          >
-            <strong>{tab.title}</strong>
-            <span>{tab.helper}</span>
+      {tmdbStatus?.connected !== true ? (
+        <div className="notice-card warning ai-provider-setup-card">
+          <strong><AlertTriangle size={16} /> TMDb setup required</strong>
+          <p>{checkingProviders ? "Checking TMDb connection..." : tmdbStatus?.message || "TMDb API key is not configured."}</p>
+          <p className="muted">
+            Add `TMDB_API_KEY=` with a real TMDb key in `.env.local` or your hosting environment, restart/redeploy,
+            then test it from Settings &gt; Metadata Providers.
+          </p>
+          <button className="button" type="button" onClick={checkMetadataProviders} disabled={checkingProviders}>
+            {checkingProviders ? <Loader2 className="spin-icon" size={16} /> : null}
+            Recheck connection
           </button>
-        ))}
+        </div>
+      ) : (
+        <p className="form-message success"><CheckCircle2 size={16} /> TMDb Connected. AI Auto Fill is ready.</p>
+      )}
+
+      <div className="form-grid two">
+        <label className="field">
+          <span>Content Type</span>
+          <select value={contentType} onChange={(event) => setContentType(event.target.value as AiContentType)}>
+            {contentTypeOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Movie/Show Name</span>
+          <input
+            value={titleInput}
+            onChange={(event) => setTitleInput(event.target.value)}
+            placeholder="The Arctic Convoy"
+          />
+        </label>
+        <label className="field">
+          <span>Official Watch Link</span>
+          <input
+            value={officialLinkInput}
+            onChange={(event) => setOfficialLinkInput(event.target.value)}
+            placeholder="https://www.hotstar.com/in/movies/the-arctic-convoy/1271649867/watch"
+          />
+          <small className="form-helper">Optional when title is provided. Saved only as the legal official watch link.</small>
+        </label>
       </div>
 
-      <div className="ai-workbench">
-        <div className="panel form-grid ai-import-panel">
-          <div className="section-head compact">
-            <div>
-              <h3>{activeTab === "bulk" ? "Bulk Import Queue" : "Import Source"}</h3>
-              <p className="muted">Only official/public metadata is fetched. Protected OTT video is never scraped or hosted.</p>
-            </div>
-            <UploadCloud size={22} />
-          </div>
-
-          <label className="field">
-            <span>{activeTab === "bulk" ? "URLs, IMDb IDs, TMDb IDs, or titles" : "URL, IMDb ID, TMDb ID, or title"}</span>
-            {activeTab === "bulk" ? (
-              <textarea
-                rows={8}
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder={"tt0111161\nhttps://www.themoviedb.org/movie/550\nMirzapur"}
-              />
-            ) : (
-              <input
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder="Paste URL / IMDb ID / TMDb ID / movie or series name"
-              />
-            )}
-          </label>
-
-          <div className="form-grid two">
-            <label className="field">
-              <span>Content hint</span>
-              <select value={mediaType} onChange={(event) => setMediaType(event.target.value as "auto" | "movie" | "tv")}>
-                <option value="auto">Auto detect</option>
-                <option value="movie">Movie</option>
-                <option value="tv">Web Series / TV</option>
-              </select>
-            </label>
-            <label className="language-select-chip ai-checkbox">
-              <input checked={includeSeasons} onChange={(event) => setIncludeSeasons(event.target.checked)} type="checkbox" />
-              Fetch seasons and episodes
-            </label>
-          </div>
-
-          <div className="save-actions">
-            <button className="button primary" disabled={loading} onClick={() => runImport(activeTab === "bulk" ? "bulk" : undefined)} type="button">
-              {loading ? <Loader2 className="spin-icon" size={18} /> : <Sparkles size={18} />}
-              {loading ? "Fetching..." : "AI Fetch"}
-            </button>
-            <button className="button" onClick={() => setManualOpen((value) => !value)} type="button">
-              <ClipboardList size={18} /> {manualOpen ? "Hide notes" : "Show workflow"}
-            </button>
-          </div>
-
-          {importStageIndex !== null ? (
-            <div className="ai-progress-steps" aria-live="polite">
-              {AI_IMPORT_STEPS.map((step, index) => (
-                <span
-                  className={index <= importStageIndex ? "active" : ""}
-                  key={step}
-                >
-                  {index < importStageIndex ? <CheckCircle2 size={13} /> : index === importStageIndex && loading ? <Loader2 className="spin-icon" size={13} /> : null}
-                  {step}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
-          {manualOpen ? (
-            <div className="notice-card">
-              <strong>Import to AI Processing to Review to Publish</strong>
-              <p className="muted">TMDb is the required metadata source. If a pasted OTT URL does not contain a readable title, use Movie Name Search and select the correct TMDb match.</p>
-            </div>
-          ) : null}
-
-          {candidates.length ? (
-            <div className="ai-candidate-panel">
-              <div>
-                <strong>TMDb matches</strong>
-                <p className="muted">
-                  {detectedPlatform ? `${detectedPlatform.name} URL detected. ` : ""}
-                  {extractedTitle ? `Searching for "${extractedTitle}". ` : ""}
-                  Select the exact movie/show to fetch full metadata.
-                </p>
-              </div>
-              <div className="ai-candidate-grid">
-                {candidates.map((candidate) => (
-                  <button
-                    className={`ai-candidate-card${candidate.isBestMatch ? " recommended" : ""}`}
-                    disabled={loading}
-                    key={`${candidate.mediaType}-${candidate.tmdbId}`}
-                    onClick={() => selectCandidate(candidate)}
-                    type="button"
-                  >
-                    {candidate.posterUrl ? <img alt={candidate.title} src={candidate.posterUrl} /> : <span className="ai-candidate-poster"><ImageIcon size={22} /></span>}
-                    <span>
-                      {candidate.isBestMatch ? <em className="ai-best-match-badge">Best match</em> : null}
-                      <strong>{candidate.title}</strong>
-                      <small>{candidate.mediaType === "tv" ? "Web Series" : "Movie"} {candidate.releaseYear ? `- ${candidate.releaseYear}` : ""}</small>
-                      <small>{candidate.rating ? `Rating ${Number(candidate.rating).toFixed(1)}` : "TMDb result"}{candidate.confidence ? ` - ${Math.round(candidate.confidence)}% match` : ""}</small>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="panel ai-review-panel">
-          <div className="section-head compact">
-            <div>
-              <h3>Review Data</h3>
-              <p className="muted">Preview what will be saved before anything becomes live.</p>
-            </div>
-            <Database size={22} />
-          </div>
-
-          {!draft ? (
-            <div className="ai-empty-state">
-              <Search size={32} />
-              <strong>No import draft yet</strong>
-              <p className="muted">Paste a source and click AI Fetch. Your review draft will auto-save locally while you work.</p>
-            </div>
-          ) : (
-            <div className="ai-review-stack">
-              <div className="ai-hero-preview">
-                {draft.bannerUrl || draft.posterUrl ? (
-                  <img alt={draft.title} src={draft.bannerUrl || draft.posterUrl || ""} />
-                ) : (
-                  <span><ImageIcon size={28} /> No banner</span>
-                )}
-                <div>
-                  <span className="rating-badge">{draft.sourceLabel}</span>
-                  <h3>{draft.title}</h3>
-                  <p>{draft.shortDescription || draft.description || "Review and complete this draft before publishing."}</p>
-                </div>
-              </div>
-
-              <div className="ai-stat-grid">
-                <div className="admin-card"><strong>{draft.contentType.replace("_", " ")}</strong><p className="muted">Detected type</p></div>
-                <div className="admin-card"><strong>{draft.releaseYear || "Unknown"}</strong><p className="muted">Release year</p></div>
-                <div className="admin-card"><strong>{formatRuntime(draft.runtimeMinutes)}</strong><p className="muted">Runtime</p></div>
-                <div className="admin-card"><strong>{draft.rating ? Number(draft.rating).toFixed(1) : "None"}</strong><p className="muted">Rating</p></div>
-                <div className="admin-card"><strong>{selectedDraftStats?.seasonCount ?? 0}</strong><p className="muted">Seasons</p></div>
-                <div className="admin-card"><strong>{selectedDraftStats?.episodeCount ?? 0}</strong><p className="muted">Episodes</p></div>
-              </div>
-
-              <div className="form-grid two">
-                <label className="field">
-                  <span>Title</span>
-                  <input value={draft.title} onChange={(event) => updateDraft("title", event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>Slug</span>
-                  <input value={draft.slug} onChange={(event) => updateDraft("slug", slugify(event.target.value))} />
-                </label>
-                <label className="field">
-                  <span>Poster URL</span>
-                  <input value={draft.posterUrl || ""} onChange={(event) => updateDraft("posterUrl", event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>Banner URL</span>
-                  <input value={draft.bannerUrl || ""} onChange={(event) => updateDraft("bannerUrl", event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>Official watch URL</span>
-                  <input value={draft.officialWatchUrl || ""} onChange={(event) => updateDraft("officialWatchUrl", event.target.value)} placeholder="Original Hotstar/Netflix/Prime/YouTube official URL" />
-                </label>
-                <label className="field">
-                  <span>Detected platform</span>
-                  <input
-                    value={draft.platform?.name || ""}
-                    onChange={(event) => updateDraft("platform", { key: slugify(event.target.value), name: event.target.value })}
-                    placeholder="JioHotstar, Netflix, Prime Video"
-                  />
-                </label>
-                <label className="field">
-                  <span>Official trailer URL</span>
-                  <input value={draft.trailerUrl || ""} onChange={(event) => updateDraft("trailerUrl", event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>SEO title</span>
-                  <input value={draft.seoTitle} onChange={(event) => updateDraft("seoTitle", event.target.value)} />
-                </label>
-              </div>
-
-              <label className="field">
-                <span>Description / story overview</span>
-                <textarea rows={5} value={draft.description || ""} onChange={(event) => updateDraft("description", event.target.value)} />
-              </label>
-
-              <div className="ai-detail-grid">
-                <div>
-                  <strong>Genres</strong>
-                  <p className="muted">{compactList(draft.genres, 8)}</p>
-                </div>
-                <div>
-                  <strong>Director</strong>
-                  <p className="muted">{draft.director || "Not fetched"}</p>
-                </div>
-                <div>
-                  <strong>Writers</strong>
-                  <p className="muted">{compactList(draft.writers, 5)}</p>
-                </div>
-                <div>
-                  <strong>Cast</strong>
-                  <p className="muted">{compactList(draft.cast.map((person) => person.name), 8)}</p>
-                </div>
-                <div>
-                  <strong>Production</strong>
-                  <p className="muted">{compactList(draft.productionCompanies, 5)}</p>
-                </div>
-                <div>
-                  <strong>Budget / revenue</strong>
-                  <p className="muted">{formatMoney(draft.budget)} / {formatMoney(draft.revenue)}</p>
-                </div>
-              </div>
-
-              {draft.images.length ? (
-                <div>
-                  <strong>Image previews</strong>
-                  <div className="ai-image-grid">
-                    {draft.images.slice(0, 8).map((image) => (
-                      <figure key={`${image.kind}-${image.url}`}>
-                        <img alt={image.label} src={image.url} />
-                        <figcaption>{image.label}</figcaption>
-                      </figure>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {draft.seasons.length ? (
-                <div>
-                  <strong>Seasons and episodes</strong>
-                  <div className="ai-season-list">
-                    {draft.seasons.map((season) => (
-                      <details key={season.seasonNumber}>
-                        <summary>Season {season.seasonNumber}: {season.title || "Untitled"} <span>{season.episodes.length} episodes</span></summary>
-                        <div className="ai-episode-list">
-                          {season.episodes.slice(0, 12).map((episode) => (
-                            <p key={episode.episodeNumber}><strong>E{episode.episodeNumber}</strong> {episode.title} <span>{episode.airDate || ""}</span></p>
-                          ))}
-                          {season.episodes.length > 12 ? <p className="muted">+{season.episodes.length - 12} more episodes</p> : null}
-                        </div>
-                      </details>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {(draft.missingFields.length || draft.duplicateWarnings.length || draft.qualityWarnings.length) ? (
-                <div className="ai-warning-grid">
-                  {draft.missingFields.length ? (
-                    <div className="notice-card error">
-                      <strong><AlertTriangle size={16} /> Missing fields</strong>
-                      <p>{draft.missingFields.join(", ")}</p>
-                    </div>
-                  ) : null}
-                  {draft.duplicateWarnings.length ? (
-                    <div className="notice-card">
-                      <strong><AlertTriangle size={16} /> Duplicate warnings</strong>
-                      <p>{draft.duplicateWarnings.join(" ")}</p>
-                    </div>
-                  ) : null}
-                  {draft.qualityWarnings.length ? (
-                    <div className="notice-card">
-                      <strong><AlertTriangle size={16} /> Quality warnings</strong>
-                      <p>{draft.qualityWarnings.join(" ")}</p>
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="form-message success"><CheckCircle2 size={16} /> Quality check looks good. Review legal links before publishing.</p>
-              )}
-            </div>
-          )}
-        </div>
+      <div className="save-actions">
+        <button className="button primary" disabled={loading || checkingProviders || tmdbStatus?.connected !== true} onClick={generateDetails} type="button">
+          {loading ? <Loader2 className="spin-icon" size={18} /> : <Sparkles size={18} />}
+          {loading ? "Generating..." : "Generate Details"}
+        </button>
+        <button className="button" disabled={!draft || loading || fixing || checkingProviders || tmdbStatus?.connected !== true} onClick={fixMissingData} type="button">
+          {fixing ? <Loader2 className="spin-icon" size={18} /> : <Search size={18} />}
+          {fixing ? "Fixing..." : "Fix Missing Data"}
+        </button>
       </div>
 
-      {bulkResults.length ? (
-        <div className="panel ai-bulk-results">
-          <div className="section-head compact">
-            <div>
-              <h3>Bulk import results</h3>
-              <p className="muted">Click any successful result to review and publish it.</p>
-            </div>
-            <ClipboardList size={22} />
+      {progressIndex !== null ? (
+        <div className="ai-progress-steps" aria-live="polite">
+          {AI_AUTOFILL_STEPS.map((step, index) => (
+            <span className={index <= progressIndex ? "active" : ""} key={step}>
+              {index < progressIndex ? <CheckCircle2 size={13} /> : index === progressIndex && loading ? <Loader2 className="spin-icon" size={13} /> : null}
+              {step}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {candidates.length ? (
+        <div className="ai-candidate-panel">
+          <div>
+            <strong>Choose the correct match</strong>
+            <p className="muted">
+              {detectedPlatform ? `${detectedPlatform.name} link detected. ` : ""}
+              {extractedTitle ? `Detected title: ${extractedTitle}. ` : ""}
+              The best match is highlighted.
+            </p>
           </div>
-          <div className="ai-bulk-grid">
-            {bulkResults.map((result) => (
+          <div className="ai-candidate-grid">
+            {candidates.slice(0, 3).map((candidate) => (
               <button
-                className={result.ok ? "ai-bulk-item" : "ai-bulk-item failed"}
-                disabled={!result.ok || !result.draft}
-                key={result.input}
-                onClick={() => {
-                  if (result.draft) {
-                    setDraft(result.draft);
-                    setActiveTab("review");
-                  }
-                }}
+                className={`ai-candidate-card${candidate.isBestMatch ? " recommended" : ""}`}
+                disabled={loading}
+                key={`${candidate.mediaType}-${candidate.tmdbId}`}
+                onClick={() => selectCandidate(candidate)}
                 type="button"
               >
-                <strong>{result.draft?.title || result.input}</strong>
-                <span>{result.ok ? "Ready for review" : result.error}</span>
+                {candidate.posterUrl ? <img alt={candidate.title} src={candidate.posterUrl} /> : <span className="ai-candidate-poster"><ImageIcon size={22} /></span>}
+                <span>
+                  {candidate.isBestMatch ? <em className="ai-best-match-badge">Best match</em> : null}
+                  <strong>{candidate.title}</strong>
+                  <small>{candidate.mediaType === "tv" ? "Series/TV" : "Movie"} {candidate.releaseYear ? `- ${candidate.releaseYear}` : ""}</small>
+                  <small>{candidate.confidence ? `${Math.round(candidate.confidence)}% confidence` : "Public metadata result"}</small>
+                </span>
               </button>
             ))}
           </div>
         </div>
       ) : null}
 
-      <div className="panel ai-publish-panel">
-        <div className="section-head compact">
-          <div>
-            <h3>Publish Workflow</h3>
-            <p className="muted">Save first as draft when warnings remain. Publish only after verifying official/legal trailer and platform data.</p>
+      {draft ? (
+        <div className="ai-review-stack compact-ai-review">
+          <div className="ai-quality-card">
+            <div>
+              <span className="rating-badge">AI Quality Score</span>
+              <strong>{draft.qualityScore?.label || "Draft quality pending"}</strong>
+              <p className="muted">
+                {draft.qualityScore?.warnings?.length
+                  ? `Needs: ${draft.qualityScore.warnings.join(", ")}`
+                  : "Core fields look complete."}
+              </p>
+            </div>
+            <div className="ai-quality-ring" style={{ ["--score" as string]: `${draft.qualityScore?.score || 0}%` }}>
+              {draft.qualityScore?.score || 0}%
+            </div>
           </div>
-          <Rocket size={22} />
+
+          <div className="ai-hero-preview">
+            {draft.bannerUrl || draft.posterUrl ? (
+              <img alt={draft.title} src={draft.bannerUrl || draft.posterUrl || ""} />
+            ) : (
+              <span><ImageIcon size={28} /> No image found</span>
+            )}
+            <div>
+              <span className="rating-badge">{draft.sourceLabel}</span>
+              <h3>{draft.title}</h3>
+              <p>{draft.shortDescription || draft.description || "Review the filled form below before saving."}</p>
+            </div>
+          </div>
+          <div className="ai-detail-grid">
+            <div><strong>Type</strong><p className="muted">{draft.contentType.replace("_", " ")}</p></div>
+            <div><strong>Year</strong><p className="muted">{draft.releaseYear || "Missing"}</p></div>
+            <div><strong>Genres</strong><p className="muted">{compactList(draft.genres)}</p></div>
+            <div><strong>Platform</strong><p className="muted">{draft.platform?.name || "Not linked"}</p></div>
+            <div><strong>Official link</strong><p className="muted">{draft.officialLinkValidation?.message || "Not checked"}</p></div>
+            <div><strong>Suggested placement</strong><p className="muted">{draft.suggestedPlacement?.primarySection?.replace("_", " ") || "recently added"}</p></div>
+          </div>
+          {draft.suggestedPlacement?.reasons?.length ? (
+            <div className="notice-card">
+              <strong>Category suggestion</strong>
+              <p>{draft.suggestedPlacement.reasons.join(" ")}</p>
+            </div>
+          ) : null}
+          {draft.assistantNotes?.length ? (
+            <div className="notice-card">
+              <strong>Assistant notes</strong>
+              <ul className="ai-note-list">
+                {draft.assistantNotes.map((note) => <li key={note}>{note}</li>)}
+              </ul>
+            </div>
+          ) : null}
+          {draft.duplicateWarnings.length ? (
+            <div className="notice-card warning">
+              <strong><AlertTriangle size={16} /> Duplicate checker</strong>
+              <p>This title may already exist. {draft.duplicateWarnings.join(" ")}</p>
+              <p className="muted">Before saving, use the existing form options to open existing content, save as new listing, or cancel.</p>
+            </div>
+          ) : null}
+          {fixSummary ? (
+            <div className="notice-card">
+              <strong>Fix Missing Data result</strong>
+              <p>Fixed: {fixSummary.fixed.length ? fixSummary.fixed.join(", ") : "Nothing new found"}.</p>
+              <p className="muted">Still missing: {fixSummary.missing.length ? fixSummary.missing.join(", ") : "None"}.</p>
+            </div>
+          ) : null}
+          {(draft.missingFields.length || draft.qualityWarnings.length) ? (
+            <div className="notice-card">
+              <strong><AlertTriangle size={16} /> Review warnings</strong>
+              <p>{[...draft.missingFields, ...draft.qualityWarnings].join(", ")}</p>
+            </div>
+          ) : (
+            <p className="form-message success"><CheckCircle2 size={16} /> Form filled. Keep status as draft until you review it.</p>
+          )}
         </div>
-        <div className="ai-workflow-steps">
-          <span className="active"><Search size={16} /> Import</span>
-          <span className={draft ? "active" : ""}><Sparkles size={16} /> AI Processing</span>
-          <span className={draft ? "active" : ""}><ClipboardList size={16} /> Review</span>
-          <span><Rocket size={16} /> Publish</span>
-        </div>
-        <div className="save-actions">
-          <button className="button" disabled={!draft || saving} onClick={() => saveDraft("draft")} type="button">
-            {saving ? <Loader2 className="spin-icon" size={18} /> : <Film size={18} />} Save Draft
-          </button>
-          <button className="button primary" disabled={!draft || saving} onClick={() => saveDraft("published")} type="button">
-            {saving ? <Loader2 className="spin-icon" size={18} /> : <PlayCircle size={18} />} Publish
-          </button>
-        </div>
-      </div>
+      ) : null}
+
+      <p className="form-helper">
+        Legal safety: this only stores public metadata and official watch links. It never scrapes, downloads, or hosts OTT videos.
+      </p>
     </section>
   );
 }

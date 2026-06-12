@@ -6,6 +6,7 @@ import { slugify } from "@/lib/format";
 import { WATCHFINDER_LANGUAGES } from "@/lib/languages";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { storageBuckets, uploadPublicFile } from "@/lib/storage";
+import type { AiImportDraft } from "@/lib/ai-import-types";
 import type { Genre, Series } from "@/types/watchfinder";
 
 type Message = {
@@ -208,12 +209,16 @@ async function resolveUniqueSeriesSlug(supabase: any, requestedSlug: string, exc
 export default function AdminSeriesForm({
   genres,
   initialSeries = null,
+  aiDraft = null,
+  aiDraftVersion = 0,
   onSaved,
   onAddNew,
   onBackToSeries
 }: {
   genres: Genre[];
   initialSeries?: Series | null;
+  aiDraft?: AiImportDraft | null;
+  aiDraftVersion?: number;
   onSaved?: (series: Series) => void;
   onAddNew?: () => void;
   onBackToSeries?: () => void;
@@ -279,12 +284,82 @@ export default function AdminSeriesForm({
     setBannerPreview(null);
   }, [initialSeries]);
 
+  useEffect(() => {
+    if (!aiDraft || isEditMode) return;
+    applyAiDraftToSeries(aiDraft);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiDraftVersion]);
+
   const seasonCount = seasons.length;
   const episodeCount = useMemo(() => seasons.reduce((total, season) => total + season.episodes.length, 0), [seasons]);
 
   function updateTitle(value: string) {
     setTitle(value);
     if (!slug) setSlug(slugify(value));
+  }
+
+  function applyAiDraftToSeries(draft: AiImportDraft) {
+    const nextTitle = draft.title || draft.extractedTitle || "";
+    setTitle(nextTitle);
+    setSlug(slugify(draft.slug || nextTitle));
+    setDescription(draft.description || draft.storyOverview || "");
+    setPosterUrl(draft.posterUrl || "");
+    setBannerUrl(draft.bannerUrl || "");
+    setGenre((draft.genres || []).join(", "));
+    setPlatformName(draft.platform?.name || "");
+    setLanguage(draft.language || "");
+    setReleaseYear(draft.releaseYear ? String(draft.releaseYear) : "");
+    setRating(draft.rating ? String(Number(draft.rating).toFixed(1)) : "");
+    setTrailerUrl(draft.trailerUrl || "");
+    setVideoEmbedUrl("");
+    setVideoProvider(draft.trailerUrl ? "youtube" : "direct");
+    setSeriesStatus("draft");
+    setIsFeatured(false);
+    setIsLatest(false);
+    setIsTrending(false);
+    setIsHindiDubbed([...(draft.tags || []), ...(draft.keywords || []), draft.language || ""].join(" ").toLowerCase().includes("hindi dubbed"));
+    setIsFreeLegal(false);
+    setIsOfficial(Boolean(draft.trailerUrl || draft.officialWatchUrl));
+    setSeoTitle(draft.seoTitle || "");
+    setSeoDescription(draft.seoDescription || "");
+    setPosterPreview(draft.posterUrl || null);
+    setBannerPreview(draft.bannerUrl || null);
+    setSeasons(draft.seasons.length ? draft.seasons.map((season) => ({
+      localId: localId("season"),
+      season_number: String(season.seasonNumber),
+      title: season.title || `Season ${season.seasonNumber}`,
+      description: season.description || "",
+      poster_url: season.posterUrl || draft.posterUrl || "",
+      banner_url: draft.bannerUrl || "",
+      release_year: season.airDate ? String(season.airDate).slice(0, 4) : draft.releaseYear ? String(draft.releaseYear) : "",
+      status: "draft",
+      sort_order: String(season.seasonNumber),
+      collapsed: false,
+      episodes: season.episodes.length ? season.episodes.map((episode) => ({
+        localId: localId("episode"),
+        episode_number: String(episode.episodeNumber),
+        title: episode.title || `Episode ${episode.episodeNumber}`,
+        description: episode.description || "",
+        poster_url: episode.posterUrl || episode.stillUrl || season.posterUrl || draft.posterUrl || "",
+        banner_url: episode.stillUrl || draft.bannerUrl || "",
+        trailer_url: episode.trailerUrl || "",
+        video_embed_url: "",
+        watch_url: draft.officialWatchUrl || "",
+        video_provider: episode.trailerUrl ? "youtube" : "direct",
+        platform_name: draft.platform?.name || "",
+        availability_type: "unknown",
+        language: draft.language || "",
+        quality: "",
+        duration_minutes: episode.runtimeMinutes ? String(episode.runtimeMinutes) : "",
+        release_date: episode.airDate || "",
+        status: "draft",
+        sort_order: String(episode.episodeNumber)
+      })) : [makeEmptyEpisode(1)]
+    })) : [makeEmptySeason(1)]);
+    setMessage({
+      type: "success",
+      text: `AI Auto Fill filled ${nextTitle}. Status is Draft. Review seasons and episodes before saving.`
+    });
   }
 
   function updateSeason(localSeasonId: string, patch: Partial<SeasonFormState>) {

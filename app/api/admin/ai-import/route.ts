@@ -17,11 +17,32 @@ const TMDB_API_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 const MAX_BULK_ITEMS = 50;
 
+const languageNames: Record<string, string> = {
+  hi: "Hindi",
+  en: "English",
+  ta: "Tamil",
+  te: "Telugu",
+  ml: "Malayalam",
+  kn: "Kannada",
+  mr: "Marathi",
+  bn: "Bengali",
+  pa: "Punjabi",
+  gu: "Gujarati",
+  ur: "Urdu",
+  or: "Odia",
+  as: "Assamese",
+  bho: "Bhojpuri",
+  ne: "Nepali"
+};
+
 type ImportRequest = {
-  action?: "search" | "details" | "import";
+  action?: "search" | "details" | "import" | "fix_missing";
   mode?: AiImportMode;
   input?: string;
+  title?: string | null;
   mediaType?: "auto" | "movie" | "tv";
+  requestedContentType?: "movie" | "web_series" | "tv_show" | "cartoon";
+  draft?: AiImportDraft | null;
   includeSeasons?: boolean;
   tmdbId?: number;
   selectedMediaType?: "movie" | "tv";
@@ -175,8 +196,42 @@ function tmdbApiKey() {
   return process.env.TMDB_API_KEY || process.env.NEXT_PUBLIC_TMDB_API_KEY || "";
 }
 
+function omdbApiKey() {
+  return process.env.OMDB_API_KEY || "";
+}
+
+function youtubeApiKey() {
+  return process.env.YOUTUBE_API_KEY || "";
+}
+
 function hasTmdbConfig() {
   return Boolean(tmdbApiKey() || Object.keys(tmdbAuthHeaders()).length);
+}
+
+function languageNameFromCode(value?: string | null) {
+  const code = String(value || "").trim().toLowerCase();
+  return languageNames[code] || (code ? code.toUpperCase() : null);
+}
+
+function applyRequestedContentType(
+  draft: AiImportDraft,
+  requestedContentType?: ImportRequest["requestedContentType"]
+) {
+  if (!requestedContentType) return enrichDraft(draft);
+  return enrichDraft({
+    ...draft,
+    contentType: requestedContentType,
+    tags: Array.from(new Set([requestedContentType, ...draft.tags]))
+  });
+}
+
+function mediaTypeFromRequested(
+  requestedContentType: ImportRequest["requestedContentType"],
+  fallback: "auto" | "movie" | "tv"
+) {
+  if (requestedContentType === "web_series" || requestedContentType === "tv_show") return "tv";
+  if (requestedContentType === "movie") return "movie";
+  return fallback;
 }
 
 function compactText(value?: string | null, max = 155) {
@@ -216,7 +271,7 @@ function isHttpUrl(value: string) {
 
 function ensureTmdbConfigured() {
   if (!hasTmdbConfig()) {
-    throw new Error("TMDb API key missing. Add TMDB_API_KEY in env, restart the app, then try AI Fetch again.");
+    throw new Error("TMDb API key is not configured.");
   }
 }
 
@@ -310,6 +365,11 @@ function isLikelyJunkTitle(value: string) {
   const clean = value.trim().toLowerCase();
   if (!clean || clean.length < 2) return true;
   if (/^(www\.)?[a-z0-9-]+\.(com|in|net|org|video|tv)$/i.test(clean)) return true;
+  const domainish = clean.replace(/[\s.]+/g, ".");
+  if (/^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|in|net|org|video|tv)$/i.test(domainish)) return true;
+  const wordKey = clean.replace(/[^a-z0-9]+/g, " ").trim();
+  if (/^(www\s+)?[a-z0-9-]+\s+(com|in|net|org|video|tv)$/i.test(wordKey)) return true;
+  if (/^(www\s+)?(hotstar|jiohotstar|netflix|primevideo|youtube|zee5|sonyliv|jiocinema|mxplayer|aha)\s*(com|in|video|tv)?$/i.test(wordKey)) return true;
   if (/^https?:\/\//i.test(clean)) return true;
   if (noisyUrlWords.has(clean)) return true;
   if (/^\d+$/.test(clean)) return true;
@@ -569,6 +629,28 @@ function youtubeTrailer(videos?: { results?: any[] }) {
     : { url: null, name: null };
 }
 
+async function fetchYouTubeTrailerByTitle(title: string, year?: number | null) {
+  const key = youtubeApiKey();
+  if (!key || !title.trim()) return { url: null, name: null };
+
+  try {
+    const url = new URL("https://www.googleapis.com/youtube/v3/search");
+    url.searchParams.set("part", "snippet");
+    url.searchParams.set("type", "video");
+    url.searchParams.set("maxResults", "1");
+    url.searchParams.set("q", `${title} ${year || ""} official trailer`.trim());
+    url.searchParams.set("key", key);
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) return { url: null, name: null };
+    const data = await response.json();
+    const videoId = data.items?.[0]?.id?.videoId;
+    const name = data.items?.[0]?.snippet?.title || "Official Trailer";
+    return videoId ? { url: `https://www.youtube.com/watch?v=${videoId}`, name } : { url: null, name: null };
+  } catch {
+    return { url: null, name: null };
+  }
+}
+
 function tmdbImages(item: any): AiImportedImage[] {
   return [
     item.poster_path ? { kind: "poster", label: "Poster", url: imageUrl(item.poster_path, "w500") } : null,
@@ -618,7 +700,15 @@ function missingFields(draft: Partial<AiImportDraft>) {
     !draft.posterUrl ? "Poster" : null,
     !draft.bannerUrl ? "Banner/backdrop" : null,
     !draft.trailerUrl ? "Official trailer" : null,
-    !draft.genres?.length ? "Genres" : null
+    !draft.genres?.length ? "Genres" : null,
+    !draft.language ? "Language" : null,
+    !draft.cast?.length ? "Cast" : null,
+    !draft.director ? "Director" : null,
+    !draft.runtimeMinutes ? "Runtime" : null,
+    !draft.releaseYear ? "Release year" : null,
+    !draft.seoTitle ? "SEO title" : null,
+    !draft.seoDescription ? "SEO description" : null,
+    !draft.officialWatchUrl ? "Official watch link" : null
   ].filter(Boolean) as string[];
 }
 
@@ -630,6 +720,159 @@ function validateFetchedData(draft: Partial<AiImportDraft>) {
   if (!draft.description) warnings.push("Description is missing from TMDb.");
   if (!draft.genres?.length) warnings.push("Genres are missing from TMDb.");
   return warnings;
+}
+
+function validateOfficialLink(url?: string | null, platform?: AiImportPlatform | null) {
+  if (!url) {
+    return {
+      status: "missing" as const,
+      platformName: platform?.name || null,
+      message: "No official watch link was provided."
+    };
+  }
+
+  const detected = detectPlatformFromUrl(url);
+  if (detected) {
+    return {
+      status: "valid" as const,
+      platformName: detected.name,
+      message: `Official platform detected as ${detected.name}.`
+    };
+  }
+
+  return {
+    status: "unknown" as const,
+    platformName: platform?.name || null,
+    message: "Unknown platform. Please confirm this is an official legal source."
+  };
+}
+
+function calculateQualityScore(draft: AiImportDraft) {
+  const checks: Array<{ ok: boolean; label: string; weight: number }> = [
+    { ok: Boolean(draft.title), label: "Title present", weight: 10 },
+    { ok: Boolean(draft.description), label: "Description present", weight: 10 },
+    { ok: Boolean(draft.posterUrl), label: "Poster present", weight: 10 },
+    { ok: Boolean(draft.bannerUrl), label: "Banner present", weight: 8 },
+    { ok: Boolean(draft.trailerUrl), label: "Trailer present", weight: 8 },
+    { ok: Boolean(draft.officialWatchUrl), label: "Official watch link present", weight: 8 },
+    { ok: Boolean(draft.platform), label: "Platform detected", weight: 8 },
+    { ok: Boolean(draft.genres?.length), label: "Genres selected", weight: 8 },
+    { ok: Boolean(draft.language), label: "Language selected", weight: 7 },
+    { ok: Boolean(draft.cast?.length || draft.director), label: "Cast/director present", weight: 8 },
+    { ok: Boolean(draft.seoTitle && draft.seoDescription), label: "SEO filled", weight: 8 },
+    { ok: Boolean(draft.status || "draft"), label: "Status selected", weight: 7 }
+  ];
+  const total = checks.reduce((sum, item) => sum + item.weight, 0);
+  const earned = checks.reduce((sum, item) => sum + (item.ok ? item.weight : 0), 0);
+  const score = Math.round((earned / total) * 100);
+  const warnings = checks.filter((item) => !item.ok).map((item) => item.label.replace(" present", "").replace(" selected", ""));
+  const label = score >= 90
+    ? `${score}% Ready to publish`
+    : score >= 70
+      ? `${score}% Good but review missing fields`
+      : `${score}% Draft only`;
+  return { score, label, warnings };
+}
+
+function suggestCategoryPlacement(draft: AiImportDraft) {
+  const reasons: string[] = [];
+  const text = [
+    draft.contentType,
+    draft.language,
+    draft.originalLanguage,
+    ...(draft.genres || []),
+    ...(draft.tags || []),
+    ...(draft.keywords || [])
+  ].join(" ").toLowerCase();
+  const releaseYear = draft.releaseYear || 0;
+  let primarySection = "recently_added";
+
+  if (draft.contentType === "cartoon" || text.includes("animation") || text.includes("cartoon")) {
+    primarySection = "cartoon";
+    reasons.push("Animation/cartoon content detected.");
+  } else if (draft.contentType === "tv_show") {
+    primarySection = "tv_show";
+    reasons.push("TV show content type selected.");
+  } else if (draft.contentType === "web_series") {
+    primarySection = "web_series";
+    reasons.push("Web series content type selected.");
+  } else if (text.includes("hindi dubbed")) {
+    primarySection = "hindi_dubbed";
+    reasons.push("Hindi Dubbed metadata detected.");
+  } else if (draft.officialWatchUrl && releaseYear >= new Date().getFullYear() - 2) {
+    primarySection = "recently_added";
+    reasons.push("Recent official OTT link detected.");
+  } else if ((draft.rating || 0) >= 7.5 || (draft.popularityScore || 0) >= 80) {
+    primarySection = "trending";
+    reasons.push("High rating/popularity detected.");
+  }
+
+  if (draft.platform?.key === "youtube" && draft.trailerUrl) {
+    primarySection = "official_youtube";
+    reasons.push("Official YouTube link/trailer detected.");
+  }
+  if (text.includes("free legal") || text.includes("public domain")) {
+    primarySection = "free_legal";
+    reasons.push("Free/legal/public-domain signal detected.");
+  }
+
+  const showInHero = Boolean(draft.bannerUrl && draft.title && draft.description);
+  if (showInHero) reasons.push("Strong banner available, eligible for Hero Slider.");
+
+  return {
+    primarySection,
+    showInHero,
+    reasons: reasons.length ? reasons : ["Recently Added is the safest draft placement."]
+  };
+}
+
+function generateSEO(draft: AiImportDraft) {
+  const year = draft.releaseYear ? ` (${draft.releaseYear})` : "";
+  const platform = draft.platform?.name ? ` on ${draft.platform.name}` : "";
+  const genre = draft.genres?.[0] ? `${draft.genres[0]} ` : "";
+  const description = draft.description || draft.shortDescription || "";
+  return {
+    seoTitle: `Watch ${draft.title}${year} - Cast, Trailer & Official Link`,
+    seoDescription: compactText(`${draft.title}${year} is a ${genre}title${platform}. ${description} Find official trailer, cast, and legal watch links on WatchFinder.`, 155),
+    tags: Array.from(new Set([
+      draft.title,
+      draft.releaseYear ? String(draft.releaseYear) : "",
+      ...(draft.genres || []),
+      draft.platform?.name || "",
+      ...(draft.cast || []).slice(0, 5).map((person) => person.name),
+      draft.language || "",
+      draft.director || ""
+    ].filter(Boolean).map(String)))
+  };
+}
+
+function assistantNotes(draft: AiImportDraft) {
+  const notes: string[] = [];
+  if (!draft.posterUrl) notes.push("Poster missing. Upload manually or try Fix Missing Data.");
+  if (draft.bannerUrl) notes.push("Banner available. Consider Hero Slider only after review.");
+  if ([...(draft.tags || []), ...(draft.keywords || []), draft.language || ""].join(" ").toLowerCase().includes("hindi dubbed")) {
+    notes.push("This looks Hindi Dubbed. Confirm Hindi Dubbed language if correct.");
+  }
+  if (draft.platform?.name) notes.push(`Official link detected as ${draft.platform.name}.`);
+  if (draft.qualityScore) notes.push(`Quality score is ${draft.qualityScore.score}%. ${draft.qualityScore.score >= 80 ? "Looks safe to review for publishing." : "Keep as draft until missing items are fixed."}`);
+  return notes.slice(0, 5);
+}
+
+function enrichDraft(draft: AiImportDraft) {
+  const seo = generateSEO(draft);
+  const nextDraft: AiImportDraft = {
+    ...draft,
+    seoTitle: draft.seoTitle || seo.seoTitle,
+    seoDescription: draft.seoDescription || seo.seoDescription,
+    tags: Array.from(new Set([...(draft.tags || []), ...seo.tags])),
+    officialLinkValidation: validateOfficialLink(draft.officialWatchUrl, draft.platform),
+    suggestedPlacement: suggestCategoryPlacement(draft)
+  };
+  nextDraft.missingFields = missingFields(nextDraft);
+  nextDraft.qualityWarnings = validateFetchedData(nextDraft);
+  nextDraft.qualityScore = calculateQualityScore(nextDraft);
+  nextDraft.assistantNotes = assistantNotes(nextDraft);
+  return nextDraft;
 }
 
 async function duplicateWarnings(draft: Pick<AiImportDraft, "title" | "releaseYear" | "contentType" | "tmdbId" | "imdbId" | "officialWatchUrl">) {
@@ -654,13 +897,22 @@ async function duplicateWarnings(draft: Pick<AiImportDraft, "title" | "releaseYe
   }
 
   if (draft.officialWatchUrl) {
-    const officialUrlMatch = await supabase
+    const rowOfficialUrlMatch = await supabase
+      .from("movies")
+      .select("title, slug, status, watch_url, official_watch_url")
+      .or(`watch_url.eq.${draft.officialWatchUrl},official_watch_url.eq.${draft.officialWatchUrl}`)
+      .limit(1);
+    if (!rowOfficialUrlMatch.error && rowOfficialUrlMatch.data?.length) {
+      warnings.push(`Same official watch URL already exists: ${rowOfficialUrlMatch.data[0].title} (${rowOfficialUrlMatch.data[0].slug})`);
+    }
+
+    const linkOfficialUrlMatch = await supabase
       .from("movies")
       .select("title, slug, status, watch_url")
       .eq("watch_url", draft.officialWatchUrl)
       .limit(1);
-    if (!officialUrlMatch.error && officialUrlMatch.data?.length) {
-      warnings.push(`Same official watch URL already exists: ${officialUrlMatch.data[0].title} (${officialUrlMatch.data[0].slug})`);
+    if (!linkOfficialUrlMatch.error && linkOfficialUrlMatch.data?.length) {
+      warnings.push(`Same official watch URL already exists: ${linkOfficialUrlMatch.data[0].title} (${linkOfficialUrlMatch.data[0].slug})`);
     }
   }
 
@@ -672,6 +924,18 @@ async function duplicateWarnings(draft: Pick<AiImportDraft, "title" | "releaseYe
   if (!movieMatch.error && movieMatch.data?.length) {
     const sameYear = movieMatch.data.find((item: any) => item.release_year === draft.releaseYear);
     warnings.push(sameYear ? `Possible duplicate movie: ${sameYear.title} (${sameYear.slug})` : `Similar movie title already exists: ${movieMatch.data[0].title}`);
+  }
+
+  const slug = slugify(title);
+  if (slug) {
+    const slugMatch = await supabase
+      .from("movies")
+      .select("title, slug, status")
+      .eq("slug", slug)
+      .limit(1);
+    if (!slugMatch.error && slugMatch.data?.length) {
+      warnings.push(`Same slug already exists: ${slugMatch.data[0].title} (${slugMatch.data[0].slug})`);
+    }
   }
 
   if (draft.contentType === "web_series") {
@@ -855,11 +1119,14 @@ function baseDraft(
     storyOverview: item.overview || null,
     releaseDate,
     releaseYear,
+    lastAirDate: item.last_air_date || null,
+    seasonCount: mediaType === "tv" ? item.number_of_seasons ?? null : null,
+    episodeCount: mediaType === "tv" ? item.number_of_episodes ?? null : null,
     runtimeMinutes: mediaType === "movie" ? item.runtime ?? null : item.episode_run_time?.[0] ?? null,
     status: item.status || null,
     genres,
     subGenres: genres.slice(0, 3),
-    language: item.original_language ? item.original_language.toUpperCase() : null,
+    language: languageNameFromCode(item.original_language),
     originalLanguage: item.original_language || null,
     country: item.origin_country?.[0] || item.production_countries?.[0]?.iso_3166_1 || null,
     budget: item.budget ?? null,
@@ -898,11 +1165,14 @@ function baseDraft(
 async function importMovie(id: number, input: string, context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null } = {}) {
   const item = await fetchFullMovieDetails(id);
   const draft = baseDraft(item, "movie", input, context);
+  if (!draft.trailerUrl) {
+    const trailer = await fetchYouTubeTrailerByTitle(draft.title, draft.releaseYear);
+    draft.trailerUrl = trailer.url;
+    draft.trailerName = trailer.name;
+  }
   draft.alternativeTitles = (item.alternative_titles?.titles ?? []).slice(0, 12).map((entry: any) => entry.title).filter(Boolean);
   draft.duplicateWarnings = await duplicateWarnings(draft);
-  draft.missingFields = missingFields(draft);
-  draft.qualityWarnings = validateFetchedData(draft);
-  return draft;
+  return enrichDraft(draft);
 }
 
 async function importSeries(
@@ -913,6 +1183,11 @@ async function importSeries(
 ) {
   const item = await fetchFullTvDetails(id);
   const draft = baseDraft(item, "tv", input, context);
+  if (!draft.trailerUrl) {
+    const trailer = await fetchYouTubeTrailerByTitle(draft.title, draft.releaseYear);
+    draft.trailerUrl = trailer.url;
+    draft.trailerName = trailer.name;
+  }
   draft.alternativeTitles = (item.alternative_titles?.results ?? []).slice(0, 12).map((entry: any) => entry.title).filter(Boolean);
 
   if (includeSeasons) {
@@ -953,9 +1228,7 @@ async function importSeries(
   }
 
   draft.duplicateWarnings = await duplicateWarnings(draft);
-  draft.missingFields = missingFields(draft);
-  draft.qualityWarnings = validateFetchedData(draft);
-  return draft;
+  return enrichDraft(draft);
 }
 
 async function fetchTrailer(id: number, type: "movie" | "tv") {
@@ -1008,13 +1281,14 @@ async function detailsFromSelection(body: ImportRequest) {
     officialWatchUrl: body.officialWatchUrl || null,
     platform: body.platform || detectPlatformFromUrl(body.officialWatchUrl)
   };
-  return fetchFullTMDbDetails(
+  const draft = await fetchFullTMDbDetails(
     id,
     mediaType,
     body.input || context.extractedTitle || String(id),
     body.includeSeasons !== false,
     context
   );
+  return applyRequestedContentType(draft, body.requestedContentType);
 }
 
 async function detectTitleCandidates(input: string, platform: AiImportPlatform | null) {
@@ -1029,16 +1303,28 @@ async function detectTitleCandidates(input: string, platform: AiImportPlatform |
   return { titles, metadata };
 }
 
-async function searchFromInput(input: string, mode: AiImportMode, mediaType: "auto" | "movie" | "tv", includeSeasons: boolean) {
+async function searchFromInput(
+  input: string,
+  mode: AiImportMode,
+  mediaType: "auto" | "movie" | "tv",
+  includeSeasons: boolean,
+  requestedContentType?: ImportRequest["requestedContentType"],
+  explicitOfficialWatchUrl?: string | null
+) {
   ensureTmdbConfigured();
   if (mode === "url" && !isHttpUrl(input)) {
-    throw new Error("Invalid URL. Paste an official https URL, or use Movie Name Search for plain titles.");
+    throw new Error("Invalid URL. Paste an official https URL, or type the movie/show name directly.");
   }
-  const platform = detectPlatformFromUrl(input);
-  const inferredType = detectContentTypeFromUrl(input);
-  const effectiveMediaType = mediaType === "auto" && inferredType ? inferredType : mediaType;
-  const officialWatchUrl = isHttpUrl(input) ? input : null;
-  const titleCandidates = officialWatchUrl ? (await detectTitleCandidates(input, platform)).titles : [cleanTitle(input, platform)];
+  const officialWatchUrl = explicitOfficialWatchUrl && isHttpUrl(explicitOfficialWatchUrl)
+    ? explicitOfficialWatchUrl
+    : isHttpUrl(input) ? input : null;
+  const platform = detectPlatformFromUrl(officialWatchUrl || input);
+  const inferredType = detectContentTypeFromUrl(officialWatchUrl || input);
+  const requestedMediaType = mediaTypeFromRequested(requestedContentType, mediaType);
+  const effectiveMediaType = requestedMediaType === "auto" && inferredType ? inferredType : requestedMediaType;
+  const titleCandidates = isHttpUrl(input)
+    ? (await detectTitleCandidates(input, platform)).titles
+    : [cleanTitle(input, platform)];
   const extractedTitle = titleCandidates[0] || "";
   if (!extractedTitle) {
     throw new Error("Could not detect metadata from this link. Try another official link or check TMDb API key.");
@@ -1050,7 +1336,7 @@ async function searchFromInput(input: string, mode: AiImportMode, mediaType: "au
     if (candidates.length) break;
   }
   if (!candidates.length) {
-    throw new Error(`No TMDb match found for "${extractedTitle}". Try another official link or check TMDb API key.`);
+    throw new Error(`No TMDb result found for "${extractedTitle}". AI Auto Fill did not create a fallback draft.`);
   }
   const ranked = rankCandidatesForTitle(candidates, extractedTitle, effectiveMediaType);
   const best = officialWatchUrl ? autoSelectBestMatch(ranked, extractedTitle) : null;
@@ -1060,7 +1346,7 @@ async function searchFromInput(input: string, mode: AiImportMode, mediaType: "au
       officialWatchUrl,
       platform
     });
-    return { ok: true, draft, extractedTitle, platform };
+    return { ok: true, draft: applyRequestedContentType(draft, requestedContentType), extractedTitle, platform };
   }
 
   return {
@@ -1073,12 +1359,23 @@ async function searchFromInput(input: string, mode: AiImportMode, mediaType: "au
   };
 }
 
-async function importBestCandidate(input: string, mediaType: "auto" | "movie" | "tv", includeSeasons: boolean) {
-  const platform = detectPlatformFromUrl(input);
-  const inferredType = detectContentTypeFromUrl(input);
-  const effectiveMediaType = mediaType === "auto" && inferredType ? inferredType : mediaType;
-  const officialWatchUrl = isHttpUrl(input) ? input : null;
-  const titleCandidates = officialWatchUrl ? (await detectTitleCandidates(input, platform)).titles : [cleanTitle(input, platform)];
+async function importBestCandidate(
+  input: string,
+  mediaType: "auto" | "movie" | "tv",
+  includeSeasons: boolean,
+  requestedContentType?: ImportRequest["requestedContentType"],
+  explicitOfficialWatchUrl?: string | null
+) {
+  const officialWatchUrl = explicitOfficialWatchUrl && isHttpUrl(explicitOfficialWatchUrl)
+    ? explicitOfficialWatchUrl
+    : isHttpUrl(input) ? input : null;
+  const platform = detectPlatformFromUrl(officialWatchUrl || input);
+  const inferredType = detectContentTypeFromUrl(officialWatchUrl || input);
+  const requestedMediaType = mediaTypeFromRequested(requestedContentType, mediaType);
+  const effectiveMediaType = requestedMediaType === "auto" && inferredType ? inferredType : requestedMediaType;
+  const titleCandidates = isHttpUrl(input)
+    ? (await detectTitleCandidates(input, platform)).titles
+    : [cleanTitle(input, platform)];
   const extractedTitle = titleCandidates[0] || "";
   if (!extractedTitle) throw new Error("Could not detect metadata from this link. Try another official link or check TMDb API key.");
   let candidates: AiImportCandidate[] = [];
@@ -1088,24 +1385,97 @@ async function importBestCandidate(input: string, mediaType: "auto" | "movie" | 
   }
   candidates = rankCandidatesForTitle(candidates, extractedTitle, effectiveMediaType);
   const first = candidates[0];
-  if (!first) throw new Error(`No TMDb match found for "${extractedTitle}". Try another official link or check TMDb API key.`);
+  if (!first) {
+    throw new Error(`No TMDb result found for "${extractedTitle}". AI Auto Fill did not create a fallback draft.`);
+  }
   const context = { extractedTitle, officialWatchUrl, platform };
-  return fetchFullTMDbDetails(first.tmdbId, first.mediaType, input, includeSeasons, context);
+  const draft = await fetchFullTMDbDetails(first.tmdbId, first.mediaType, input, includeSeasons, context);
+  return applyRequestedContentType(draft, requestedContentType);
 }
 
-async function importDirect(input: string, mode: AiImportMode, mediaType: "auto" | "movie" | "tv", includeSeasons: boolean) {
+async function importDirect(
+  input: string,
+  mode: AiImportMode,
+  mediaType: "auto" | "movie" | "tv",
+  includeSeasons: boolean,
+  requestedContentType?: ImportRequest["requestedContentType"],
+  explicitOfficialWatchUrl?: string | null
+) {
   ensureTmdbConfigured();
   const imdbId = parseImdbId(input);
-  if (mode === "imdb" || imdbId) return findByImdb(imdbId || input, input);
+  if (mode === "imdb" || imdbId) return applyRequestedContentType(await findByImdb(imdbId || input, input), requestedContentType);
 
   const parsedTmdb = parseTmdbFromUrl(input) || parsePlainTmdbId(input, mediaType);
   if (mode === "tmdb" || parsedTmdb) {
     const target = parsedTmdb || { mediaType: mediaType === "tv" ? "tv" : "movie", id: Number(input) };
     if (!Number.isFinite(target.id)) throw new Error("Enter a valid TMDb movie/TV ID or URL.");
-    return target.mediaType === "tv" ? importSeries(target.id, input, includeSeasons) : importMovie(target.id, input);
+    const draft = target.mediaType === "tv" ? await importSeries(target.id, input, includeSeasons) : await importMovie(target.id, input);
+    return applyRequestedContentType(draft, requestedContentType);
   }
 
-  return importBestCandidate(input, mediaType, includeSeasons);
+  return importBestCandidate(input, mediaType, includeSeasons, requestedContentType, explicitOfficialWatchUrl);
+}
+
+function mergeMissingDraftFields(current: AiImportDraft, fresh: AiImportDraft) {
+  const fixedFields: string[] = [];
+  const merged: AiImportDraft = { ...current };
+  const fill = <K extends keyof AiImportDraft>(field: K, label: string) => {
+    const currentValue = merged[field];
+    const freshValue = fresh[field];
+    const currentMissing = Array.isArray(currentValue)
+      ? currentValue.length === 0
+      : currentValue == null || currentValue === "";
+    const freshAvailable = Array.isArray(freshValue)
+      ? freshValue.length > 0
+      : freshValue != null && freshValue !== "";
+    if (currentMissing && freshAvailable) {
+      (merged as any)[field] = freshValue;
+      fixedFields.push(label);
+    }
+  };
+
+  fill("posterUrl", "Poster");
+  fill("bannerUrl", "Banner");
+  fill("trailerUrl", "Trailer");
+  fill("description", "Description");
+  fill("shortDescription", "Short description");
+  fill("genres", "Genres");
+  fill("subGenres", "Sub genres");
+  fill("language", "Language");
+  fill("cast", "Cast");
+  fill("director", "Director");
+  fill("runtimeMinutes", "Runtime");
+  fill("releaseYear", "Release year");
+  fill("seoTitle", "SEO title");
+  fill("seoDescription", "SEO description");
+  fill("officialWatchUrl", "Official watch link");
+  fill("platform", "Platform");
+  fill("images", "Images");
+  fill("seasons", "Seasons and episodes");
+
+  merged.tags = Array.from(new Set([...(current.tags || []), ...(fresh.tags || [])]));
+  merged.keywords = Array.from(new Set([...(current.keywords || []), ...(fresh.keywords || [])]));
+  merged.duplicateWarnings = Array.from(new Set([...(current.duplicateWarnings || []), ...(fresh.duplicateWarnings || [])]));
+  return { draft: enrichDraft(merged), fixedFields };
+}
+
+async function fixMissingFields(body: ImportRequest) {
+  const current = body.draft;
+  if (!current) throw new Error("No AI draft found. Generate details first.");
+  const input = String(body.input || current.input || current.title || "").trim();
+  if (!input) throw new Error("No source available to fix missing data.");
+  const fresh = await importBestCandidate(
+    input,
+    body.mediaType || (current.contentType === "web_series" || current.contentType === "tv_show" ? "tv" : "auto"),
+    body.includeSeasons !== false,
+    body.requestedContentType,
+    body.officialWatchUrl || current.officialWatchUrl || null
+  );
+  const merged = mergeMissingDraftFields(current, fresh);
+  return {
+    ...merged,
+    stillMissing: merged.draft.missingFields
+  };
 }
 
 export async function POST(request: Request) {
@@ -1116,13 +1486,28 @@ export async function POST(request: Request) {
     const body = (await request.json()) as ImportRequest;
     const action = body.action || "search";
     const mode = body.mode || "auto";
-    const input = String(body.input || "").trim();
+    const titleInput = String(body.title || "").trim();
+    const watchUrlInput = String(body.officialWatchUrl || "").trim();
+    const rawInput = String(body.input || "").trim();
+    const input = titleInput || rawInput || watchUrlInput;
+    const explicitOfficialWatchUrl = watchUrlInput && isHttpUrl(watchUrlInput) ? watchUrlInput : null;
     const mediaType = body.mediaType || "auto";
+    const requestedContentType = body.requestedContentType;
     const includeSeasons = body.includeSeasons !== false;
 
     if (action === "details") {
       const draft = await detailsFromSelection(body);
       return NextResponse.json({ ok: true, draft });
+    }
+
+    if (action === "fix_missing") {
+      const result = await fixMissingFields(body);
+      return NextResponse.json({
+        ok: true,
+        draft: result.draft,
+        fixedFields: result.fixedFields,
+        stillMissing: result.stillMissing
+      });
     }
 
     if (!input) throw new Error("Enter a URL, IMDb ID, TMDb ID, or title.");
@@ -1132,7 +1517,7 @@ export async function POST(request: Request) {
       const results: AiImportResult[] = [];
       for (const item of inputs) {
         try {
-          results.push({ input: item, ok: true, draft: await importDirect(item, "auto", mediaType, includeSeasons) });
+          results.push({ input: item, ok: true, draft: await importDirect(item, "auto", mediaType, includeSeasons, requestedContentType, explicitOfficialWatchUrl) });
         } catch (error) {
           results.push({ input: item, ok: false, error: error instanceof Error ? error.message : "Import failed." });
         }
@@ -1141,11 +1526,11 @@ export async function POST(request: Request) {
     }
 
     if (mode === "imdb" || mode === "tmdb" || parseImdbId(input) || parseTmdbFromUrl(input) || parsePlainTmdbId(input, mediaType)) {
-      const draft = await importDirect(input, mode, mediaType, includeSeasons);
+      const draft = await importDirect(input, mode, mediaType, includeSeasons, requestedContentType, explicitOfficialWatchUrl);
       return NextResponse.json({ ok: true, draft });
     }
 
-    return NextResponse.json(await searchFromInput(input, mode, mediaType, includeSeasons));
+    return NextResponse.json(await searchFromInput(input, mode, mediaType, includeSeasons, requestedContentType, explicitOfficialWatchUrl));
   } catch (error) {
     return NextResponse.json({
       ok: false,

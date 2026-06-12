@@ -37,6 +37,7 @@ import { trackEvent } from "@/lib/analytics";
 import { formatType } from "@/lib/format";
 import { movieSelect } from "@/lib/movie-select";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
+import type { AiImportDraft } from "@/lib/ai-import-types";
 import type { CastMember, ContentChannel, Genre, Movie, Platform, Series } from "@/types/watchfinder";
 
 type AdminSection =
@@ -66,7 +67,7 @@ type ContentEditorType = MovieEditorContentType | "series";
 const sections: Array<{ id: AdminSection; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
   { id: "add-movie", label: "Add Content" },
-  { id: "ai-assistant", label: "AI Import" },
+  { id: "ai-assistant", label: "AI Auto Fill" },
   { id: "movies", label: "Movies" },
   { id: "web-series", label: "Series" },
   { id: "users", label: "Users" },
@@ -408,6 +409,8 @@ export default function AdminDashboard({
   const [editingMovie, setEditingMovie] = useState<Movie | null>(null);
   const [editingSeries, setEditingSeries] = useState<Series | null>(null);
   const [contentEditorType, setContentEditorType] = useState<ContentEditorType>("movie");
+  const [aiAutofillDraft, setAiAutofillDraft] = useState<AiImportDraft | null>(null);
+  const [aiAutofillVersion, setAiAutofillVersion] = useState(0);
   const [movieSearch, setMovieSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -695,6 +698,7 @@ export default function AdminDashboard({
     setEditingMovie(null);
     setEditingSeries(null);
     setContentEditorType(type);
+    setAiAutofillDraft(null);
     setActiveSection("add-movie");
     setMovieMessage(null);
   }
@@ -703,6 +707,7 @@ export default function AdminDashboard({
     setEditingMovie(movie);
     setEditingSeries(null);
     setContentEditorType(normalizeContentEditorType(movie.content_type || movie.type));
+    setAiAutofillDraft(null);
     setActiveSection("add-movie");
     setMovieMessage(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -712,6 +717,7 @@ export default function AdminDashboard({
     setEditingMovie(null);
     setEditingSeries(null);
     setContentEditorType("series");
+    setAiAutofillDraft(null);
     setActiveSection("add-movie");
     setMovieMessage(null);
   }
@@ -726,9 +732,27 @@ export default function AdminDashboard({
     setEditingMovie(null);
     setEditingSeries(seriesItem);
     setContentEditorType("series");
+    setAiAutofillDraft(null);
     setActiveSection("add-movie");
     setMovieMessage(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleAiDraftReady(draft: AiImportDraft) {
+    setEditingMovie(null);
+    setEditingSeries(null);
+    if (draft.contentType === "web_series") {
+      setContentEditorType("series");
+    } else if (draft.contentType === "tv_show" || draft.contentType === "cartoon" || draft.contentType === "short_film") {
+      setContentEditorType(draft.contentType as MovieEditorContentType);
+    } else {
+      setContentEditorType("movie");
+    }
+    setAiAutofillDraft(draft);
+    setAiAutofillVersion((current) => current + 1);
+    setActiveSection("add-movie");
+    setMovieMessage(`AI Auto Fill prepared "${draft.title}". Review all fields, then save as draft.`);
+    window.setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
   }
 
   async function openMovieById(movieId: string) {
@@ -1235,7 +1259,7 @@ export default function AdminDashboard({
           </section>
         ) : null}
 
-        {activeSection === "ai-assistant" ? <AdminAIAssistant /> : null}
+        {activeSection === "ai-assistant" ? <AdminAIAssistant onDraftReady={handleAiDraftReady} /> : null}
 
         {activeSection === "analytics" ? (
           <section className="section analytics-dashboard analytics-dashboard-v2">
@@ -1978,6 +2002,13 @@ export default function AdminDashboard({
 
         {activeSection === "add-movie" ? (
           <section className="section">
+            {!editingMovie && !editingSeries ? (
+              <AdminAIAssistant
+                embedded
+                initialContentType={contentEditorType === "series" ? "web_series" : contentEditorType === "tv_show" ? "tv_show" : contentEditorType === "cartoon" ? "cartoon" : "movie"}
+                onDraftReady={handleAiDraftReady}
+              />
+            ) : null}
             {movieMessage ? <p className="form-message info">{movieMessage}</p> : null}
             {!editingMovie && !editingSeries ? (
               <div className="panel content-type-switcher">
@@ -2014,6 +2045,8 @@ export default function AdminDashboard({
                 platforms={platforms}
                 initialMovie={editingMovie}
                 initialContentType={contentEditorType}
+                aiDraft={aiAutofillDraft}
+                aiDraftVersion={aiAutofillVersion}
                 onSaved={handleSaved}
                 onDuplicateSlug={openMovieById}
                 onArchiveMovie={(movie) => requestMovieAction(movie, "archive")}
@@ -2029,6 +2062,8 @@ export default function AdminDashboard({
                 key={editingSeries?.id || "new-series"}
                 genres={genres}
                 initialSeries={editingSeries}
+                aiDraft={aiAutofillDraft}
+                aiDraftVersion={aiAutofillVersion}
                 onSaved={handleSavedSeries}
                 onAddNew={showAddSeries}
                 onBackToSeries={() => setActiveSection("web-series")}
