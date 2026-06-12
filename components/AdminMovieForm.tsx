@@ -326,11 +326,13 @@ async function findMovieBySlug(supabase: any, requestedSlug: string) {
 async function saveMovieRowViaAdminApi({
   movieId,
   payload,
-  metadataPayload
+  metadataPayload,
+  relatedData
 }: {
   movieId?: string | null;
   payload: Record<string, unknown>;
   metadataPayload?: Record<string, unknown>;
+  relatedData?: Record<string, unknown>;
 }) {
   const response = await fetch("/api/admin/movies/save", {
     method: "POST",
@@ -338,19 +340,24 @@ async function saveMovieRowViaAdminApi({
     body: JSON.stringify({
       movieId: movieId || null,
       payload,
-      metadataPayload: metadataPayload || {}
+      metadataPayload: metadataPayload || {},
+      relatedData: relatedData || undefined
     })
   });
   const result = await response.json().catch(() => null) as {
     ok?: boolean;
     success?: boolean;
     movie?: any;
+    movieId?: string;
     skippedColumns?: string[];
     error?: string;
   } | null;
 
   if (!response.ok || !result?.ok || !result.movie) {
-    throw new Error(result?.error || `Movie server save failed (${response.status}).`);
+    const error = new Error(result?.error || `Movie server save failed (${response.status}).`) as Error & { movieId?: string; movie?: any };
+    error.movieId = result?.movieId;
+    error.movie = result?.movie;
+    throw error;
   }
 
   return {
@@ -1241,8 +1248,40 @@ export default function AdminMovieForm({
         removedKeys: unlistedPayloadColumns,
         hasAiImportPayload: Object.prototype.hasOwnProperty.call(metadataPayload, "ai_import_payload")
       });
+      const platformId = selectedPlatformId;
+      const savedWatchLinkType = watchUrl ? watchLinkType : watchLinkType === "direct_title_page" ? "platform_search" : watchLinkType;
+      const channelMeta = {
+        season_number: channelSeasonNumber ? Number(channelSeasonNumber) : null,
+        episode_number: channelEpisodeNumber ? Number(channelEpisodeNumber) : null,
+        episode_title: channelEpisodeTitle.trim() || null,
+        playlist_group: channelPlaylistGroup.trim() || null,
+        sort_order: channelSortOrder ? Number(channelSortOrder) : 0
+      };
+      const relatedData = {
+        genreIds: selectedGenres,
+        castMemberIds: selectedCast,
+        platformLink: platformId ? {
+          platform_id: platformId,
+          watch_url: watchUrl,
+          platform_home_url: toNullableString(platformHomeUrl),
+          platform_search_url: toNullableString(platformSearchUrl),
+          app_deeplink: toNullableString(appDeeplink),
+          app_store_url: toNullableString(appStoreUrl),
+          play_store_url: toNullableString(playStoreUrl),
+          fallback_note: toNullableString(fallbackNote),
+          mobile_web_supported: mobileWebSupported,
+          desktop_web_supported: desktopWebSupported,
+          app_required: mobileWebSupported === "no",
+          link_type: savedWatchLinkType,
+          open_mode: openMode,
+          availability_type: availabilityType,
+          language: joinLanguages(selectedWatchLanguages) || null,
+          quality: selectedQualities.join(", ") || null,
+          notes: watchLinkNotes.trim() || null
+        } : null,
+        channelLinks: selectedChannelIds.map((channel_id) => ({ channel_id, ...channelMeta }))
+      };
 
-      let wasUpdate = isEditMode || Boolean(partialSaveMovieId);
       let movie: { id: string; slug: string };
       let serverSavedMovie: Movie | null = null;
 
@@ -1250,7 +1289,8 @@ export default function AdminMovieForm({
         const saved = await saveMovieRowViaAdminApi({
           movieId: initialMovie.id,
           payload,
-          metadataPayload
+          metadataPayload,
+          relatedData
         });
         saved.skippedColumns.forEach(rememberSkippedColumn);
         movie = { id: saved.movie.id, slug: saved.movie.slug };
@@ -1260,7 +1300,8 @@ export default function AdminMovieForm({
         const saved = await saveMovieRowViaAdminApi({
           movieId: partialSaveMovieId,
           payload,
-          metadataPayload
+          metadataPayload,
+          relatedData
         });
         saved.skippedColumns.forEach(rememberSkippedColumn);
         movie = { id: saved.movie.id, slug: saved.movie.slug };
@@ -1310,10 +1351,10 @@ export default function AdminMovieForm({
           return;
         }
 
-        wasUpdate = false;
         const saved = await saveMovieRowViaAdminApi({
           payload,
-          metadataPayload
+          metadataPayload,
+          relatedData
         });
         saved.skippedColumns.forEach(rememberSkippedColumn);
         movie = { id: saved.movie.id, slug: saved.movie.slug };
@@ -1343,101 +1384,26 @@ export default function AdminMovieForm({
         serverSavedMovie = normalizeConfirmedMovie(imageSaved.movie);
       }
 
-      if (wasUpdate) {
-        const { error: genreDeleteError } = await supabase.from("movie_genres").delete().eq("movie_id", movie.id);
-        if (genreDeleteError) throw saveStepError("Clearing existing genre links", genreDeleteError);
-
-        const { error: castDeleteError } = await supabase.from("movie_cast").delete().eq("movie_id", movie.id);
-        if (castDeleteError) throw saveStepError("Clearing existing cast links", castDeleteError);
-      }
-
-      if (selectedGenres.length) {
-        const { error: genreError } = await supabase
-          .from("movie_genres")
-          .insert(selectedGenres.map((genre_id) => ({ movie_id: movie.id, genre_id })));
-        if (genreError) throw saveStepError("Saving genre links", genreError);
-      }
-
-      if (selectedCast.length) {
-        const { error: castError } = await supabase
-          .from("movie_cast")
-          .insert(selectedCast.map((cast_member_id) => ({ movie_id: movie.id, cast_member_id })));
-        if (castError) throw saveStepError("Saving cast links", castError);
-      }
-
-      if (wasUpdate) {
-        const { error: platformDeleteError } = await supabase
-          .from("movie_platform_links")
-          .delete()
-          .eq("movie_id", movie.id);
-        if (platformDeleteError) throw saveStepError("Clearing existing platform links", platformDeleteError);
-      }
-
-      const platformId = selectedPlatformId;
-      if (platformId) {
-        const savedWatchLinkType = watchUrl ? watchLinkType : watchLinkType === "direct_title_page" ? "platform_search" : watchLinkType;
-        const savedAppRequired = mobileWebSupported === "no";
-        const { error: platformError } = await supabase.from("movie_platform_links").insert({
-          movie_id: movie.id,
-          platform_id: platformId,
-          watch_url: watchUrl,
-          platform_home_url: toNullableString(platformHomeUrl),
-          platform_search_url: toNullableString(platformSearchUrl),
-          app_deeplink: toNullableString(appDeeplink),
-          app_store_url: toNullableString(appStoreUrl),
-          play_store_url: toNullableString(playStoreUrl),
-          fallback_note: toNullableString(fallbackNote),
-          mobile_web_supported: mobileWebSupported,
-          desktop_web_supported: desktopWebSupported,
-          app_required: savedAppRequired,
-          link_type: savedWatchLinkType,
-          open_mode: openMode,
-          availability_type: availabilityType,
-          language: joinLanguages(selectedWatchLanguages) || null,
-          quality: selectedQualities.join(", ") || null,
-          notes: watchLinkNotes.trim() || null,
-          is_official: true,
-          is_active: true
-        });
-        if (platformError) throw saveStepError("Saving platform watch link", platformError);
-      }
-
-      if (wasUpdate) {
-        const { error: channelDeleteError } = await supabase
-          .from("content_channel_items")
-          .delete()
-          .eq("movie_id", movie.id);
-        if (channelDeleteError) throw saveStepError("Clearing existing cartoon/TV channel links", channelDeleteError);
-      }
-
-      if (selectedChannelIds.length) {
-        const channelMeta = {
-          season_number: channelSeasonNumber ? Number(channelSeasonNumber) : null,
-          episode_number: channelEpisodeNumber ? Number(channelEpisodeNumber) : null,
-          episode_title: channelEpisodeTitle.trim() || null,
-          playlist_group: channelPlaylistGroup.trim() || null,
-          sort_order: channelSortOrder ? Number(channelSortOrder) : 0
-        };
-        const { error: channelLinkError } = await supabase
-          .from("content_channel_items")
-          .insert(selectedChannelIds.map((channel_id) => ({ movie_id: movie.id, channel_id, ...channelMeta })));
-        if (channelLinkError) throw saveStepError("Saving cartoon/TV channel links", channelLinkError);
-      }
-
       const licenseDoc = form.get("license_document") as File;
       if (licenseDoc?.size) {
         const uploaded = await uploadLicenseDocumentWithPath(movie.id, licenseDoc);
-        const { error: licenseError } = await supabase.from("license_documents").insert({
-          movie_id: movie.id,
-          file_url: uploaded.publicUrl,
-          file_path: uploaded.path,
-          file_name: uploaded.fileName,
-          license_type: licenseType,
-          owner_name: toNullableString(form.get("license_owner_name")),
-          notes: toNullableString(form.get("license_notes")),
-          uploaded_by: auth.user?.id ?? null
+        const licenseSaved = await saveMovieRowViaAdminApi({
+          movieId: movie.id,
+          payload: {},
+          relatedData: {
+            licenseDocument: {
+              file_url: uploaded.publicUrl,
+              file_path: uploaded.path,
+              file_name: uploaded.fileName,
+              license_type: licenseType,
+              owner_name: toNullableString(form.get("license_owner_name")),
+              notes: toNullableString(form.get("license_notes")),
+              uploaded_by: auth.user?.id ?? null
+            }
+          }
         });
-        if (licenseError) throw saveStepError("Saving license document record", licenseError);
+        licenseSaved.skippedColumns.forEach(rememberSkippedColumn);
+        serverSavedMovie = normalizeConfirmedMovie(licenseSaved.movie);
       }
 
       const confirmedRow = await fetchConfirmedMovie(supabase, movie.id).catch((confirmError: unknown) => {
