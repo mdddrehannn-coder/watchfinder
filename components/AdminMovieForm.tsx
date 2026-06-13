@@ -22,7 +22,7 @@ import type { AiImportDraft } from "@/lib/ai-import-types";
 import type { CastMember, ContentChannel, Genre, Movie, Platform } from "@/types/watchfinder";
 
 type Message = {
-  type: "success" | "error" | "info";
+  type: "success" | "error" | "info" | "warning";
   text: string;
 };
 
@@ -327,18 +327,21 @@ async function saveMovieRowViaAdminApi({
   movieId,
   payload,
   metadataPayload,
-  relatedData
+  relatedData,
+  allowDuplicate = false
 }: {
   movieId?: string | null;
   payload: Record<string, unknown>;
   metadataPayload?: Record<string, unknown>;
   relatedData?: Record<string, unknown>;
+  allowDuplicate?: boolean;
 }) {
   const response = await fetch("/api/admin/movies/save", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       movieId: movieId || null,
+      allowDuplicate,
       payload,
       metadataPayload: metadataPayload || {},
       relatedData: relatedData || undefined
@@ -350,19 +353,23 @@ async function saveMovieRowViaAdminApi({
     movie?: any;
     movieId?: string;
     skippedColumns?: string[];
+    warnings?: string[];
+    duplicate?: DuplicateAdvisory;
     error?: string;
   } | null;
 
   if (!response.ok || !result?.ok || !result.movie) {
-    const error = new Error(result?.error || `Movie server save failed (${response.status}).`) as Error & { movieId?: string; movie?: any };
+    const error = new Error(result?.error || `Movie server save failed (${response.status}).`) as Error & { movieId?: string; movie?: any; duplicate?: DuplicateAdvisory };
     error.movieId = result?.movieId;
     error.movie = result?.movie;
+    error.duplicate = result?.duplicate;
     throw error;
   }
 
   return {
     movie: result.movie as { id: string; slug: string },
-    skippedColumns: result.skippedColumns || []
+    skippedColumns: result.skippedColumns || [],
+    warnings: result.warnings || []
   };
 }
 
@@ -758,6 +765,10 @@ export default function AdminMovieForm({
     if (joinedMetadata.includes("hindi dubbed") && !inferredLanguages.includes("Hindi Dubbed")) {
       inferredLanguages.push("Hindi Dubbed");
     }
+    const currentWatchUrl = ((formRef.current?.elements.namedItem("watch_url") as HTMLInputElement | null)?.value || "").trim();
+    const initialWatchUrl = (firstPlatformLink?.watch_url || initialMovie?.official_watch_url || "").trim();
+    const shouldFillWatchUrl = Boolean(draft.officialWatchUrl) && (!currentWatchUrl || currentWatchUrl === initialWatchUrl);
+    const preservedWatchUrl = Boolean(draft.officialWatchUrl && currentWatchUrl && currentWatchUrl !== draft.officialWatchUrl && !shouldFillWatchUrl);
 
     setTitle(nextTitle);
     setSlug(nextSlug);
@@ -805,7 +816,7 @@ export default function AdminMovieForm({
     setNamedField("banner_url", draft.bannerUrl || "");
     setNamedField("trailer_url", draft.trailerUrl || "");
     setNamedField("trailer_provider", draft.trailerUrl ? "youtube" : "");
-    setNamedField("watch_url", draft.officialWatchUrl || "");
+    setNamedField("watch_url", shouldFillWatchUrl ? draft.officialWatchUrl || "" : currentWatchUrl);
     setNamedField("seo_title", draft.seoTitle || "");
     setNamedField("seo_description", draft.seoDescription || "");
     setNamedField("og_image_url", draft.bannerUrl || draft.posterUrl || "");
@@ -815,7 +826,9 @@ export default function AdminMovieForm({
       type: "success",
       text: `AI Auto Fill filled ${nextTitle}. Status is Draft. Review images, trailer, official link, genres and cast before saving.`
     });
-    if (draft.officialWatchUrl && !matchedPlatform) {
+    if (preservedWatchUrl) {
+      setHelperMessage("AI refreshed metadata and trailer details, but kept your existing official watch link.");
+    } else if (draft.officialWatchUrl && !matchedPlatform) {
       setHelperMessage(`AI detected ${draft.platform?.name || "an official platform"}, but no matching platform exists in Admin Platforms. Select or create it before saving the watch link.`);
     } else {
       setHelperMessage("AI filled the form from public metadata. Missing fields were left empty for manual review.");
@@ -1066,7 +1079,9 @@ export default function AdminMovieForm({
       const supabase = createSupabaseBrowserClient();
       const { data: auth } = await supabase.auth.getUser();
       const skippedOptionalMovieColumns = new Set<string>();
+      const optionalSaveWarnings = new Set<string>();
       const rememberSkippedColumn = (column: string) => skippedOptionalMovieColumns.add(column);
+      const rememberWarnings = (warnings: string[] = []) => warnings.forEach((warning) => optionalSaveWarnings.add(warning));
       const poster = form.get("poster") as File;
       const banner = form.get("banner") as File;
       const watchUrl = toNullableString(form.get("watch_url"));
@@ -1293,6 +1308,7 @@ export default function AdminMovieForm({
           relatedData
         });
         saved.skippedColumns.forEach(rememberSkippedColumn);
+        rememberWarnings(saved.warnings);
         movie = { id: saved.movie.id, slug: saved.movie.slug };
         serverSavedMovie = normalizeConfirmedMovie(saved.movie);
         setSlug(String(saved.movie.slug));
@@ -1304,6 +1320,7 @@ export default function AdminMovieForm({
           relatedData
         });
         saved.skippedColumns.forEach(rememberSkippedColumn);
+        rememberWarnings(saved.warnings);
         movie = { id: saved.movie.id, slug: saved.movie.slug };
         serverSavedMovie = normalizeConfirmedMovie(saved.movie);
         setSlug(String(saved.movie.slug));
@@ -1354,9 +1371,11 @@ export default function AdminMovieForm({
         const saved = await saveMovieRowViaAdminApi({
           payload,
           metadataPayload,
-          relatedData
+          relatedData,
+          allowDuplicate: Boolean(allowExactDuplicateIdRef.current || allowExactDuplicateId)
         });
         saved.skippedColumns.forEach(rememberSkippedColumn);
+        rememberWarnings(saved.warnings);
         movie = { id: saved.movie.id, slug: saved.movie.slug };
         serverSavedMovie = normalizeConfirmedMovie(saved.movie);
         setSlug(String(saved.movie.slug));
@@ -1381,6 +1400,7 @@ export default function AdminMovieForm({
           payload: updatePayload
         });
         imageSaved.skippedColumns.forEach(rememberSkippedColumn);
+        rememberWarnings(imageSaved.warnings);
         serverSavedMovie = normalizeConfirmedMovie(imageSaved.movie);
       }
 
@@ -1403,6 +1423,7 @@ export default function AdminMovieForm({
           }
         });
         licenseSaved.skippedColumns.forEach(rememberSkippedColumn);
+        rememberWarnings(licenseSaved.warnings);
         serverSavedMovie = normalizeConfirmedMovie(licenseSaved.movie);
       }
 
@@ -1425,10 +1446,18 @@ export default function AdminMovieForm({
       const skippedColumnsNote = skippedOptionalColumns.length
         ? ` Skipped unavailable optional metadata columns: ${skippedOptionalColumns.join(", ")}. If those columns were just added in Supabase, run notify pgrst, 'reload schema'; then save again to store them.`
         : "";
+      const warningList = Array.from(optionalSaveWarnings);
+      const saveOutcome = selectedStatus === "published"
+        ? "Published successfully."
+        : isEditMode
+          ? `${savedTypeLabel} updated successfully.`
+          : "Draft saved successfully.";
 
       setMessage({
-        type: "success",
-        text: `${isEditMode ? `${savedTypeLabel} updated successfully.` : `${savedTypeLabel} saved as new listing.`}${slugNote} ${getMovieSaveVisibilityMessage(savedMovie)} ${getSaveDebugText(savedMovie)}${skippedColumnsNote}`
+        type: warningList.length ? "warning" : "success",
+        text: warningList.length
+          ? `${saveOutcome} Movie saved, but some optional related data needs review: ${warningList.join(" ")}${slugNote}`
+          : `${saveOutcome}${slugNote} ${getMovieSaveVisibilityMessage(savedMovie)} ${getSaveDebugText(savedMovie)}${skippedColumnsNote}`
       });
       setSavedMovieSlug(savedMovie.slug);
       setDuplicateAdvisory(null);
@@ -1438,14 +1467,24 @@ export default function AdminMovieForm({
       onSaved?.(savedMovie);
       if (!isEditMode) resetFormState(formElement);
     } catch (error) {
+      const duplicate = (error as { duplicate?: DuplicateAdvisory }).duplicate;
+      if (duplicate) {
+        setDuplicateAdvisory(duplicate);
+        setMessage({
+          type: "warning",
+          text: "This title may already exist. Open the existing listing, update it, or save this as a new listing anyway."
+        });
+        return;
+      }
       const message = formatSaveError(error);
-      if (persistedMovieId && !isEditMode) {
-        setPartialSaveMovieId(persistedMovieId);
+      const savedMovieId = persistedMovieId || (error as { movieId?: string }).movieId || null;
+      if (savedMovieId && !isEditMode) {
+        setPartialSaveMovieId(savedMovieId);
       }
       setMessage({
-        type: "error",
-        text: persistedMovieId
-          ? `Movie row was saved, but confirmation or related data failed: ${message} Press Save again to retry related data on the same saved row, or open the existing movie editor.`
+        type: savedMovieId ? "warning" : "error",
+        text: savedMovieId
+          ? `Movie saved, but some optional related data needs review: ${message} Press Save again to retry optional data on the same saved row, or open the existing movie editor.`
           : message
       });
     } finally {
@@ -1944,14 +1983,14 @@ export default function AdminMovieForm({
             <span>Created: {formatDuplicateDate(duplicateAdvisory.createdAt)}</span>
           </div>
           <div className="save-actions">
-            <button className="button primary" type="button" onClick={createExactDuplicateAnyway}>
-              Save as new listing anyway
-            </button>
             {onDuplicateSlug ? (
-              <button className="button" type="button" onClick={() => onDuplicateSlug(duplicateAdvisory.movieId)}>
-                Open existing movie editor
+              <button className="button primary" type="button" onClick={() => onDuplicateSlug(duplicateAdvisory.movieId)}>
+                Open / update existing listing
               </button>
             ) : null}
+            <button className="button" type="button" onClick={createExactDuplicateAnyway}>
+              Save as new listing anyway
+            </button>
             <button className="button ghost" type="button" onClick={changeSlugManually}>
               Change slug manually
             </button>

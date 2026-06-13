@@ -110,14 +110,7 @@ function movieRowPlatform(movie: Movie): Platform {
 }
 
 function movieRowWatchLink(movie: Movie): MoviePlatformLink | null {
-  const externalRowUrl = [
-    movie.official_watch_url,
-    movie.watch_url,
-    movie.video_url,
-    movie.trailer_url,
-    movie.video_embed_url
-  ].map(cleanUrl).find((url) => isKnownExternalWatchPageUrl(url));
-  const rowWatchUrl = cleanUrl(movie.official_watch_url) || cleanUrl(movie.watch_url) || externalRowUrl || null;
+  const rowWatchUrl = cleanUrl(movie.official_watch_url) || cleanUrl(movie.watch_url) || null;
   const hasAnyRowWatchTarget = Boolean(
     rowWatchUrl ||
       cleanUrl(movie.platform_home_url) ||
@@ -159,13 +152,14 @@ function movieRowWatchLink(movie: Movie): MoviePlatformLink | null {
   };
 }
 
-function toPlatformPlayAction(link: MoviePlatformLink, movie: Movie): ResolvedPlayAction | null {
+function toPlatformPlayAction(link: MoviePlatformLink, movie: Movie, options: { forceExternal?: boolean } = {}): ResolvedPlayAction | null {
   const target = resolveWatchLinkTarget(link, movie.title);
   if (!target.url) return null;
+  const useExternal = options.forceExternal || target.openMode !== "in_app_browser";
 
   return {
     type: "platform",
-    href: target.openMode === "in_app_browser"
+    href: !useExternal
       ? buildInAppBrowserHref({
         platform: link.platforms,
         platformName: target.platformName,
@@ -181,20 +175,32 @@ function toPlatformPlayAction(link: MoviePlatformLink, movie: Movie): ResolvedPl
       : target.url,
     label: target.appRequired ? `Open ${target.platformName} App` : "Watch on Official Platform",
     platformName: target.platformName,
-    target: target.openMode === "in_app_browser" ? undefined : "_blank",
+    target: useExternal ? "_blank" : undefined,
     note: target.note
   };
 }
 
 export function resolveMoviePlayAction(movie: Movie): ResolvedPlayAction {
-  const youtubeEmbedUrl = getYouTubeSource(
-    movie.trailer_url,
-    movie.video_embed_url,
-    movie.video_url,
-    movie.watch_url,
-    ...activeOfficialLinks(movie.movie_platform_links).map((link) => link.watch_url)
-  );
-  const youtubeProvider = cleanProvider(movie.video_provider || movie.trailer_provider).includes("youtube")
+  const rowWatchLink = movieRowWatchLink(movie);
+  const officialLinks = rowWatchLink
+    ? [...activeOfficialLinks(movie.movie_platform_links), rowWatchLink]
+    : activeOfficialLinks(movie.movie_platform_links);
+
+  for (const link of officialLinks) {
+    const action = toPlatformPlayAction(link, movie, { forceExternal: true });
+    if (action) return action;
+  }
+
+  return {
+    type: "unavailable",
+    label: "Official watch link missing",
+    note: "Official watch link is missing."
+  };
+}
+
+export function resolveMovieTrailerAction(movie: Movie): ResolvedPlayAction {
+  const youtubeEmbedUrl = getYouTubeSource(movie.trailer_url);
+  const youtubeProvider = cleanProvider(movie.trailer_provider).includes("youtube")
     ? "youtube"
     : movie.trailer_provider || "youtube";
 
@@ -204,23 +210,13 @@ export function resolveMoviePlayAction(movie: Movie): ResolvedPlayAction {
       videoEmbedUrl: youtubeEmbedUrl,
       trailerUrl: null,
       provider: youtubeProvider,
-      label: "Watch Trailer"
+      label: "Play Trailer"
     };
   }
 
-  if (cleanProvider(movie.video_provider).includes("youtube") && movie.video_id) {
-    return {
-      type: "modal",
-      videoEmbedUrl: `https://www.youtube.com/embed/${movie.video_id}`,
-      trailerUrl: null,
-      provider: "youtube",
-      label: "Watch Trailer"
-    };
-  }
-
-  const legalEmbedUrl = firstLegalEmbedUrl(movie.video_embed_url, movie.video_url, movie.trailer_url);
-  const provider = isPlayableProvider(movie.video_provider)
-    ? cleanProvider(movie.video_provider || movie.trailer_provider) || "direct"
+  const legalEmbedUrl = firstLegalEmbedUrl(movie.trailer_url);
+  const provider = isPlayableProvider(movie.trailer_provider)
+    ? cleanProvider(movie.trailer_provider) || "direct"
     : null;
 
   if (provider && legalEmbedUrl) {
@@ -229,23 +225,13 @@ export function resolveMoviePlayAction(movie: Movie): ResolvedPlayAction {
       videoEmbedUrl: legalEmbedUrl,
       trailerUrl: null,
       provider,
-      label: "Watch Trailer"
+      label: "Play Trailer"
     };
-  }
-
-  const rowWatchLink = movieRowWatchLink(movie);
-  const officialLinks = rowWatchLink
-    ? [...activeOfficialLinks(movie.movie_platform_links), rowWatchLink]
-    : activeOfficialLinks(movie.movie_platform_links);
-
-  for (const link of officialLinks) {
-    const action = toPlatformPlayAction(link, movie);
-    if (action) return action;
   }
 
   return {
     type: "unavailable",
-    label: "No official video",
-    note: "No official trailer or watch link available yet."
+    label: "No trailer",
+    note: "No official trailer available yet."
   };
 }
