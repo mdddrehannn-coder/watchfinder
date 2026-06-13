@@ -4,8 +4,11 @@ import { isAdminEmail } from "@/lib/admin-access";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase-server";
 import { slugify } from "@/lib/format";
 import {
+  findIntegerMoviePayloadColumn,
+  findMovieNumericCoercions,
   isCoreMovieSaveColumn,
   missingMovieColumnFromError,
+  normalizeMovieIntegerFallbackValue,
   sanitizeMovieBasePayload,
   sanitizeMovieMetadataPayload,
   sanitizeMoviePayload
@@ -258,6 +261,10 @@ async function resolveUniqueMovieSlug(admin: any, requestedSlug: string, exclude
 
 async function insertMovieWithRetry(admin: any, payload: Record<string, unknown>, skippedColumns: Set<string>) {
   const safePayload = sanitizeMoviePayload(payload);
+  const numericCoercions = findMovieNumericCoercions(payload, safePayload);
+  if (numericCoercions.length) {
+    console.info("WatchFinder movie save normalized numeric payload values", numericCoercions);
+  }
 
   for (let attempt = 0; attempt < Object.keys(safePayload).length + 8; attempt += 1) {
     const { data, error } = await admin
@@ -267,6 +274,26 @@ async function insertMovieWithRetry(admin: any, payload: Record<string, unknown>
       .single();
 
     if (!error && data) return data;
+
+    const integerColumn = findIntegerMoviePayloadColumn(error, safePayload) || findIntegerMoviePayloadColumn(error, payload);
+    if (integerColumn && Object.prototype.hasOwnProperty.call(safePayload, integerColumn)) {
+      console.warn("WatchFinder movie save integer type mismatch", {
+        action: "insert",
+        column: integerColumn,
+        value: safePayload[integerColumn],
+        error: errorMessage(error)
+      });
+      const numeric = Number(safePayload[integerColumn]);
+      if (Number.isFinite(numeric)) {
+        safePayload[integerColumn] = normalizeMovieIntegerFallbackValue(integerColumn, safePayload[integerColumn]);
+        console.warn("WatchFinder movie save retried with integer fallback", {
+          action: "insert",
+          column: integerColumn,
+          fallbackValue: safePayload[integerColumn]
+        });
+        continue;
+      }
+    }
 
     const missingColumn = missingMovieColumnFromError(error);
     if (
@@ -292,6 +319,11 @@ async function updateMovieWithRetry(
   skippedColumns: Set<string>
 ) {
   const safePayload = sanitizeMoviePayload(payload);
+  const numericCoercions = findMovieNumericCoercions(payload, safePayload);
+  if (numericCoercions.length) {
+    console.info("WatchFinder movie save normalized numeric payload values", numericCoercions);
+  }
+
   if (!Object.keys(safePayload).length) {
     const { data, error } = await admin.from("movies").select("*").eq("id", movieId).single();
     if (error) throw error;
@@ -307,6 +339,26 @@ async function updateMovieWithRetry(
       .single();
 
     if (!error && data) return data;
+
+    const integerColumn = findIntegerMoviePayloadColumn(error, safePayload) || findIntegerMoviePayloadColumn(error, payload);
+    if (integerColumn && Object.prototype.hasOwnProperty.call(safePayload, integerColumn)) {
+      console.warn("WatchFinder movie save integer type mismatch", {
+        action: "update",
+        column: integerColumn,
+        value: safePayload[integerColumn],
+        error: errorMessage(error)
+      });
+      const numeric = Number(safePayload[integerColumn]);
+      if (Number.isFinite(numeric)) {
+        safePayload[integerColumn] = normalizeMovieIntegerFallbackValue(integerColumn, safePayload[integerColumn]);
+        console.warn("WatchFinder movie save retried with integer fallback", {
+          action: "update",
+          column: integerColumn,
+          fallbackValue: safePayload[integerColumn]
+        });
+        continue;
+      }
+    }
 
     const missingColumn = missingMovieColumnFromError(error);
     if (
@@ -488,6 +540,14 @@ export async function POST(request: NextRequest) {
   const skippedColumns = new Set<string>();
   const basePayload = sanitizeMovieBasePayload(body.payload || {});
   const metadataPayload = sanitizeMovieMetadataPayload(body.metadataPayload || {});
+  const baseNumericCoercions = findMovieNumericCoercions(body.payload || {}, basePayload);
+  const metadataNumericCoercions = findMovieNumericCoercions(body.metadataPayload || {}, metadataPayload);
+  if (baseNumericCoercions.length || metadataNumericCoercions.length) {
+    console.info("WatchFinder movie save normalized AI numeric payload values", {
+      base: baseNumericCoercions,
+      metadata: metadataNumericCoercions
+    });
+  }
 
   if (!body.movieId) {
     if (!basePayload.title) return jsonError("Title is required.");
@@ -567,9 +627,18 @@ export async function POST(request: NextRequest) {
     throw new Error("Movie save failed before a movie id was available.");
   } catch (error) {
     const missingColumn = missingMovieColumnFromError(error);
-    const message = missingColumn
+    const integerColumn = findIntegerMoviePayloadColumn(error, body.payload || {}) || findIntegerMoviePayloadColumn(error, body.metadataPayload || {});
+    const message = integerColumn
+      ? `Save payload contains a decimal value for integer database field: ${integerColumn}. The value is normalized before saving; try saving again if this deployment was just updated.`
+      : missingColumn
       ? `Save payload contains unknown database field: ${missingColumn}. It has been removed. Try saving again.`
       : errorMessage(error);
-    return jsonError(message, 500, { missingColumn, movieId, movie });
+    if (integerColumn) {
+      console.warn("WatchFinder movie save failed on integer field", {
+        column: integerColumn,
+        error: errorMessage(error)
+      });
+    }
+    return jsonError(message, 500, { missingColumn, integerColumn, movieId, movie });
   }
 }

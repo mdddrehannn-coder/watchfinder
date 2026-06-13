@@ -12,6 +12,7 @@ import {
   formatMovieSchemaMismatchError,
   missingMovieColumnFromError,
   MOVIE_REQUIRED_COLUMNS,
+  normalizePopularityScore,
   sanitizeMovieBasePayload,
   sanitizeMovieMetadataPayload
 } from "@/lib/movie-schema";
@@ -1237,7 +1238,7 @@ export default function AdminMovieForm({
         is_hindi_dubbed: selectedLanguages.includes("Hindi Dubbed"),
         is_free_legal: availabilityType === "free",
         is_official: Boolean(trailerUrl || watchUrl),
-        popularity_score: toNullableNumber(form.get("popularity_score")) ?? aiDraft?.popularityScore ?? 0,
+        popularity_score: normalizePopularityScore(toNullableNumber(form.get("popularity_score")) ?? aiDraft?.popularityScore ?? 0),
         seo_title: toNullableString(form.get("seo_title")),
         seo_description: toNullableString(form.get("seo_description")),
         og_image_url: toNullableString(form.get("og_image_url")),
@@ -1621,7 +1622,7 @@ export default function AdminMovieForm({
           <div className="field"><label>Duration Minutes</label><input name="duration_minutes" inputMode="numeric" defaultValue={initialMovie?.duration_minutes ?? ""} /></div>
           <div className="field"><label>Rating</label><input name="rating" inputMode="decimal" defaultValue={initialMovie?.rating ?? ""} /></div>
           <div className="field"><label>Director</label><input name="director" defaultValue={initialMovie?.director ?? ""} /></div>
-          <div className="field"><label>Popularity Score</label><input name="popularity_score" inputMode="numeric" defaultValue={initialMovie?.popularity_score ?? 0} /></div>
+          <div className="field"><label>Popularity Score</label><input name="popularity_score" type="number" step="0.0001" inputMode="decimal" defaultValue={initialMovie?.popularity_score ?? 0} /></div>
         </div>
         <div className="field">
           <label>Content Type</label>

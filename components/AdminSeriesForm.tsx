@@ -4,7 +4,6 @@ import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState 
 import { ChevronDown, ChevronUp, Plus, Save, Trash2 } from "lucide-react";
 import { slugify } from "@/lib/format";
 import { WATCHFINDER_LANGUAGES } from "@/lib/languages";
-import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { storageBuckets, uploadPublicFile } from "@/lib/storage";
 import type { AiImportDraft } from "@/lib/ai-import-types";
 import type { Genre, Series } from "@/types/watchfinder";
@@ -102,6 +101,19 @@ function formatSupabaseError(error: unknown) {
   ].filter(Boolean).join(" ");
 }
 
+async function saveSeriesViaApi(body: { seriesId?: string | null; payload: Record<string, unknown>; seasons?: unknown[] }) {
+  const response = await fetch("/api/admin/series/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.error || "Web series save failed.");
+  }
+  return result.series;
+}
+
 function makeEmptyEpisode(nextEpisodeNumber: number): EpisodeFormState {
   return {
     localId: localId("episode"),
@@ -180,30 +192,6 @@ function stateFromSeries(series: Series | null): SeasonFormState[] {
         }))
       : [makeEmptyEpisode(1)]
   }));
-}
-
-async function resolveUniqueSeriesSlug(supabase: any, requestedSlug: string, excludeSeriesId?: string | null) {
-  const base = slugify(requestedSlug) || `series-${Date.now().toString(36)}`;
-  const { data, error } = await supabase
-    .from("web_series")
-    .select("id, slug")
-    .like("slug", `${base}%`);
-
-  if (error) throw error;
-
-  const exactPattern = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:-(\\d+))?$`);
-  const existingSlugs = new Set(
-    (data || [])
-      .filter((item: { id?: string | null; slug?: string | null }) => item.id !== excludeSeriesId)
-      .map((item: { slug?: string | null }) => item.slug || "")
-      .filter((existingSlug: string) => exactPattern.test(existingSlug))
-  );
-
-  if (!existingSlugs.has(base)) return base;
-
-  let suffix = 2;
-  while (existingSlugs.has(`${base}-${suffix}`)) suffix += 1;
-  return `${base}-${suffix}`;
 }
 
 export default function AdminSeriesForm({
@@ -483,11 +471,18 @@ export default function AdminSeriesForm({
         return;
       }
 
-      const supabase = createSupabaseBrowserClient();
-      const finalSlug = await resolveUniqueSeriesSlug(supabase, slug, initialSeries?.id);
+      const primaryEpisodeWatchUrl = seasons
+        .flatMap((season) => season.episodes)
+        .map((episode) => episode.watch_url.trim())
+        .find(Boolean) || null;
+      const primaryEpisodePlatform = seasons
+        .flatMap((season) => season.episodes)
+        .map((episode) => episode.platform_name.trim())
+        .find(Boolean) || null;
+
       const seriesPayload = {
         title: title.trim(),
-        slug: finalSlug,
+        slug,
         description: toNullableString(description),
         poster_url: toNullableString(posterUrl),
         banner_url: toNullableString(bannerUrl),
@@ -499,6 +494,10 @@ export default function AdminSeriesForm({
         trailer_url: toNullableString(trailerUrl),
         video_embed_url: toNullableString(videoEmbedUrl),
         video_provider: normalizeVideoProvider(videoProvider),
+        official_watch_url: primaryEpisodeWatchUrl,
+        watch_url: primaryEpisodeWatchUrl,
+        official_platform: toNullableString(platformName) || primaryEpisodePlatform,
+        open_mode: "auto",
         status: seriesStatus,
         is_featured: isFeatured,
         is_latest: isLatest,
@@ -510,13 +509,46 @@ export default function AdminSeriesForm({
         seo_description: toNullableString(seoDescription)
       };
 
-      const seriesResult = isEditMode && initialSeries?.id
-        ? await supabase.from("web_series").update(seriesPayload).eq("id", initialSeries.id).select("*").single()
-        : await supabase.from("web_series").insert(seriesPayload).select("*").single();
+      const seasonsPayload = seasons.map((season) => ({
+        id: season.id,
+        season_number: toNullableNumber(season.season_number),
+        title: toNullableString(season.title),
+        description: toNullableString(season.description),
+        poster_url: toNullableString(season.poster_url),
+        banner_url: toNullableString(season.banner_url),
+        release_year: toNullableNumber(season.release_year),
+        status: season.status,
+        sort_order: toNullableNumber(season.sort_order) ?? toNullableNumber(season.season_number),
+        episodes: season.episodes.map((episode) => ({
+          id: episode.id,
+          episode_number: toNullableNumber(episode.episode_number),
+          title: episode.title.trim(),
+          description: toNullableString(episode.description),
+          duration_minutes: toNullableNumber(episode.duration_minutes),
+          release_date: toNullableString(episode.release_date),
+          poster_url: toNullableString(episode.poster_url),
+          banner_url: toNullableString(episode.banner_url),
+          trailer_url: toNullableString(episode.trailer_url),
+          video_embed_url: toNullableString(episode.video_embed_url),
+          watch_url: toNullableString(episode.watch_url),
+          video_provider: normalizeVideoProvider(episode.video_provider),
+          platform_name: toNullableString(episode.platform_name),
+          availability_type: toNullableString(episode.availability_type),
+          language: toNullableString(episode.language),
+          quality: toNullableString(episode.quality),
+          status: episode.status,
+          sort_order: toNullableNumber(episode.sort_order) ?? toNullableNumber(episode.episode_number)
+        }))
+      }));
 
-      if (seriesResult.error || !seriesResult.data) throw seriesResult.error || new Error("Series row was not saved.");
-      const savedSeriesId = seriesResult.data.id as string;
-      setSlug(seriesResult.data.slug);
+      let confirmed = await saveSeriesViaApi({
+        seriesId: initialSeries?.id,
+        payload: seriesPayload,
+        seasons: seasonsPayload
+      });
+
+      const savedSeriesId = confirmed.id as string;
+      setSlug(confirmed.slug);
 
       const imageUpdate: Record<string, string> = {};
       const posterFile = posterFileRef.current?.files?.[0];
@@ -524,88 +556,19 @@ export default function AdminSeriesForm({
       if (posterFile) imageUpdate.poster_url = await uploadPublicFile(storageBuckets.posters, `series/${savedSeriesId}/poster`, posterFile);
       if (bannerFile) imageUpdate.banner_url = await uploadPublicFile(storageBuckets.banners, `series/${savedSeriesId}/banner`, bannerFile);
       if (Object.keys(imageUpdate).length) {
-        const { error } = await supabase.from("web_series").update(imageUpdate).eq("id", savedSeriesId);
-        if (error) throw error;
+        confirmed = await saveSeriesViaApi({
+          seriesId: savedSeriesId,
+          payload: imageUpdate
+        });
       }
-
-      const existingSeasonIds = new Set((initialSeries?.seasons ?? []).map((season) => season.id));
-      const keptSeasonIds = new Set(seasons.map((season) => season.id).filter(Boolean) as string[]);
-      const removedSeasonIds = [...existingSeasonIds].filter((seasonId) => !keptSeasonIds.has(seasonId));
-      if (removedSeasonIds.length) {
-        const { error } = await supabase.from("web_series_seasons").delete().in("id", removedSeasonIds);
-        if (error) throw error;
-      }
-
-      for (const season of seasons) {
-        const seasonPayload = {
-          series_id: savedSeriesId,
-          season_number: Number(season.season_number),
-          title: toNullableString(season.title),
-          description: toNullableString(season.description),
-          poster_url: toNullableString(season.poster_url),
-          banner_url: toNullableString(season.banner_url),
-          release_year: toNullableNumber(season.release_year),
-          status: season.status,
-          sort_order: toNullableNumber(season.sort_order) ?? Number(season.season_number)
-        };
-        const seasonResult = season.id
-          ? await supabase.from("web_series_seasons").update(seasonPayload).eq("id", season.id).select("*").single()
-          : await supabase.from("web_series_seasons").insert(seasonPayload).select("*").single();
-        if (seasonResult.error || !seasonResult.data) throw seasonResult.error || new Error(`Season ${season.season_number} was not saved.`);
-
-        const savedSeasonId = seasonResult.data.id as string;
-        const originalSeason = initialSeries?.seasons?.find((item) => item.id === season.id);
-        const existingEpisodeIds = new Set((originalSeason?.episodes ?? []).map((episode) => episode.id));
-        const keptEpisodeIds = new Set(season.episodes.map((episode) => episode.id).filter(Boolean) as string[]);
-        const removedEpisodeIds = [...existingEpisodeIds].filter((episodeId) => !keptEpisodeIds.has(episodeId));
-        if (removedEpisodeIds.length) {
-          const { error } = await supabase.from("web_series_episodes").delete().in("id", removedEpisodeIds);
-          if (error) throw error;
-        }
-
-        for (const episode of season.episodes) {
-          const episodePayload = {
-            season_id: savedSeasonId,
-            series_id: savedSeriesId,
-            episode_number: Number(episode.episode_number),
-            title: episode.title.trim(),
-            description: toNullableString(episode.description),
-            duration_minutes: toNullableNumber(episode.duration_minutes),
-            release_date: toNullableString(episode.release_date),
-            poster_url: toNullableString(episode.poster_url),
-            banner_url: toNullableString(episode.banner_url),
-            trailer_url: toNullableString(episode.trailer_url),
-            video_embed_url: toNullableString(episode.video_embed_url),
-            watch_url: toNullableString(episode.watch_url),
-            video_provider: normalizeVideoProvider(episode.video_provider),
-            platform_name: toNullableString(episode.platform_name),
-            availability_type: toNullableString(episode.availability_type),
-            language: toNullableString(episode.language),
-            quality: toNullableString(episode.quality),
-            status: episode.status,
-            sort_order: toNullableNumber(episode.sort_order) ?? Number(episode.episode_number)
-          };
-          const episodeResult = episode.id
-            ? await supabase.from("web_series_episodes").update(episodePayload).eq("id", episode.id).select("id").single()
-            : await supabase.from("web_series_episodes").insert(episodePayload).select("id").single();
-          if (episodeResult.error || !episodeResult.data) throw episodeResult.error || new Error(`Episode ${episode.episode_number} was not saved.`);
-        }
-      }
-
-      const { data: confirmed, error: confirmError } = await supabase
-        .from("web_series")
-        .select("*, web_series_seasons(*, web_series_episodes(*))")
-        .eq("id", savedSeriesId)
-        .single();
-      if (confirmError || !confirmed) throw confirmError || new Error("Series save confirmation failed.");
 
       const normalized: Series = {
         ...confirmed,
         is_published: confirmed.status === "published",
-        seasons: (confirmed.web_series_seasons ?? []).sort((a: any, b: any) => (a.sort_order ?? a.season_number) - (b.sort_order ?? b.season_number)).map((season: any) => ({
+        seasons: (confirmed.seasons ?? []).sort((a: any, b: any) => (a.sort_order ?? a.season_number) - (b.sort_order ?? b.season_number)).map((season: any) => ({
           ...season,
           is_published: season.status === "published",
-          episodes: (season.web_series_episodes ?? []).sort((a: any, b: any) => (a.sort_order ?? a.episode_number) - (b.sort_order ?? b.episode_number)).map((episode: any) => ({
+          episodes: (season.episodes ?? []).sort((a: any, b: any) => (a.sort_order ?? a.episode_number) - (b.sort_order ?? b.episode_number)).map((episode: any) => ({
             ...episode,
             thumbnail_url: episode.poster_url ?? episode.banner_url ?? null,
             video_url: episode.video_embed_url ?? episode.trailer_url ?? episode.watch_url ?? "",
@@ -613,8 +576,8 @@ export default function AdminSeriesForm({
             is_published: episode.status === "published"
           }))
         })),
-        season_count: (confirmed.web_series_seasons ?? []).length,
-        episode_count: (confirmed.web_series_seasons ?? []).reduce((total: number, season: any) => total + (season.web_series_episodes?.length ?? 0), 0)
+        season_count: (confirmed.seasons ?? []).length,
+        episode_count: (confirmed.seasons ?? []).reduce((total: number, season: any) => total + (season.episodes?.length ?? 0), 0)
       };
       setMessage({
         type: "success",

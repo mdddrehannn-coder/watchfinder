@@ -830,25 +830,18 @@ export default function AdminDashboard({
     setSeriesActionLoadingKey(loadingKey);
     setMovieMessage(`${status === "published" ? "Publishing" : `Moving to ${status}`} ${seriesItem.title}...`);
 
-    const supabase = createSupabaseBrowserClient();
-    const updatedAt = new Date().toISOString();
-    const { error } = await supabase
-      .from("web_series")
-      .update({ status, updated_at: updatedAt })
-      .eq("id", seriesItem.id);
-
+    const result = await updateMovieStatusById(seriesItem.id, status);
     setSeriesActionLoadingKey(null);
 
-    if (error) {
-      const message = `Series update failed: ${error.message}`;
-      setMovieMessage(message);
-      return { ok: false, message };
+    if (!result.ok) {
+      setMovieMessage(result.message);
+      return result;
     }
 
     setSeries((current) => current.map((item) => (
-      item.id === seriesItem.id ? { ...item, status, is_published: status === "published", updated_at: updatedAt } : item
+      item.id === seriesItem.id ? { ...item, status, is_published: status === "published", updated_at: result.updatedAt ?? item.updated_at } : item
     )));
-    setEditingSeries((current) => current?.id === seriesItem.id ? { ...current, status, is_published: status === "published", updated_at: updatedAt } : current);
+    setEditingSeries((current) => current?.id === seriesItem.id ? { ...current, status, is_published: status === "published", updated_at: result.updatedAt ?? current.updated_at } : current);
     setMovieMessage(`${seriesItem.title} ${status === "published" ? "published" : `moved to ${status}`}.`);
     router.refresh();
     return { ok: true, message: "Series updated." };
@@ -927,12 +920,10 @@ export default function AdminDashboard({
 
     if (kind === "delete") {
       setMovieMessage(`Deleting ${seriesItem.title}...`);
-      const supabase = createSupabaseBrowserClient();
-      const { error } = await supabase.from("web_series").delete().eq("id", seriesItem.id);
-      if (error) {
-        const message = `Delete failed: ${error.message}`;
-        setPendingSeriesAction({ ...pendingSeriesAction, isSubmitting: false, error: message });
-        setMovieMessage(message);
+      const result = await deleteMovieById(seriesItem.id);
+      if (!result.ok) {
+        setPendingSeriesAction({ ...pendingSeriesAction, isSubmitting: false, error: result.message });
+        setMovieMessage(`Delete failed: ${result.message}`);
         return;
       }
 
@@ -942,7 +933,7 @@ export default function AdminDashboard({
         setActiveSection("web-series");
       }
       setPendingSeriesAction(null);
-      setMovieMessage("Web series deleted successfully.");
+      setMovieMessage(result.message || "Web series deleted successfully.");
       router.refresh();
       return;
     }

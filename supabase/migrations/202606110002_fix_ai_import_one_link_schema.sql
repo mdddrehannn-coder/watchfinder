@@ -26,17 +26,4 @@ create index if not exists movies_official_watch_url_idx on public.movies(offici
 create index if not exists movies_tmdb_id_idx on public.movies(tmdb_id);
 create index if not exists movies_imdb_id_idx on public.movies(imdb_id);
 
-alter table public.web_series
-  add column if not exists official_watch_url text,
-  add column if not exists watch_url text,
-  add column if not exists official_platform text,
-  add column if not exists open_mode text default 'auto';
-
-update public.web_series
-set official_watch_url = watch_url
-where official_watch_url is null
-  and watch_url is not null;
-
-create index if not exists web_series_official_watch_url_idx on public.web_series(official_watch_url);
-
 notify pgrst, 'reload schema';

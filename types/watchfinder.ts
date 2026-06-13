@@ -102,6 +102,7 @@ export type Movie = {
   is_free_legal?: boolean | null;
   is_official?: boolean | null;
   popularity_score?: number | null;
+  popularity?: number | null;
   status?: MovieStatus | string | null;
   seo_title?: string | null;
   seo_description?: string | null;

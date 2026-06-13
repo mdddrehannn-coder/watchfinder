@@ -1035,8 +1035,9 @@ async function duplicateWarnings(draft: Pick<AiImportDraft, "title" | "releaseYe
 
   if (draft.contentType === "web_series") {
     const seriesMatch = await supabase
-      .from("web_series")
+      .from("movies")
       .select("title, slug, status, release_year")
+      .or("content_type.eq.web_series,type.eq.web_series")
       .ilike("title", title)
       .limit(5);
     if (!seriesMatch.error && seriesMatch.data?.length) {

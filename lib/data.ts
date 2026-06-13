@@ -18,8 +18,6 @@ import type {
   Series
 } from "@/types/watchfinder";
 
-const seriesSelect = "*, web_series_seasons(*, web_series_episodes(*))";
-
 function normalizeMovie(row: any): Movie {
   return {
     ...row,
@@ -127,32 +125,27 @@ function contentChannelTableErrorMessage(error: any) {
   return message || "Cartoon/TV Show channel query failed.";
 }
 
-function seriesTableErrorMessage(error: any) {
-  if (!error) return null;
-  const message = String(error.message || "");
-  const code = String(error.code || "");
-  if (
-    code === "42P01" ||
-    code === "PGRST205" ||
-    message.toLowerCase().includes("web_series") ||
-    message.toLowerCase().includes("web_series_seasons") ||
-    message.toLowerCase().includes("web_series_episodes") ||
-    message.toLowerCase().includes("schema cache")
-  ) {
-    return "Web Series tables are missing. Run the Supabase migration.";
-  }
-  return message || "Web Series query failed.";
-}
-
 function normalizeSeries(row: any): Series {
-  const rawSeasons = row.web_series_seasons ?? row.seasons ?? [];
+  const movie = normalizeMovie(row);
+  const aiPayload = typeof movie.ai_import_payload === "object" && movie.ai_import_payload && !Array.isArray(movie.ai_import_payload)
+    ? movie.ai_import_payload as Record<string, any>
+    : {};
+  const seriesPayload = aiPayload.webSeries || aiPayload.web_series || aiPayload.series || {};
+  const rawSeasons = seriesPayload.seasons ?? aiPayload.seasons ?? row.seasons ?? [];
+  const genreText = movie.genres?.map((genre) => genre.name).join(", ") || row.genre || seriesPayload.genre || null;
+  const platformText = movie.official_platform || movie.platform_name || seriesPayload.platform_name || seriesPayload.platform || null;
   const seasons = [...rawSeasons]
     .map((season: any) => ({
       ...season,
       is_published: season.is_published ?? season.status === "published",
-      episodes: [...(season.web_series_episodes ?? season.episodes ?? [])]
+      id: season.id || `season-${season.season_number ?? season.sort_order ?? 0}`,
+      series_id: movie.id,
+      episodes: [...(season.episodes ?? [])]
         .map((episode: any) => ({
           ...episode,
+          id: episode.id || `episode-${season.season_number ?? 0}-${episode.episode_number ?? episode.sort_order ?? 0}`,
+          series_id: movie.id,
+          season_id: season.id || `season-${season.season_number ?? season.sort_order ?? 0}`,
           thumbnail_url: episode.thumbnail_url ?? episode.poster_url ?? episode.banner_url ?? null,
           video_url: episode.video_url ?? episode.video_embed_url ?? episode.trailer_url ?? episode.watch_url ?? "",
           duration: episode.duration ?? (episode.duration_minutes ? `${episode.duration_minutes}m` : null),
@@ -163,8 +156,17 @@ function normalizeSeries(row: any): Series {
     .sort((a: any, b: any) => (a.sort_order ?? a.season_number ?? 0) - (b.sort_order ?? b.season_number ?? 0));
 
   return {
-    ...row,
-    is_published: row.is_published ?? row.status === "published",
+    ...movie,
+    type: "web_series",
+    content_type: "web_series",
+    genre: genreText,
+    platform_name: platformText,
+    official_platform: movie.official_platform || platformText,
+    language: movie.primary_language || movie.language || seriesPayload.language || null,
+    rating: movie.rating == null ? seriesPayload.rating ?? null : String(movie.rating),
+    watch_url: movie.watch_url || movie.official_watch_url || seriesPayload.watch_url || null,
+    official_watch_url: movie.official_watch_url || seriesPayload.official_watch_url || seriesPayload.watch_url || null,
+    is_published: row.is_published ?? movie.status === "published",
     seasons,
     season_count: seasons.length,
     episode_count: seasons.reduce((total: number, season: any) => total + (season.episodes?.length ?? 0), 0)
@@ -396,15 +398,18 @@ export async function getPublishedSeries(limit = 12) {
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return [] as Series[];
 
-  const { data, error } = await supabase
-    .from("web_series")
-    .select(seriesSelect)
+  const { data, error } = await runMovieQuery(supabase, (select) =>
+    supabase
+      .from("movies")
+      .select(select)
+      .or("content_type.eq.web_series,type.eq.web_series")
     .eq("status", "published")
     .order("created_at", { ascending: false })
-    .limit(limit);
+      .limit(limit)
+  );
 
   if (error || !data) {
-    if (error && process.env.NODE_ENV !== "production") console.warn(seriesTableErrorMessage(error));
+    if (error && process.env.NODE_ENV !== "production") console.warn(error.message || "Web Series movie query failed.");
     return [] as Series[];
   }
 
@@ -415,20 +420,24 @@ export async function getSeriesBySlug(slug: string, admin = false) {
   const supabase = admin ? createSupabaseAdminClient() ?? (await createSupabaseServerClient()) : createSupabaseAnonServerClient();
   if (!supabase) return null;
 
-  let query = supabase
-    .from("web_series")
-    .select(seriesSelect)
-    .eq("slug", slug);
+  const { data, error } = await runMovieQuery(supabase, (select) => {
+    let query = supabase
+      .from("movies")
+      .select(select)
+      .eq("slug", slug)
+      .or("content_type.eq.web_series,type.eq.web_series");
 
-  if (!admin) query = query.eq("status", "published");
+    if (!admin) query = query.eq("status", "published");
+    return query;
+  });
 
-  const { data, error } = await query.maybeSingle();
-  if (error || !data) {
-    if (error && process.env.NODE_ENV !== "production") console.warn(seriesTableErrorMessage(error));
+  const row = data?.[0] ?? null;
+  if (error || !row) {
+    if (error && process.env.NODE_ENV !== "production") console.warn(error.message || "Web Series movie query failed.");
     return null;
   }
 
-  const series = normalizeSeries(data);
+  const series = normalizeSeries(row);
   if (admin) return series;
 
   return {
@@ -497,13 +506,16 @@ export async function getAllAdminSeries() {
   const supabase = createSupabaseAdminClient() ?? (await createSupabaseServerClient());
   if (!supabase) return [] as Series[];
 
-  const { data, error } = await supabase
-    .from("web_series")
-    .select(seriesSelect)
-    .order("created_at", { ascending: false });
+  const { data, error } = await runMovieQuery(supabase, (select) =>
+    supabase
+      .from("movies")
+      .select(select)
+      .or("content_type.eq.web_series,type.eq.web_series")
+      .order("created_at", { ascending: false })
+  );
 
   if (error || !data) {
-    if (error) console.warn(seriesTableErrorMessage(error));
+    if (error) console.warn(error.message || "Web Series movie query failed.");
     return [] as Series[];
   }
 
