@@ -8,7 +8,7 @@ import BottomNav from "@/components/BottomNav";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
 import NavbarSearch from "@/components/NavbarSearch";
 import AppUpdateManager from "@/components/AppUpdateManager";
-import PWAInstallBanner from "@/components/PWAInstallBanner";
+import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import PWAInstallManager from "@/components/PWAInstallManager";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import SimpleSplashScreen from "@/components/SimpleSplashScreen";
@@ -103,7 +103,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </nav>
               </div>
             </header>
-            <PWAInstallBanner />
+            <PWAInstallPrompt />
             <AppUpdateManager />
             {children}
             <footer className="site-footer">

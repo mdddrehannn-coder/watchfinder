@@ -64,7 +64,7 @@ export default function ProfileMenu({
           <Link className="panel profile-action-card admin-profile-card" href="/admin">
             <ShieldCheck size={22} />
             <strong>Admin Panel</strong>
-            <p className="muted">Manage content, AI Import, movies, series, users and settings</p>
+            <p className="muted">Manage content, AI Auto Fill, movies, series, users and settings</p>
           </Link>
         ) : null}
         <Link className="panel profile-action-card" href="/favorites"><Heart size={22} /> <strong>Favorites</strong><p className="muted">{favorites.length} saved</p></Link>

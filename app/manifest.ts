@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "WatchFinder",
+    name: "Watch Finder",
     short_name: "WatchFinder",
     description: "Find free legal movies, Hindi dubbed titles, trailers and OTT availability in one place.",
     start_url: "/",

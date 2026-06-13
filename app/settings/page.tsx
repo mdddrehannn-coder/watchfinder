@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SunMoon } from "lucide-react";
 import LogoutControl from "@/components/LogoutControl";
+import MetadataProviderSettings from "@/components/MetadataProviderSettings";
+import { isAdminEmail } from "@/lib/admin-access";
 import { getCurrentUserAndProfile } from "@/lib/data";
 
 export const metadata: Metadata = {
@@ -11,6 +13,7 @@ export const metadata: Metadata = {
 
 export default async function SettingsPage() {
   const { user } = await getCurrentUserAndProfile();
+  const isAdmin = isAdminEmail(user?.email);
 
   return (
     <main className="page-inner">
@@ -30,6 +33,7 @@ export default async function SettingsPage() {
           <span className="status-badge status-draft">Coming soon</span>
         </div>
       </section>
+      {isAdmin ? <MetadataProviderSettings /> : null}
       {user ? <LogoutControl className="panel logout-panel settings-logout-panel" /> : null}
     </main>
   );

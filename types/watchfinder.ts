@@ -69,6 +69,7 @@ export type Movie = {
   slug: string;
   type: MovieType | string;
   content_type?: MovieType | string | null;
+  homepage_placement?: HomepageSection | string | null;
   primary_section?: HomepageSection | string | null;
   show_in_hero?: boolean | null;
   primary_language?: string | null;
@@ -142,6 +143,7 @@ export type Movie = {
   license_notes?: string | null;
   distribution_territory?: string | null;
   created_at?: string | null;
+  published_at?: string | null;
   updated_at?: string | null;
   genres?: Genre[];
   cast_members?: CastMember[];

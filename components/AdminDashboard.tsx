@@ -906,7 +906,7 @@ export default function AdminDashboard({
         setActiveSection("movies");
       }
       setPendingMovieAction(null);
-      setMovieMessage("Movie deleted successfully.");
+      setMovieMessage(result.message || "Movie deleted successfully.");
       router.refresh();
       return;
     }

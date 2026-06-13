@@ -32,6 +32,13 @@ function getPlatform(): InstallPlatform {
   return "desktop";
 }
 
+function devLog(message: string, data?: unknown) {
+  if (process.env.NODE_ENV !== "production") {
+    if (typeof data === "undefined") console.info(`[WatchFinder PWA] ${message}`);
+    else console.info(`[WatchFinder PWA] ${message}`, data);
+  }
+}
+
 export function usePWAInstall() {
   const context = useContext(PWAInstallContext);
   if (!context) throw new Error("usePWAInstall must be used inside PWAInstallManager");
@@ -52,21 +59,23 @@ export default function PWAInstallManager({ children }: { children: React.ReactN
 
     function handleBeforeInstallPrompt(event: Event) {
       event.preventDefault();
+      devLog("beforeinstallprompt fired");
       if (isAppInstalledOrStandalone()) {
         setInstalled(true);
         setPromptEvent(null);
         return;
       }
       setPromptEvent(event as BeforeInstallPromptEvent);
-      setStatus("Install is available on this browser.");
+      setStatus("Install is ready.");
     }
 
     function handleInstalled() {
+      devLog("appinstalled fired");
       setInstalled(true);
       setPromptEvent(null);
       setInstructionsOpen(false);
       markAppInstalled();
-      setStatus("WatchFinder is already installed.");
+      setStatus("Watch Finder installed successfully.");
       trackEvent({ event_type: "app_installed" });
     }
 
@@ -84,11 +93,12 @@ export default function PWAInstallManager({ children }: { children: React.ReactN
     if (installed || isAppInstalledOrStandalone()) {
       setInstalled(true);
       markAppInstalled();
-      setStatus("WatchFinder is already installed.");
+      setStatus("Watch Finder is already installed.");
       return "installed";
     }
 
     if (!promptEvent) {
+      devLog("unsupported browser fallback");
       setInstructionsOpen(true);
       setStatus("Install prompt is not available in this browser. Follow the steps below.");
       return "manual";
@@ -99,11 +109,13 @@ export default function PWAInstallManager({ children }: { children: React.ReactN
     setPromptEvent(null);
 
     if (choice.outcome === "accepted") {
+      devLog("install accepted");
       markAppInstalled();
-      setStatus("Install started.");
+      setStatus("Watch Finder installed successfully.");
       return "accepted";
     }
 
+    devLog("install dismissed");
     setStatus("Installation cancelled.");
     return "dismissed";
   }, [installed, promptEvent]);

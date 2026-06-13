@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { isAdminEmail } from "@/lib/admin-access";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase-server";
 import { slugify } from "@/lib/format";
@@ -196,6 +197,39 @@ async function requireAdminUser() {
   if (!isAdminEmail(data.user.email)) return { error: jsonError("Access denied", 403) };
 
   return { user: data.user };
+}
+
+async function ensurePublishedAt(
+  admin: any,
+  movieId: string | null,
+  payload: Record<string, unknown>,
+  skippedColumns: Set<string>
+) {
+  if (payload.status !== "published" || payload.published_at) return;
+
+  if (!movieId) {
+    payload.published_at = new Date().toISOString();
+    return;
+  }
+
+  const { data, error } = await admin
+    .from("movies")
+    .select("published_at")
+    .eq("id", movieId)
+    .maybeSingle();
+
+  const missingColumn = missingMovieColumnFromError(error);
+  if (missingColumn === "published_at") {
+    skippedColumns.add("published_at");
+    return;
+  }
+
+  if (error) {
+    console.warn("WatchFinder published_at check skipped", error);
+    return;
+  }
+
+  if (!data?.published_at) payload.published_at = new Date().toISOString();
 }
 
 async function resolveUniqueMovieSlug(admin: any, requestedSlug: string, excludeMovieId?: string | null) {
@@ -469,6 +503,8 @@ export async function POST(request: NextRequest) {
   let movie: any = null;
 
   try {
+    await ensurePublishedAt(admin, movieId, basePayload, skippedColumns);
+
     const duplicatePayload = { ...basePayload, ...metadataPayload };
     if (!movieId && !body.allowDuplicate) {
       const duplicate = await findDuplicateMovie(admin, duplicatePayload, body.relatedData, null);
@@ -511,6 +547,13 @@ export async function POST(request: NextRequest) {
         warnings,
         hasAiImportPayload: Object.prototype.hasOwnProperty.call(metadataPayload, "ai_import_payload")
       });
+
+      if (movie.status === "published") {
+        revalidatePath("/");
+        revalidatePath("/movies");
+        revalidatePath("/ott-releases");
+        if (movie.slug) revalidatePath(`/movie/${movie.slug}`);
+      }
 
       return NextResponse.json({
         ok: true,

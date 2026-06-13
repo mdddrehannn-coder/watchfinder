@@ -7,12 +7,16 @@ export const MOVIE_REQUIRED_COLUMNS = [
   "rating",
   "director",
   "content_type",
+  "type",
   "homepage_placement",
+  "primary_section",
+  "show_in_hero",
   "primary_language",
   "available_languages",
   "languages_json",
   "language",
   "status",
+  "published_at",
   "poster_url",
   "banner_url",
   "backdrop_url",
@@ -30,7 +34,14 @@ export const MOVIE_REQUIRED_COLUMNS = [
   "metadata_confidence",
   "quality_score",
   "ai_import_source",
-  "ai_import_payload"
+  "ai_import_payload",
+  "is_featured",
+  "is_latest",
+  "is_trending",
+  "is_hindi_dubbed",
+  "is_free_legal",
+  "is_official",
+  "popularity_score"
 ] as const;
 
 export const MOVIE_SAVE_ALLOWED_COLUMNS = MOVIE_REQUIRED_COLUMNS;

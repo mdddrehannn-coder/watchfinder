@@ -21,8 +21,14 @@ export const dynamic = "force-dynamic";
 function uniqueMovies(movies: Movie[]) {
   const seen = new Set<string>();
   return movies.filter((movie) => {
-    if (seen.has(movie.id)) return false;
-    seen.add(movie.id);
+    const key = [
+      movie.tmdb_id ? `tmdb:${movie.tmdb_id}` : "",
+      movie.official_watch_url ? `watch:${movie.official_watch_url}` : "",
+      movie.slug ? `slug:${movie.slug}` : "",
+      movie.id ? `id:${movie.id}` : ""
+    ].find(Boolean) || movie.title;
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }
@@ -55,7 +61,7 @@ export default async function HomePage() {
   ]);
 
   const trending = uniqueMovies(trendingMovies.length ? trendingMovies : allMovies).slice(0, 12);
-  const recentlyAdded = uniqueMovies(latestMovies.length ? latestMovies : allMovies).slice(0, 12);
+  const recentlyAdded = uniqueMovies(allMovies).slice(0, 12);
   const ottReleases = uniqueMovies(latestMovies.length ? latestMovies : allMovies).slice(0, 12);
   const hindiDubbed = filterDiscoveryMovies(allMovies, { hindiDubbed: true }).slice(0, 12);
   const freeLegal = filterDiscoveryMovies(allMovies, { freeLegal: true }).slice(0, 12);
