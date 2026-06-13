@@ -42,6 +42,16 @@ function movieHasPlacement(movie: Movie, placements: string[]) {
   return moviePlacement(movie).some((section) => allowed.has(section));
 }
 
+function isHeroEligible(movie: Movie) {
+  return Boolean(
+    movie.show_in_hero ||
+    movie.is_featured ||
+    movie.is_latest ||
+    movie.is_trending ||
+    movieHasPlacement(movie, ["hero"])
+  );
+}
+
 function homepageSectionAliases(section: string) {
   if (section === "ott_release" || section === "new_ott_releases" || section === "latest") {
     return ["ott_release", "new_ott_releases", "latest"];
@@ -212,6 +222,7 @@ export async function getMovies(options: {
   primarySection?: string;
   showInHero?: boolean;
   createdDesc?: boolean;
+  debugLabel?: string;
 } = {}) {
   const supabase = createSupabaseAnonServerClient();
   if (!supabase) return [] as Movie[];
@@ -224,33 +235,49 @@ export async function getMovies(options: {
     options.featured
   );
 
-  const { data, error } = await runMovieQuery(supabase, (select) => {
-    let query = supabase
-      .from("movies")
-      .select(select)
-      .eq("status", "published")
-      .limit(hasHomepageFilter ? Math.max(requestedLimit * 4, 120) : requestedLimit);
+  const orderColumns = options.createdDesc
+    ? ["published_at", "created_at", "id"]
+    : [options.topRated ? "rating" : "popularity_score"];
+  let data: any[] | null = null;
+  let error: any | null = null;
+  let orderColumnUsed = orderColumns[0];
 
-    query = options.createdDesc
-      ? query.order("created_at", { ascending: false, nullsFirst: false })
-      : query.order(options.topRated ? "rating" : "popularity_score", { ascending: false, nullsFirst: false });
+  for (const orderColumn of orderColumns) {
+    const result = await runMovieQuery(supabase, (select) => {
+      let query = supabase
+        .from("movies")
+        .select(select)
+        .eq("status", "published")
+        .limit(hasHomepageFilter ? Math.max(requestedLimit * 4, 120) : requestedLimit)
+        .order(orderColumn, { ascending: false, nullsFirst: false });
 
-    if (options.type) query = query.eq("type", options.type);
-    if (options.language) query = query.ilike("language", `%${options.language}%`);
-    if (options.year) query = query.eq("release_year", Number(options.year));
-    if (options.search) {
-      query = query.or(`title.ilike.%${options.search}%,description.ilike.%${options.search}%,language.ilike.%${options.search}%`);
-    }
+      if (options.type) query = query.eq("type", options.type);
+      if (options.language) query = query.ilike("language", `%${options.language}%`);
+      if (options.year) query = query.eq("release_year", Number(options.year));
+      if (options.search) {
+        query = query.or(`title.ilike.%${options.search}%,description.ilike.%${options.search}%,language.ilike.%${options.search}%`);
+      }
 
-    return query;
-  });
+      return query;
+    });
+
+    data = result.data;
+    error = result.error;
+    orderColumnUsed = orderColumn;
+    if (!error) break;
+    if (!options.createdDesc) break;
+    if (process.env.NODE_ENV !== "production") console.warn(`Movie query ${orderColumn} order failed:`, error);
+  }
+
   if (error || !data) return [];
 
   let movies = data.map(normalizeMovie);
+  const fetchedCount = movies.length;
 
   if (hasHomepageFilter) {
     movies = movies.filter((movie) => matchesMovieHomepageOptions(movie, options));
   }
+  const filteredCount = movies.length;
 
   if (options.genreSlug) {
     movies = movies.filter((movie) => movie.genres?.some((genre) => genre.slug === options.genreSlug));
@@ -275,7 +302,40 @@ export async function getMovies(options: {
   }
 
   const orderedMovies = options.createdDesc || hasHomepageFilter ? newestMoviesFirst(movies) : movies;
-  return uniqueMoviesByContent(orderedMovies).slice(0, requestedLimit);
+  const result = uniqueMoviesByContent(orderedMovies).slice(0, requestedLimit);
+
+  if (options.debugLabel) {
+    console.info("WatchFinder homepage collection query", {
+      label: options.debugLabel,
+      fetchedCount,
+      filteredCount,
+      returnedCount: result.length,
+      options: {
+        orderColumn: orderColumnUsed,
+        trending: Boolean(options.trending),
+        latest: Boolean(options.latest),
+        featured: Boolean(options.featured),
+        primarySection: options.primarySection || null,
+        showInHero: typeof options.showInHero === "boolean" ? options.showInHero : null,
+        createdDesc: Boolean(options.createdDesc)
+      },
+      aiRows: result
+        .filter((movie) => movie.ai_import_source || movie.metadata_source || movie.ai_import_payload)
+        .slice(0, 8)
+        .map((movie) => ({
+          title: movie.title,
+          slug: movie.slug,
+          placement: movie.homepage_placement || movie.primary_section || null,
+          trending: Boolean(movie.is_trending),
+          latest: Boolean(movie.is_latest),
+          featured: Boolean(movie.is_featured),
+          hindiDubbed: Boolean(movie.is_hindi_dubbed),
+          freeLegal: Boolean(movie.is_free_legal)
+        }))
+    });
+  }
+
+  return result;
 }
 
 export async function getHomepageHeroMovies() {
@@ -300,10 +360,29 @@ export async function getHomepageHeroMovies() {
     }
 
     const latestMovies = uniqueMoviesByContent(newestMoviesFirst((data ?? []).map(normalizeMovie)));
-    const heroEligible = latestMovies.filter((movie) => movie.show_in_hero || movieHasPlacement(movie, ["hero"]));
-    const heroPool = heroEligible.length ? heroEligible : latestMovies;
+    const heroEligible = latestMovies.filter(isHeroEligible);
+    const heroPool = uniqueMoviesByContent([...heroEligible, ...latestMovies]);
     const latestWithImages = heroPool.filter((movie) => movie.banner_url || movie.poster_url);
-    return (latestWithImages.length ? latestWithImages : heroPool).slice(0, 6);
+    const result = (latestWithImages.length ? latestWithImages : heroPool).slice(0, 6);
+
+    console.info("WatchFinder homepage hero query", {
+      orderColumn: column,
+      fetchedCount: data?.length ?? 0,
+      dedupedCount: latestMovies.length,
+      heroEligibleCount: heroEligible.length,
+      returnedCount: result.length,
+      titles: result.map((movie) => ({
+        title: movie.title,
+        slug: movie.slug,
+        placement: movie.homepage_placement || movie.primary_section || null,
+        showInHero: Boolean(movie.show_in_hero),
+        featured: Boolean(movie.is_featured),
+        latest: Boolean(movie.is_latest),
+        trending: Boolean(movie.is_trending)
+      }))
+    });
+
+    return result;
   }
 
   return [] as Movie[];

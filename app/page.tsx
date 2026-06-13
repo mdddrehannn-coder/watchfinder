@@ -37,6 +37,10 @@ function contentTypeMatches(movie: Movie, type: string) {
   return movie.content_type === type || movie.type === type;
 }
 
+function isAiUploadedMovie(movie: Movie) {
+  return Boolean(movie.ai_import_source || movie.metadata_source || movie.ai_import_payload || movie.tmdb_id);
+}
+
 export default async function HomePage() {
   const [
     ads,
@@ -52,9 +56,9 @@ export default async function HomePage() {
     getAdSlots("home"),
     getPlatforms(),
     getHomepageHeroMovies(),
-    getMovies({ limit: 120, createdDesc: true }),
-    getMovies({ trending: true, limit: 24, createdDesc: true }),
-    getMovies({ latest: true, limit: 24, createdDesc: true }),
+    getMovies({ limit: 120, createdDesc: true, debugLabel: "home:all-published" }),
+    getMovies({ trending: true, limit: 24, createdDesc: true, debugLabel: "home:trending" }),
+    getMovies({ latest: true, limit: 24, createdDesc: true, debugLabel: "home:new-ott-latest" }),
     getChannelLinkedMovies("cartoon", 12),
     getChannelLinkedMovies("tv_show", 12),
     getPublishedSeries(12)
@@ -74,6 +78,47 @@ export default async function HomePage() {
     ...channelTvShows,
     ...allMovies.filter((movie) => contentTypeMatches(movie, "tv_show"))
   ]).slice(0, 12);
+
+  const homepageRows = {
+    hero: heroMovies.length,
+    allPublished: allMovies.length,
+    trending: trending.length,
+    recentlyAdded: recentlyAdded.length,
+    newOttReleases: ottReleases.length,
+    hindiDubbed: hindiDubbed.length,
+    freeLegal: freeLegal.length,
+    officialYouTube: officialYouTube.length,
+    cartoons: popularCartoons.length,
+    tvShows: popularTvShows.length,
+    webSeries: webSeries.length
+  };
+
+  console.info("WatchFinder homepage collection audit", {
+    counts: homepageRows,
+    aiUploadedRowVisibility: allMovies
+      .filter(isAiUploadedMovie)
+      .slice(0, 12)
+      .map((movie) => ({
+        title: movie.title,
+        slug: movie.slug,
+        status: movie.status,
+        placement: movie.homepage_placement || movie.primary_section || null,
+        hero: heroMovies.some((item) => item.id === movie.id),
+        trending: trending.some((item) => item.id === movie.id),
+        recentlyAdded: recentlyAdded.some((item) => item.id === movie.id),
+        newOttReleases: ottReleases.some((item) => item.id === movie.id),
+        hindiDubbed: hindiDubbed.some((item) => item.id === movie.id),
+        freeLegal: freeLegal.some((item) => item.id === movie.id),
+        flags: {
+          showInHero: Boolean(movie.show_in_hero),
+          featured: Boolean(movie.is_featured),
+          latest: Boolean(movie.is_latest),
+          trending: Boolean(movie.is_trending),
+          hindiDubbed: Boolean(movie.is_hindi_dubbed),
+          freeLegal: Boolean(movie.is_free_legal)
+        }
+      }))
+  });
 
   const quickActions = [
     {

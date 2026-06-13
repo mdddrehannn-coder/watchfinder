@@ -11,11 +11,11 @@ export function splitCsv(value?: string | null) {
 }
 
 export function hasOfficialLink(movie: Movie) {
-  return Boolean(movie.movie_platform_links?.some((link) => link.watch_url && link.is_official !== false));
+  return Boolean(movie.official_watch_url || movie.watch_url || movie.movie_platform_links?.some((link) => link.watch_url && link.is_official !== false));
 }
 
 export function hasFreeAvailability(movie: Movie) {
-  return Boolean(movie.movie_platform_links?.some((link) => link.availability_type === "free"));
+  return Boolean(movie.availability_type === "free" || movie.movie_platform_links?.some((link) => link.availability_type === "free"));
 }
 
 export function hasOfficialYouTube(movie: Movie) {
@@ -35,19 +35,45 @@ export function hasOfficialYouTube(movie: Movie) {
 
 export function isLegalFreeMovie(movie: Movie) {
   return Boolean(
-    movie.has_licensed_video ||
+    movie.is_free_legal ||
+      movie.has_licensed_video ||
       hasFreeAvailability(movie) ||
       (movie.license_type && FREE_LICENSE_TYPES.includes(movie.license_type))
   );
 }
 
+function normalizeLanguageValue(value: unknown) {
+  if (Array.isArray(value)) return value.map((item) => String(item || "")).join(" ");
+  if (typeof value === "object" && value) return Object.values(value).map((item) => String(item || "")).join(" ");
+  return String(value || "");
+}
+
+function movieLanguageText(movie: Movie) {
+  return [
+    movie.language,
+    movie.primary_language,
+    normalizeLanguageValue(movie.available_languages),
+    normalizeLanguageValue(movie.languages_json)
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function movieHasPlacement(movie: Movie, placements: string[]) {
+  const allowed = new Set(placements);
+  return [movie.homepage_placement, movie.primary_section]
+    .map((section) => String(section || ""))
+    .some((section) => allowed.has(section));
+}
+
 export function isHindiFriendly(movie: Movie) {
-  const movieLanguages = splitLanguages(movie.language).join(" ").toLowerCase();
+  const movieLanguages = movieLanguageText(movie);
   const linkLanguages = (movie.movie_platform_links || [])
     .flatMap((link) => splitLanguages(link.language))
     .join(" ")
     .toLowerCase();
-  return movieLanguages.includes("hindi") || linkLanguages.includes("hindi");
+  return Boolean(movie.is_hindi_dubbed || movieLanguages.includes("hindi") || linkLanguages.includes("hindi"));
 }
 
 export function movieQualities(movie: Movie) {
@@ -112,8 +138,8 @@ export function filterDiscoveryMovies(
     ) {
       return false;
     }
-    if (filters.latest && !movie.is_latest) return false;
-    if (filters.trending && !movie.is_trending) return false;
+    if (filters.latest && !movie.is_latest && !movieHasPlacement(movie, ["latest", "ott_release", "new_ott_releases"])) return false;
+    if (filters.trending && !movie.is_trending && !movieHasPlacement(movie, ["trending"])) return false;
     return true;
   });
 }

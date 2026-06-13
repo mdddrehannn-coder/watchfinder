@@ -98,6 +98,9 @@ export type Movie = {
   is_trending?: boolean | null;
   is_featured?: boolean | null;
   is_latest?: boolean | null;
+  is_hindi_dubbed?: boolean | null;
+  is_free_legal?: boolean | null;
+  is_official?: boolean | null;
   popularity_score?: number | null;
   status?: MovieStatus | string | null;
   seo_title?: string | null;
