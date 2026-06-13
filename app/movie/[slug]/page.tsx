@@ -24,6 +24,7 @@ import {
 } from "@/lib/data";
 import { movieAvailabilityTypes, movieQualities, movieSmartBadges, readableAvailability } from "@/lib/discovery";
 import { formatDuration, formatType, getYouTubeEmbedUrl } from "@/lib/format";
+import { actualAudioLanguages, joinLanguages, splitLanguages } from "@/lib/languages";
 import { resolveMoviePlayAction, resolveMovieTrailerAction } from "@/lib/play-actions";
 import { isExternalOnlyPlatform } from "@/lib/watch-links";
 import type { Movie } from "@/types/watchfinder";
@@ -102,7 +103,8 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
     rowPlatformName
   ].filter(Boolean))) as string[];
   const platformSummary = platformNames.length ? platformNames.slice(0, 3).join(", ") : "No official platform added yet";
-  const languageSummary = movie.language || "Audio/subtitle details not listed";
+  const availableAudioLanguages = actualAudioLanguages(Array.isArray(movie.available_languages) && movie.available_languages.length ? movie.available_languages : splitLanguages(movie.language));
+  const languageSummary = availableAudioLanguages.length ? `Available in ${availableAudioLanguages.join(", ")}` : "Audio/subtitle details not listed";
   const qualitySummary = qualities.length ? qualities.join(", ") : "Quality varies by platform";
   const availabilitySummary = availabilityTypes.length ? availabilityTypes.map((availability) => readableAvailability(availability)).join(", ") : "Availability varies by platform";
   const genreSummary = movie.genres?.map((genre) => genre.name).filter(Boolean).join(", ") || null;
@@ -147,7 +149,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
               {movie.rating ? <span>Rating {movie.rating}</span> : null}
             </div>
             <h1>{movie.title}</h1>
-            <LanguageTags value={movie.language} />
+            <LanguageTags value={joinLanguages(availableAudioLanguages)} />
             <div className="smart-badge-row detail-badge-row">
               {allBadges.map((badge) => (
                 <span className="smart-badge" key={badge}>{badge}</span>
@@ -222,7 +224,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
         items={[
           { label: "Title", value: movie.title },
           { label: "Content type", value: formatType(movie.content_type || movie.type) },
-          { label: "Language", value: movie.language },
+          { label: "Language", value: availableAudioLanguages },
           { label: "Quality", value: qualities },
           { label: "Category / Genre", value: genreSummary },
           { label: "Season / Episode", value: movieEpisodeSummary(movie) },

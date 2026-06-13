@@ -14,7 +14,7 @@ export default function MovieCard({ movie, sectionName }: { movie: Movie; sectio
         posterUrl: movie.poster_url,
         bannerUrl: movie.banner_url,
         contentType: movie.content_type || movie.type,
-        languageLabel: languageBadge(movie.language, movie.primary_language),
+        languageLabel: languageBadge(movie.language, movie.primary_language, Array.isArray(movie.available_languages) ? movie.available_languages : null),
         platformLabel: null,
         updateBadge: null
       }}

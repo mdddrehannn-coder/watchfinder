@@ -5,7 +5,7 @@ import { ChangeEvent, Dispatch, FormEvent, SetStateAction, useEffect, useRef, us
 import { Eye, Save } from "lucide-react";
 import { getMovieSaveVisibilityMessage, getMovieVisibilityCheck } from "@/lib/admin-visibility";
 import { formatType, slugify } from "@/lib/format";
-import { joinLanguages, WATCHFINDER_LANGUAGES } from "@/lib/languages";
+import { actualAudioLanguages, joinLanguages, normalizeLanguageLabel, primaryLanguageForSelection, WATCHFINDER_LANGUAGES, withLanguageDisplayLabels } from "@/lib/languages";
 import { isOptionalMovieRelationError, movieSelect, movieSelectWithoutChannels } from "@/lib/movie-select";
 import {
   findUnlistedMoviePayloadColumns,
@@ -724,6 +724,8 @@ export default function AdminMovieForm({
   }
 
   function languageMatches(value?: string | null) {
+    const normalizedLanguage = normalizeLanguageLabel(value);
+    if (normalizedLanguage) return normalizedLanguage;
     const normalized = normalizedLabel(value);
     if (!normalized) return null;
     return WATCHFINDER_LANGUAGES.find((language) => normalizedLabel(language) === normalized || normalized.includes(normalizedLabel(language))) ?? null;
@@ -753,17 +755,31 @@ export default function AdminMovieForm({
     const matchingCastIds = castMembers
       .filter((member) => importedCast.some((person) => normalizedLabel(person.name) === normalizedLabel(member.name)))
       .map((member) => member.id);
-    const language = languageMatches(draft.language || draft.originalLanguage);
-    const inferredLanguages = language ? [language] : [];
+    const originalLanguage = languageMatches(draft.originalLanguage || draft.language);
+    const platformLanguages = actualAudioLanguages(draft.availableLanguages || []);
+    const inferredLanguages = withLanguageDisplayLabels(
+      platformLanguages.length ? platformLanguages : [originalLanguage || draft.language || ""],
+      originalLanguage || draft.originalLanguage
+    );
+    const existingLanguages = selectedLanguages.length ? selectedLanguages : splitStoredValues(initialMovie?.language);
+    const mergedLanguages = Array.from(new Set([...inferredLanguages, ...existingLanguages].filter(Boolean)));
     const joinedMetadata = [
       draft.title,
       draft.originalTitle,
+      draft.languageDetectionWarning,
+      ...(draft.availableLanguages || []),
       ...(draft.tags || []),
       ...(draft.keywords || []),
       ...(draft.genres || [])
     ].join(" ").toLowerCase();
-    if (joinedMetadata.includes("hindi dubbed") && !inferredLanguages.includes("Hindi Dubbed")) {
-      inferredLanguages.push("Hindi Dubbed");
+    if (joinedMetadata.includes("hindi dubbed") && !mergedLanguages.includes("Hindi Dubbed")) {
+      mergedLanguages.push("Hindi Dubbed");
+    }
+    const enhancedGenreIds = [...matchingGenreIds];
+    const hasSouthHindiLanguage = ["Tamil", "Telugu", "Malayalam", "Kannada", "Tulu"].some((language) => mergedLanguages.includes(language)) && mergedLanguages.includes("Hindi");
+    if (hasSouthHindiLanguage) {
+      const southHindiGenre = genres.find((genre) => normalizedLabel(genre.name) === normalizedLabel("South Hindi Dubbed"));
+      if (southHindiGenre && !enhancedGenreIds.includes(southHindiGenre.id)) enhancedGenreIds.push(southHindiGenre.id);
     }
     const currentWatchUrl = ((formRef.current?.elements.namedItem("watch_url") as HTMLInputElement | null)?.value || "").trim();
     const initialWatchUrl = (firstPlatformLink?.watch_url || initialMovie?.official_watch_url || "").trim();
@@ -776,9 +792,9 @@ export default function AdminMovieForm({
     setSelectedStatus("draft");
     setPrimarySection(draft.suggestedPlacement?.primarySection || (nextType === "cartoon" ? "cartoon" : nextType === "tv_show" ? "tv_show" : "recently_added"));
     setShowInHero(Boolean(draft.suggestedPlacement?.showInHero));
-    setPrimaryLanguage(inferredLanguages[0] || "");
-    setSelectedLanguages(inferredLanguages);
-    setSelectedGenres(Array.from(new Set(matchingGenreIds)));
+    setPrimaryLanguage(primaryLanguageForSelection(mergedLanguages));
+    setSelectedLanguages(mergedLanguages);
+    setSelectedGenres(Array.from(new Set(enhancedGenreIds)));
     setSelectedCast(Array.from(new Set(matchingCastIds)));
     setAiImportedGenres(draftGenres);
     setAiImportedCast(importedCast);
@@ -798,7 +814,7 @@ export default function AdminMovieForm({
     setDesktopWebSupported("unknown");
     setWatchLinkType(draft.officialWatchUrl ? "direct_title_page" : "platform_search");
     setAvailabilityType("unknown");
-    setSelectedWatchLanguages(inferredLanguages);
+    setSelectedWatchLanguages(actualAudioLanguages(mergedLanguages));
     setSelectedQualities([]);
     setWatchLinkNotes("");
     setFallbackNote("");
@@ -826,7 +842,9 @@ export default function AdminMovieForm({
       type: "success",
       text: `AI Auto Fill filled ${nextTitle}. Status is Draft. Review images, trailer, official link, genres and cast before saving.`
     });
-    if (preservedWatchUrl) {
+    if (draft.languageDetectionWarning) {
+      setHelperMessage(draft.languageDetectionWarning);
+    } else if (preservedWatchUrl) {
       setHelperMessage("AI refreshed metadata and trailer details, but kept your existing official watch link.");
     } else if (draft.officialWatchUrl && !matchedPlatform) {
       setHelperMessage(`AI detected ${draft.platform?.name || "an official platform"}, but no matching platform exists in Admin Platforms. Select or create it before saving the watch link.`);
@@ -1097,6 +1115,10 @@ export default function AdminMovieForm({
         .map((member) => ({ name: member.name, role: member.role_label || "Cast" }));
       const aiTags = Array.from(new Set([...(aiImportedTags || []), ...(aiDraft?.keywords || []), ...(aiDraft?.tags || [])].filter(Boolean).map(String)));
       const aiBackdropUrl = aiDraft?.images?.find((image) => image.kind === "backdrop" || image.kind === "banner")?.url || bannerUrl || aiDraft?.bannerUrl || null;
+      const selectedActualLanguages = actualAudioLanguages(selectedLanguages);
+      const effectivePrimaryLanguage = selectedActualLanguages.length > 1
+        ? "Multi-language"
+        : primaryLanguage || primaryLanguageForSelection(selectedLanguages);
       const aiImportPayload = toJsonSafeValue({
         rawAiDraft: aiDraft,
         rawTmdbData: aiDraft?.source === "tmdb" ? aiDraft : null,
@@ -1127,6 +1149,7 @@ export default function AdminMovieForm({
         productionCompanies: aiDraft?.productionCompanies || [],
         genres: Array.from(new Set([...selectedGenreNames, ...aiImportedGenres])),
         languages: selectedLanguages,
+        availableLanguages: selectedActualLanguages,
         homepage: {
           placement: primarySection || "recently_added",
           showInHero
@@ -1173,7 +1196,8 @@ export default function AdminMovieForm({
         display_title: title.trim(),
         original_title: aiDraft?.originalTitle || title.trim(),
         tagline: aiDraft?.tagline || null,
-        primary_language: toNullableString(primaryLanguage),
+        primary_language: toNullableString(effectivePrimaryLanguage),
+        available_languages: selectedActualLanguages,
         languages_json: selectedLanguages,
         genres_json: Array.from(new Set([...selectedGenreNames, ...aiImportedGenres])),
         tags_json: aiTags,
@@ -1653,6 +1677,15 @@ export default function AdminMovieForm({
       </FormSection>
 
       <FormSection title="Languages" helper="Select all languages available for this movie or show.">
+        {aiDraft ? (
+          <p className={aiDraft.languageDetectionWarning ? "form-message warning" : "form-message info"}>
+            Detected original language: {languageMatches(aiDraft.originalLanguage || aiDraft.language) || "Not confirmed"}.{" "}
+            {aiDraft.availableLanguages?.length
+              ? `Available audio languages detected: ${actualAudioLanguages(aiDraft.availableLanguages).join(", ") || "Not confirmed"}.`
+              : "Available audio languages not confirmed."}{" "}
+            {aiDraft.languageDetectionWarning || "You can adjust these chips before saving."}
+          </p>
+        ) : null}
         <div className="language-select-grid">
           {WATCHFINDER_LANGUAGES.map((language) => (
             <label className="language-select-chip" key={language}>

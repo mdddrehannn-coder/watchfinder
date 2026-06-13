@@ -1,4 +1,4 @@
-import { splitLanguages } from "@/lib/languages";
+import { actualAudioLanguages, splitLanguages } from "@/lib/languages";
 
 export default function LanguageTags({
   value,
@@ -7,7 +7,7 @@ export default function LanguageTags({
   value?: string | null;
   compact?: boolean;
 }) {
-  const languages = splitLanguages(value);
+  const languages = actualAudioLanguages(splitLanguages(value));
 
   if (!languages.length) {
     return <span className="language-tag">{compact ? "Multi" : "Multi-language"}</span>;

@@ -72,6 +72,7 @@ export type Movie = {
   primary_section?: HomepageSection | string | null;
   show_in_hero?: boolean | null;
   primary_language?: string | null;
+  available_languages?: string[] | null;
   languages_json?: string[] | Record<string, unknown> | null;
   platform_name?: string | null;
   official_platform?: string | null;

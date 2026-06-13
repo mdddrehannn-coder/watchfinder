@@ -14,7 +14,7 @@ function firstPlatform(movie: Movie) {
 function slideBadges(movie: Movie) {
   return [
     formatType(movie.content_type || movie.type),
-    languageBadge(movie.language, movie.primary_language)
+    languageBadge(movie.language, movie.primary_language, Array.isArray(movie.available_languages) ? movie.available_languages : null)
   ].filter(Boolean).slice(0, 2) as string[];
 }
 

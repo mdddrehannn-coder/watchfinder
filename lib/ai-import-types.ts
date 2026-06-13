@@ -104,6 +104,8 @@ export type AiImportDraft = {
   subGenres: string[];
   language?: string | null;
   originalLanguage?: string | null;
+  availableLanguages?: string[];
+  languageDetectionWarning?: string | null;
   country?: string | null;
   budget?: number | null;
   revenue?: number | null;
@@ -148,6 +150,7 @@ export type AiImportResult = {
   candidates?: AiImportCandidate[];
   extractedTitle?: string | null;
   platform?: AiImportPlatform | null;
+  availableLanguages?: string[];
   error?: string;
 };
 
@@ -157,6 +160,7 @@ export type AiImportResponse = {
   candidates?: AiImportCandidate[];
   extractedTitle?: string | null;
   platform?: AiImportPlatform | null;
+  availableLanguages?: string[];
   needsSelection?: boolean;
   results?: AiImportResult[];
   error?: string;

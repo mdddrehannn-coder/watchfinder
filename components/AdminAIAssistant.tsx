@@ -75,6 +75,7 @@ export default function AdminAIAssistant({
   const [candidates, setCandidates] = useState<AiImportCandidate[]>([]);
   const [extractedTitle, setExtractedTitle] = useState<string | null>(null);
   const [detectedPlatform, setDetectedPlatform] = useState<AiImportPlatform | null>(null);
+  const [detectedAvailableLanguages, setDetectedAvailableLanguages] = useState<string[]>([]);
   const [officialWatchUrl, setOfficialWatchUrl] = useState<string | null>(null);
   const [tmdbStatus, setTmdbStatus] = useState<MetadataProviderStatus | null>(null);
   const [checkingProviders, setCheckingProviders] = useState(true);
@@ -120,6 +121,7 @@ export default function AdminAIAssistant({
     setCandidates([]);
     setExtractedTitle(nextDraft.extractedTitle || null);
     setDetectedPlatform(nextDraft.platform || null);
+    setDetectedAvailableLanguages(nextDraft.availableLanguages || []);
     setOfficialWatchUrl(nextDraft.officialWatchUrl || null);
     setMessage({
       type: "success",
@@ -172,6 +174,7 @@ export default function AdminAIAssistant({
         setCandidates(json.candidates);
         setExtractedTitle(json.extractedTitle || null);
         setDetectedPlatform(json.platform || null);
+        setDetectedAvailableLanguages(json.availableLanguages || []);
         setOfficialWatchUrl(officialLink || (source.startsWith("http") ? source : null));
         setMessage({
           type: "warning",
@@ -209,7 +212,8 @@ export default function AdminAIAssistant({
           includeSeasons: contentType === "web_series",
           officialWatchUrl: officialLinkInput.trim() || officialWatchUrl,
           extractedTitle,
-          platform: detectedPlatform
+          platform: detectedPlatform,
+          availableLanguages: detectedAvailableLanguages
         })
       });
       const json = (await response.json()) as AiImportResponse;

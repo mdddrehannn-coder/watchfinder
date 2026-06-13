@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { slugify } from "@/lib/format";
+import { actualAudioLanguages, primaryLanguageForSelection, WATCHFINDER_LANGUAGES, withLanguageDisplayLabels } from "@/lib/languages";
 import { requireAdminProfile } from "@/lib/data";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import type {
@@ -49,10 +50,12 @@ type ImportRequest = {
   officialWatchUrl?: string | null;
   extractedTitle?: string | null;
   platform?: AiImportPlatform | null;
+  availableLanguages?: string[];
 };
 
 type PageMetadata = {
   titleCandidates: string[];
+  availableLanguages: string[];
   canonicalUrl?: string | null;
   fetchedFrom?: "direct" | "proxy" | null;
 };
@@ -211,6 +214,31 @@ function hasTmdbConfig() {
 function languageNameFromCode(value?: string | null) {
   const code = String(value || "").trim().toLowerCase();
   return languageNames[code] || (code ? code.toUpperCase() : null);
+}
+
+function languageStateFromSources({
+  originalLanguage,
+  platformLanguages,
+  platform
+}: {
+  originalLanguage?: string | null;
+  platformLanguages?: string[];
+  platform?: AiImportPlatform | null;
+}) {
+  const original = languageNameFromCode(originalLanguage) || originalLanguage || null;
+  const platformActual = actualAudioLanguages(platformLanguages || []);
+  const availableActual = platformActual.length ? platformActual : actualAudioLanguages([original || ""]);
+  const selected = withLanguageDisplayLabels(availableActual, original);
+  const warning = platform?.key === "jiohotstar" && !platformActual.length
+    ? "Only original language detected. Please verify available audio languages from official platform."
+    : null;
+
+  return {
+    language: primaryLanguageForSelection(selected) || original,
+    originalLanguage: original,
+    availableLanguages: selected,
+    warning
+  };
 }
 
 function applyRequestedContentType(
@@ -516,6 +544,69 @@ function collectJsonLdTitles(value: any, output: string[] = []) {
   return output;
 }
 
+function extractLanguageNamesFromText(value?: string | null) {
+  if (!value) return [] as string[];
+  const normalized = decodeHtmlEntities(String(value))
+    .replace(/\\u0026/g, "&")
+    .replace(/\\n/g, " ")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+  const languages = actualAudioLanguages(WATCHFINDER_LANGUAGES);
+  const detected = languages.filter((language) => {
+    const escaped = language.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`\\b${escaped}\\b`, "i").test(normalized);
+  });
+  return actualAudioLanguages(detected);
+}
+
+function collectJsonLanguages(value: any, output: string[] = [], parentKey = "") {
+  if (!value) return output;
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectJsonLanguages(item, output, parentKey));
+    return output;
+  }
+  if (typeof value !== "object") {
+    if (/audio|language|subtitle|dub/i.test(parentKey)) {
+      extractLanguageNamesFromText(String(value)).forEach((language) => output.push(language));
+    }
+    return output;
+  }
+
+  Object.entries(value).forEach(([key, entry]) => {
+    if (/audio|language|subtitle|dub/i.test(key)) {
+      extractLanguageNamesFromText(JSON.stringify(entry)).forEach((language) => output.push(language));
+    }
+    collectJsonLanguages(entry, output, key);
+  });
+  return output;
+}
+
+function extractAvailableLanguagesFromHtml(html: string) {
+  const detected: string[] = [];
+
+  const jsonScripts = html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi);
+  for (const script of jsonScripts) {
+    const body = decodeHtmlEntities(script[1]);
+    if (!/audio|language|subtitle|dub/i.test(body)) continue;
+    try {
+      collectJsonLanguages(JSON.parse(body), detected);
+    } catch {
+      const languageSegments = body.match(/(?:audio|audioLanguages|audio_languages|languages|language|subtitle|subtitles|dubbed|availableIn)[^<>{}\]]{0,260}/gi) || [];
+      languageSegments.forEach((segment) => extractLanguageNamesFromText(segment).forEach((language) => detected.push(language)));
+    }
+  }
+
+  const visibleText = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ");
+  const segments = visibleText.match(/(?:audio|languages?|subtitles?|dubbed|available in|watch in)[^.]{0,220}/gi) || [];
+  segments.forEach((segment) => extractLanguageNamesFromText(segment).forEach((language) => detected.push(language)));
+
+  return actualAudioLanguages(detected);
+}
+
 function metadataProxyUrl(targetUrl: string) {
   const proxy = process.env.OPTIONAL_METADATA_PROXY_URL;
   if (!proxy) return null;
@@ -553,7 +644,7 @@ async function fetchHtml(url: string) {
 }
 
 async function fetchPageMetadata(input: string): Promise<PageMetadata> {
-  if (!isHttpUrl(input)) return { titleCandidates: [], canonicalUrl: null, fetchedFrom: null };
+  if (!isHttpUrl(input)) return { titleCandidates: [], availableLanguages: [], canonicalUrl: null, fetchedFrom: null };
 
   let html = await fetchHtml(input);
   let fetchedFrom: PageMetadata["fetchedFrom"] = html ? "direct" : null;
@@ -564,9 +655,10 @@ async function fetchPageMetadata(input: string): Promise<PageMetadata> {
       fetchedFrom = html ? "proxy" : null;
     }
   }
-  if (!html) return { titleCandidates: [], canonicalUrl: null, fetchedFrom: null };
+  if (!html) return { titleCandidates: [], availableLanguages: [], canonicalUrl: null, fetchedFrom: null };
 
   const titleCandidates: string[] = [];
+  const availableLanguages = extractAvailableLanguagesFromHtml(html);
   const metaTags = html.match(/<meta\s+[^>]*>/gi) || [];
   metaTags.forEach((tag) => {
     const property = getTagAttribute(tag, "property")?.toLowerCase();
@@ -592,6 +684,7 @@ async function fetchPageMetadata(input: string): Promise<PageMetadata> {
 
   return {
     titleCandidates: Array.from(new Set(titleCandidates.map((title) => title.trim()).filter(Boolean))).slice(0, 12),
+    availableLanguages,
     canonicalUrl,
     fetchedFrom
   };
@@ -701,7 +794,7 @@ function missingFields(draft: Partial<AiImportDraft>) {
     !draft.bannerUrl ? "Banner/backdrop" : null,
     !draft.trailerUrl ? "Official trailer" : null,
     !draft.genres?.length ? "Genres" : null,
-    !draft.language ? "Language" : null,
+    !draft.availableLanguages?.length && !draft.language ? "Language" : null,
     !draft.cast?.length ? "Cast" : null,
     !draft.director ? "Director" : null,
     !draft.runtimeMinutes ? "Runtime" : null,
@@ -757,7 +850,7 @@ function calculateQualityScore(draft: AiImportDraft) {
     { ok: Boolean(draft.officialWatchUrl), label: "Official watch link present", weight: 8 },
     { ok: Boolean(draft.platform), label: "Platform detected", weight: 8 },
     { ok: Boolean(draft.genres?.length), label: "Genres selected", weight: 8 },
-    { ok: Boolean(draft.language), label: "Language selected", weight: 7 },
+    { ok: Boolean(draft.availableLanguages?.length || draft.language), label: "Language selected", weight: 7 },
     { ok: Boolean(draft.cast?.length || draft.director), label: "Cast/director present", weight: 8 },
     { ok: Boolean(draft.seoTitle && draft.seoDescription), label: "SEO filled", weight: 8 },
     { ok: Boolean(draft.status || "draft"), label: "Status selected", weight: 7 }
@@ -780,6 +873,7 @@ function suggestCategoryPlacement(draft: AiImportDraft) {
     draft.contentType,
     draft.language,
     draft.originalLanguage,
+    ...(draft.availableLanguages || []),
     ...(draft.genres || []),
     ...(draft.tags || []),
     ...(draft.keywords || [])
@@ -854,6 +948,7 @@ function assistantNotes(draft: AiImportDraft) {
     notes.push("This looks Hindi Dubbed. Confirm Hindi Dubbed language if correct.");
   }
   if (draft.platform?.name) notes.push(`Official link detected as ${draft.platform.name}.`);
+  if (draft.languageDetectionWarning) notes.push(draft.languageDetectionWarning);
   if (draft.qualityScore) notes.push(`Quality score is ${draft.qualityScore.score}%. ${draft.qualityScore.score >= 80 ? "Looks safe to review for publishing." : "Keep as draft until missing items are fixed."}`);
   return notes.slice(0, 5);
 }
@@ -1087,7 +1182,7 @@ function baseDraft(
   item: any,
   mediaType: "movie" | "tv",
   sourceInput: string,
-  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null } = {}
+  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[] } = {}
 ): AiImportDraft {
   const title = item.title || item.name || item.original_title || item.original_name || context.extractedTitle || sourceInput;
   const originalTitle = item.original_title || item.original_name || title;
@@ -1098,6 +1193,11 @@ function baseDraft(
   const productionCompanies = (item.production_companies ?? []).map((company: any) => company.name).filter(Boolean);
   const contentType = mediaType === "tv" ? "web_series" : "movie";
   const platform = context.platform || detectPlatformFromUrl(context.officialWatchUrl);
+  const languageState = languageStateFromSources({
+    originalLanguage: item.original_language,
+    platformLanguages: context.availableLanguages,
+    platform
+  });
 
   return {
     source: "tmdb",
@@ -1126,8 +1226,10 @@ function baseDraft(
     status: item.status || null,
     genres,
     subGenres: genres.slice(0, 3),
-    language: languageNameFromCode(item.original_language),
-    originalLanguage: item.original_language || null,
+    language: languageState.language,
+    originalLanguage: languageState.originalLanguage,
+    availableLanguages: languageState.availableLanguages,
+    languageDetectionWarning: languageState.warning,
     country: item.origin_country?.[0] || item.production_countries?.[0]?.iso_3166_1 || null,
     budget: item.budget ?? null,
     revenue: item.revenue ?? null,
@@ -1153,8 +1255,8 @@ function baseDraft(
     trailerName: trailer.name,
     seoTitle: `${title} (${releaseYear || "Watch"}) - Trailer, Cast & Legal Watch Guide`,
     seoDescription: seoDescription(title, item.overview),
-    keywords: [title, originalTitle, ...genres, item.original_language, releaseYear].filter(Boolean).map(String),
-    tags: [contentType, ...genres, item.original_language, releaseYear ? String(releaseYear) : ""].filter(Boolean),
+    keywords: [title, originalTitle, ...genres, ...languageState.availableLanguages, releaseYear].filter(Boolean).map(String),
+    tags: [contentType, ...genres, ...languageState.availableLanguages, releaseYear ? String(releaseYear) : ""].filter(Boolean),
     seasons: [],
     duplicateWarnings: [],
     qualityWarnings: [],
@@ -1162,7 +1264,7 @@ function baseDraft(
   };
 }
 
-async function importMovie(id: number, input: string, context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null } = {}) {
+async function importMovie(id: number, input: string, context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[] } = {}) {
   const item = await fetchFullMovieDetails(id);
   const draft = baseDraft(item, "movie", input, context);
   if (!draft.trailerUrl) {
@@ -1179,7 +1281,7 @@ async function importSeries(
   id: number,
   input: string,
   includeSeasons = true,
-  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null } = {}
+  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[] } = {}
 ) {
   const item = await fetchFullTvDetails(id);
   const draft = baseDraft(item, "tv", input, context);
@@ -1255,7 +1357,7 @@ async function fetchFullTMDbDetails(
   type: "movie" | "tv",
   input: string,
   includeSeasons: boolean,
-  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null } = {}
+  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[] } = {}
 ) {
   const draft = type === "tv" ? await importSeries(id, input, includeSeasons, context) : await importMovie(id, input, context);
   return mapTMDbToAdminForm(draft, context.officialWatchUrl, context.platform);
@@ -1276,10 +1378,16 @@ async function detailsFromSelection(body: ImportRequest) {
   if (!Number.isFinite(id) || (mediaType !== "movie" && mediaType !== "tv")) {
     throw new Error("Select a valid TMDb result first.");
   }
+  const metadataLanguages = body.availableLanguages?.length
+    ? body.availableLanguages
+    : body.officialWatchUrl && isHttpUrl(body.officialWatchUrl)
+      ? (await fetchPageMetadata(body.officialWatchUrl)).availableLanguages
+      : [];
   const context = {
     extractedTitle: body.extractedTitle || null,
     officialWatchUrl: body.officialWatchUrl || null,
-    platform: body.platform || detectPlatformFromUrl(body.officialWatchUrl)
+    platform: body.platform || detectPlatformFromUrl(body.officialWatchUrl),
+    availableLanguages: metadataLanguages
   };
   const draft = await fetchFullTMDbDetails(
     id,
@@ -1322,9 +1430,12 @@ async function searchFromInput(
   const inferredType = detectContentTypeFromUrl(officialWatchUrl || input);
   const requestedMediaType = mediaTypeFromRequested(requestedContentType, mediaType);
   const effectiveMediaType = requestedMediaType === "auto" && inferredType ? inferredType : requestedMediaType;
-  const titleCandidates = isHttpUrl(input)
-    ? (await detectTitleCandidates(input, platform)).titles
-    : [cleanTitle(input, platform)];
+  const detected = isHttpUrl(input)
+    ? await detectTitleCandidates(input, platform)
+    : officialWatchUrl
+      ? { titles: [cleanTitle(input, platform)], metadata: await fetchPageMetadata(officialWatchUrl) }
+      : null;
+  const titleCandidates = detected ? detected.titles : [cleanTitle(input, platform)];
   const extractedTitle = titleCandidates[0] || "";
   if (!extractedTitle) {
     throw new Error("Could not detect metadata from this link. Try another official link or check TMDb API key.");
@@ -1344,7 +1455,8 @@ async function searchFromInput(
     const draft = await fetchFullTMDbDetails(best.tmdbId, best.mediaType, input, includeSeasons, {
       extractedTitle,
       officialWatchUrl,
-      platform
+      platform,
+      availableLanguages: detected?.metadata.availableLanguages || []
     });
     return { ok: true, draft: applyRequestedContentType(draft, requestedContentType), extractedTitle, platform };
   }
@@ -1355,6 +1467,7 @@ async function searchFromInput(
     candidates: ranked.slice(0, 3),
     extractedTitle,
     platform,
+    availableLanguages: detected?.metadata.availableLanguages || [],
     warnings: officialWatchUrl && !platform ? ["Official URL kept, but platform was not recognized. Review platform before publishing."] : []
   };
 }
@@ -1373,9 +1486,12 @@ async function importBestCandidate(
   const inferredType = detectContentTypeFromUrl(officialWatchUrl || input);
   const requestedMediaType = mediaTypeFromRequested(requestedContentType, mediaType);
   const effectiveMediaType = requestedMediaType === "auto" && inferredType ? inferredType : requestedMediaType;
-  const titleCandidates = isHttpUrl(input)
-    ? (await detectTitleCandidates(input, platform)).titles
-    : [cleanTitle(input, platform)];
+  const detected = isHttpUrl(input)
+    ? await detectTitleCandidates(input, platform)
+    : officialWatchUrl
+      ? { titles: [cleanTitle(input, platform)], metadata: await fetchPageMetadata(officialWatchUrl) }
+      : null;
+  const titleCandidates = detected ? detected.titles : [cleanTitle(input, platform)];
   const extractedTitle = titleCandidates[0] || "";
   if (!extractedTitle) throw new Error("Could not detect metadata from this link. Try another official link or check TMDb API key.");
   let candidates: AiImportCandidate[] = [];
@@ -1388,7 +1504,7 @@ async function importBestCandidate(
   if (!first) {
     throw new Error(`No TMDb result found for "${extractedTitle}". AI Auto Fill did not create a fallback draft.`);
   }
-  const context = { extractedTitle, officialWatchUrl, platform };
+  const context = { extractedTitle, officialWatchUrl, platform, availableLanguages: detected?.metadata.availableLanguages || [] };
   const draft = await fetchFullTMDbDetails(first.tmdbId, first.mediaType, input, includeSeasons, context);
   return applyRequestedContentType(draft, requestedContentType);
 }
@@ -1442,6 +1558,8 @@ function mergeMissingDraftFields(current: AiImportDraft, fresh: AiImportDraft) {
   fill("genres", "Genres");
   fill("subGenres", "Sub genres");
   fill("language", "Language");
+  fill("availableLanguages", "Available audio languages");
+  fill("languageDetectionWarning", "Language detection note");
   fill("cast", "Cast");
   fill("director", "Director");
   fill("runtimeMinutes", "Runtime");
