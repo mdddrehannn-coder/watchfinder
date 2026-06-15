@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { slugify } from "@/lib/format";
+import { accessTypeMeta, detectAccessTypeFromText, normalizeAccessType, type AccessType } from "@/lib/access-type";
 import { actualAudioLanguages, primaryLanguageForSelection, WATCHFINDER_LANGUAGES, withLanguageDisplayLabels } from "@/lib/languages";
 import { requireAdminProfile } from "@/lib/data";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
@@ -51,11 +52,15 @@ type ImportRequest = {
   extractedTitle?: string | null;
   platform?: AiImportPlatform | null;
   availableLanguages?: string[];
+  accessType?: AccessType;
+  accessTypeReason?: string | null;
 };
 
 type PageMetadata = {
   titleCandidates: string[];
   availableLanguages: string[];
+  accessType: AccessType;
+  accessTypeReason?: string | null;
   canonicalUrl?: string | null;
   fetchedFrom?: "direct" | "proxy" | null;
 };
@@ -644,7 +649,9 @@ async function fetchHtml(url: string) {
 }
 
 async function fetchPageMetadata(input: string): Promise<PageMetadata> {
-  if (!isHttpUrl(input)) return { titleCandidates: [], availableLanguages: [], canonicalUrl: null, fetchedFrom: null };
+  if (!isHttpUrl(input)) {
+    return { titleCandidates: [], availableLanguages: [], accessType: "unknown", accessTypeReason: null, canonicalUrl: null, fetchedFrom: null };
+  }
 
   let html = await fetchHtml(input);
   let fetchedFrom: PageMetadata["fetchedFrom"] = html ? "direct" : null;
@@ -655,10 +662,21 @@ async function fetchPageMetadata(input: string): Promise<PageMetadata> {
       fetchedFrom = html ? "proxy" : null;
     }
   }
-  if (!html) return { titleCandidates: [], availableLanguages: [], canonicalUrl: null, fetchedFrom: null };
+  if (!html) {
+    const platformDefault = detectAccessTypeFromText("", detectPlatformFromUrl(input));
+    return {
+      titleCandidates: [],
+      availableLanguages: [],
+      accessType: platformDefault.accessType,
+      accessTypeReason: platformDefault.reason,
+      canonicalUrl: null,
+      fetchedFrom: null
+    };
+  }
 
   const titleCandidates: string[] = [];
   const availableLanguages = extractAvailableLanguagesFromHtml(html);
+  const accessDetection = detectAccessTypeFromText(decodeHtmlEntities(html).replace(/<[^>]+>/g, " "), detectPlatformFromUrl(input));
   const metaTags = html.match(/<meta\s+[^>]*>/gi) || [];
   metaTags.forEach((tag) => {
     const property = getTagAttribute(tag, "property")?.toLowerCase();
@@ -685,6 +703,8 @@ async function fetchPageMetadata(input: string): Promise<PageMetadata> {
   return {
     titleCandidates: Array.from(new Set(titleCandidates.map((title) => title.trim()).filter(Boolean))).slice(0, 12),
     availableLanguages,
+    accessType: accessDetection.accessType,
+    accessTypeReason: accessDetection.reason,
     canonicalUrl,
     fetchedFrom
   };
@@ -849,6 +869,7 @@ function calculateQualityScore(draft: AiImportDraft) {
     { ok: Boolean(draft.trailerUrl), label: "Trailer present", weight: 8 },
     { ok: Boolean(draft.officialWatchUrl), label: "Official watch link present", weight: 8 },
     { ok: Boolean(draft.platform), label: "Platform detected", weight: 8 },
+    { ok: Boolean(draft.accessType && draft.accessType !== "unknown"), label: "Access type detected", weight: 3 },
     { ok: Boolean(draft.genres?.length), label: "Genres selected", weight: 8 },
     { ok: Boolean(draft.availableLanguages?.length || draft.language), label: "Language selected", weight: 7 },
     { ok: Boolean(draft.cast?.length || draft.director), label: "Cast/director present", weight: 8 },
@@ -909,6 +930,10 @@ function suggestCategoryPlacement(draft: AiImportDraft) {
     primarySection = "free_legal";
     reasons.push("Free/legal/public-domain signal detected.");
   }
+  if (draft.accessType === "free") {
+    primarySection = "free_legal";
+    reasons.push("AI detected free platform access.");
+  }
 
   const showInHero = Boolean(draft.bannerUrl && draft.title && draft.description);
   if (showInHero) reasons.push("Strong banner available, eligible for Hero Slider.");
@@ -948,6 +973,10 @@ function assistantNotes(draft: AiImportDraft) {
     notes.push("This looks Hindi Dubbed. Confirm Hindi Dubbed language if correct.");
   }
   if (draft.platform?.name) notes.push(`Official link detected as ${draft.platform.name}.`);
+  if (draft.accessType) {
+    const access = accessTypeMeta(draft.accessType);
+    notes.push(`${access.label} access: ${access.detail}${draft.accessTypeReason ? ` (${draft.accessTypeReason})` : ""}.`);
+  }
   if (draft.languageDetectionWarning) notes.push(draft.languageDetectionWarning);
   if (draft.qualityScore) notes.push(`Quality score is ${draft.qualityScore.score}%. ${draft.qualityScore.score >= 80 ? "Looks safe to review for publishing." : "Keep as draft until missing items are fixed."}`);
   return notes.slice(0, 5);
@@ -1183,7 +1212,7 @@ function baseDraft(
   item: any,
   mediaType: "movie" | "tv",
   sourceInput: string,
-  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[] } = {}
+  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[]; accessType?: AccessType; accessTypeReason?: string | null } = {}
 ): AiImportDraft {
   const title = item.title || item.name || item.original_title || item.original_name || context.extractedTitle || sourceInput;
   const originalTitle = item.original_title || item.original_name || title;
@@ -1194,6 +1223,8 @@ function baseDraft(
   const productionCompanies = (item.production_companies ?? []).map((company: any) => company.name).filter(Boolean);
   const contentType = mediaType === "tv" ? "web_series" : "movie";
   const platform = context.platform || detectPlatformFromUrl(context.officialWatchUrl);
+  const platformAccess = detectAccessTypeFromText("", platform);
+  const accessType = normalizeAccessType(context.accessType || platformAccess.accessType);
   const languageState = languageStateFromSources({
     originalLanguage: item.original_language,
     platformLanguages: context.availableLanguages,
@@ -1209,6 +1240,8 @@ function baseDraft(
     platform,
     linkType: context.officialWatchUrl ? "direct_title_page" : "platform_search",
     openMode: context.officialWatchUrl ? "external" : "auto",
+    accessType,
+    accessTypeReason: context.accessTypeReason || platformAccess.reason,
     contentType,
     title,
     originalTitle,
@@ -1265,7 +1298,7 @@ function baseDraft(
   };
 }
 
-async function importMovie(id: number, input: string, context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[] } = {}) {
+async function importMovie(id: number, input: string, context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[]; accessType?: AccessType; accessTypeReason?: string | null } = {}) {
   const item = await fetchFullMovieDetails(id);
   const draft = baseDraft(item, "movie", input, context);
   if (!draft.trailerUrl) {
@@ -1282,7 +1315,7 @@ async function importSeries(
   id: number,
   input: string,
   includeSeasons = true,
-  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[] } = {}
+  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[]; accessType?: AccessType; accessTypeReason?: string | null } = {}
 ) {
   const item = await fetchFullTvDetails(id);
   const draft = baseDraft(item, "tv", input, context);
@@ -1358,7 +1391,7 @@ async function fetchFullTMDbDetails(
   type: "movie" | "tv",
   input: string,
   includeSeasons: boolean,
-  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[] } = {}
+  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[]; accessType?: AccessType; accessTypeReason?: string | null } = {}
 ) {
   const draft = type === "tv" ? await importSeries(id, input, includeSeasons, context) : await importMovie(id, input, context);
   return mapTMDbToAdminForm(draft, context.officialWatchUrl, context.platform);
@@ -1379,16 +1412,19 @@ async function detailsFromSelection(body: ImportRequest) {
   if (!Number.isFinite(id) || (mediaType !== "movie" && mediaType !== "tv")) {
     throw new Error("Select a valid TMDb result first.");
   }
+  const metadata = body.officialWatchUrl && isHttpUrl(body.officialWatchUrl)
+    ? await fetchPageMetadata(body.officialWatchUrl)
+    : null;
   const metadataLanguages = body.availableLanguages?.length
     ? body.availableLanguages
-    : body.officialWatchUrl && isHttpUrl(body.officialWatchUrl)
-      ? (await fetchPageMetadata(body.officialWatchUrl)).availableLanguages
-      : [];
+    : metadata?.availableLanguages || [];
   const context = {
     extractedTitle: body.extractedTitle || null,
     officialWatchUrl: body.officialWatchUrl || null,
     platform: body.platform || detectPlatformFromUrl(body.officialWatchUrl),
-    availableLanguages: metadataLanguages
+    availableLanguages: metadataLanguages,
+    accessType: body.accessType || metadata?.accessType,
+    accessTypeReason: body.accessTypeReason || metadata?.accessTypeReason || null
   };
   const draft = await fetchFullTMDbDetails(
     id,
@@ -1457,7 +1493,9 @@ async function searchFromInput(
       extractedTitle,
       officialWatchUrl,
       platform,
-      availableLanguages: detected?.metadata.availableLanguages || []
+      availableLanguages: detected?.metadata.availableLanguages || [],
+      accessType: detected?.metadata.accessType,
+      accessTypeReason: detected?.metadata.accessTypeReason || null
     });
     return { ok: true, draft: applyRequestedContentType(draft, requestedContentType), extractedTitle, platform };
   }
@@ -1505,7 +1543,14 @@ async function importBestCandidate(
   if (!first) {
     throw new Error(`No TMDb result found for "${extractedTitle}". AI Auto Fill did not create a fallback draft.`);
   }
-  const context = { extractedTitle, officialWatchUrl, platform, availableLanguages: detected?.metadata.availableLanguages || [] };
+  const context = {
+    extractedTitle,
+    officialWatchUrl,
+    platform,
+    availableLanguages: detected?.metadata.availableLanguages || [],
+    accessType: detected?.metadata.accessType,
+    accessTypeReason: detected?.metadata.accessTypeReason || null
+  };
   const draft = await fetchFullTMDbDetails(first.tmdbId, first.mediaType, input, includeSeasons, context);
   return applyRequestedContentType(draft, requestedContentType);
 }
@@ -1569,6 +1614,8 @@ function mergeMissingDraftFields(current: AiImportDraft, fresh: AiImportDraft) {
   fill("seoDescription", "SEO description");
   fill("officialWatchUrl", "Official watch link");
   fill("platform", "Platform");
+  fill("accessType", "Access type");
+  fill("accessTypeReason", "Access type note");
   fill("images", "Images");
   fill("seasons", "Seasons and episodes");
 

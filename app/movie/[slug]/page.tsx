@@ -15,6 +15,7 @@ import TrailerModalTrigger from "@/components/TrailerModalTrigger";
 import TrailerPlayer from "@/components/TrailerPlayer";
 import WatchHistoryRecorder from "@/components/WatchHistoryRecorder";
 import WatchLinks from "@/components/WatchLinks";
+import { accessTypeMeta } from "@/lib/access-type";
 import {
   getAdSlots,
   getLicenseDocumentsForMovie,
@@ -89,6 +90,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
   const hasExternalOttLink = Boolean(movie.movie_platform_links?.some((link) => link.is_active !== false && isExternalOnlyPlatform(link.platforms)));
   const playAction = resolveMoviePlayAction(movie);
   const trailerAction = resolveMovieTrailerAction(movie);
+  const access = accessTypeMeta(movie.access_type);
   const qualities = movieQualities(movie);
   const availabilityTypes = movieAvailabilityTypes(movie);
   const allBadges = movieSmartBadges(movie);
@@ -133,7 +135,8 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
             slug: movie.slug,
             title: movie.title,
             posterUrl: movie.poster_url || movie.banner_url || null,
-            contentType: movie.content_type || movie.type || "movie"
+            contentType: movie.content_type || movie.type || "movie",
+            accessType: movie.access_type
           }}
           title={movie.title}
         />
@@ -154,6 +157,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
               {allBadges.map((badge) => (
                 <span className="smart-badge" key={badge}>{badge}</span>
               ))}
+              <span className={access.className}>{access.label}</span>
             </div>
             {qualities.length || availabilityTypes.length ? (
               <div className="language-tags">
@@ -229,6 +233,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
           { label: "Category / Genre", value: genreSummary },
           { label: "Season / Episode", value: movieEpisodeSummary(movie) },
           { label: "Platform / Source", value: platformNames },
+          { label: "Access Type", value: access.detail },
           { label: "Availability", value: availabilityTypes.map((availability) => readableAvailability(availability)) },
           { label: "Release year", value: movie.release_year },
           { label: "Duration", value: formatDuration(movie.duration_minutes) },
@@ -258,6 +263,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
             <strong>Watch Legally</strong>
             <p>{hasOfficialWatchAction ? `Available on: ${platformSummary}${platformNames.length > 3 ? " and more" : ""}.` : "Official platform links have not been added yet."}</p>
             <span className="platform-badge">{availabilitySummary}</span>
+            <span className={access.className}>{access.detail}</span>
           </article>
           <article className="watch-guide-card">
             <strong>Hindi dubbed info</strong>
@@ -279,7 +285,8 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
           slug: movie.slug,
           title: movie.title,
           posterUrl: movie.poster_url || movie.banner_url || null,
-          contentType: movie.content_type || movie.type || "movie"
+          contentType: movie.content_type || movie.type || "movie",
+          accessType: movie.access_type
         }}
         title={movie.title}
       />

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ExternalLink, Play } from "lucide-react";
+import { accessTypeMeta } from "@/lib/access-type";
 import { trackWatchLinkClick } from "@/lib/analytics";
 import { movieQualities, readableAvailability } from "@/lib/discovery";
 import { formatType } from "@/lib/format";
@@ -87,11 +88,13 @@ function ChannelContentCard({ item }: { item: ContentChannelItem }) {
   const qualities = movieQualities(movie).slice(0, 2);
   const languages = splitLanguages(movie.language).slice(0, 2);
   const episode = episodeLabel(item);
+  const access = accessTypeMeta(movie.access_type);
 
   return (
     <article className="channel-content-card">
       <Link className="channel-content-poster" href={`/movie/${movie.slug}`}>
         {movie.poster_url || movie.banner_url ? <img src={movie.poster_url || movie.banner_url || ""} alt={movie.title} /> : <span>{movie.title.slice(0, 1)}</span>}
+        <span className={`${access.className} content-poster-access`}>{access.label}</span>
       </Link>
       <div className="channel-content-copy">
         <div className="meta-line">
@@ -103,6 +106,7 @@ function ChannelContentCard({ item }: { item: ContentChannelItem }) {
         <div className="language-tags">
           {languages.map((language) => <span className="language-tag" key={language}>{language}</span>)}
           {qualities.map((quality) => <span className="language-tag" key={quality}>{quality}</span>)}
+          <span className={access.className}>{access.label}</span>
           {watchLink?.availability_type ? <span className="platform-badge">{readableAvailability(watchLink.availability_type)}</span> : null}
           {watchLink?.platforms?.name ? <span className="platform-badge">{watchLink.platforms.name}</span> : null}
         </div>

@@ -16,7 +16,8 @@ export default function MovieCard({ movie, sectionName }: { movie: Movie; sectio
         contentType: movie.content_type || movie.type,
         languageLabel: languageBadge(movie.language, movie.primary_language, Array.isArray(movie.available_languages) ? movie.available_languages : null),
         platformLabel: null,
-        updateBadge: null
+        updateBadge: null,
+        accessType: movie.access_type
       }}
       compact={compact}
       sectionName={sectionName}

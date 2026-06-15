@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { accessTypeMeta } from "@/lib/access-type";
 import { formatType, getYouTubeEmbedUrl } from "@/lib/format";
 import { languageBadge } from "@/lib/content-language";
 import type { Movie } from "@/types/watchfinder";
@@ -130,6 +131,7 @@ export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
         {slides.map((movie, index) => {
           const image = movie.banner_url || movie.poster_url;
           const badges = slideBadges(movie);
+          const access = accessTypeMeta(movie.access_type);
           const previewSrc = active === index && previewReady ? getPreviewSrc(movie.trailer_url) : null;
 
           return (
@@ -154,6 +156,7 @@ export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
                   {badges.map((badge) => (
                     <span className="smart-badge" key={badge}>{badge}</span>
                   ))}
+                  <span className={access.className}>{access.label}</span>
                 </div>
                 <div className="hero-actions">
                   <Link className="button primary" href={`/movie/${movie.slug}`}>

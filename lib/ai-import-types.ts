@@ -1,3 +1,5 @@
+import type { AccessType } from "@/lib/access-type";
+
 export type AiImportMode = "url" | "imdb" | "tmdb" | "name" | "bulk" | "auto";
 export type AiImportedContentType = "movie" | "web_series" | "tv_show" | "cartoon" | "anime" | "documentary" | "short_film";
 
@@ -84,6 +86,8 @@ export type AiImportDraft = {
   platform?: AiImportPlatform | null;
   linkType?: "direct_title_page" | "platform_search" | "platform_home" | "app_deeplink";
   openMode?: "auto" | "in_app_browser" | "external" | "trailer_modal";
+  accessType?: AccessType;
+  accessTypeReason?: string | null;
   contentType: AiImportedContentType;
   title: string;
   originalTitle?: string | null;

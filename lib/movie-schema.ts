@@ -24,6 +24,7 @@ export const MOVIE_REQUIRED_COLUMNS = [
   "trailer_provider",
   "official_watch_url",
   "official_platform",
+  "access_type",
   "seo_title",
   "seo_description",
   "og_image_url",

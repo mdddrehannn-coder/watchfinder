@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ExternalLink, Play } from "lucide-react";
 import TrailerModalTrigger from "@/components/TrailerModalTrigger";
+import { accessTypeMeta } from "@/lib/access-type";
 import { trackEvent, trackWatchLinkClick } from "@/lib/analytics";
 import { cx } from "@/lib/format";
 import type { ResolvedPlayAction } from "@/lib/play-actions";
@@ -14,6 +15,7 @@ type HeroMovie = {
   title?: string | null;
   posterUrl?: string | null;
   contentType?: string | null;
+  accessType?: string | null;
 };
 
 export default function HeroPlayBanner({
@@ -29,6 +31,7 @@ export default function HeroPlayBanner({
   movie?: HeroMovie;
   className?: string;
 }) {
+  const access = accessTypeMeta(movie?.accessType);
   const playButton = (
     <span className="hero-play-button" aria-hidden="true">
       <Play size={34} fill="currentColor" />
@@ -38,6 +41,7 @@ export default function HeroPlayBanner({
   return (
     <div className={cx(className, "hero-play-banner")} aria-label={`${title} banner`}>
       {imageUrl ? <img src={imageUrl} alt={title} /> : null}
+      <span className={`${access.className} hero-access-badge`}>{access.label}</span>
       {action.type === "modal" && movie ? (
         <TrailerModalTrigger
           className="hero-play-button-trigger"

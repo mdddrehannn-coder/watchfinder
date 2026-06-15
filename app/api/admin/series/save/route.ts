@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
+import { normalizeAccessType } from "@/lib/access-type";
 import { isAdminEmail } from "@/lib/admin-access";
 import { slugify } from "@/lib/format";
 import {
@@ -144,6 +145,7 @@ function normalizeSavedSeries(row: any) {
     content_type: "web_series",
     genre: webSeries.genre || row.genre || null,
     platform_name: row.official_platform || webSeries.platform_name || null,
+    access_type: row.access_type || webSeries.access_type || null,
     language: row.primary_language || row.language || webSeries.language || null,
     watch_url: row.watch_url || row.official_watch_url || null,
     is_published: row.status === "published",
@@ -257,6 +259,7 @@ export async function POST(request: NextRequest) {
       seasons: seasons ?? objectPayload(existingAiPayload.webSeries || existingAiPayload.web_series).seasons ?? existingAiPayload.seasons ?? [],
       genre: cleanString(requestedPayload.genre),
       platform_name: platformName,
+      access_type: normalizeAccessType(requestedPayload.access_type as string | null),
       language: cleanString(requestedPayload.language),
       rating_text: numericRating == null ? originalRating : null,
       season_count: seasons ? seasons.length : undefined,
@@ -300,6 +303,9 @@ export async function POST(request: NextRequest) {
     }
     if (!seriesId || hasOwn(requestedPayload, "official_platform") || hasOwn(requestedPayload, "platform_name")) {
       basePayload.official_platform = platformName;
+    }
+    if (!seriesId || hasOwn(requestedPayload, "access_type")) {
+      basePayload.access_type = normalizeAccessType(requestedPayload.access_type as string | null);
     }
     if (!seriesId || hasOwn(requestedPayload, "status")) basePayload.status = cleanStatus(requestedPayload.status, "draft");
     if (!seriesId || hasOwn(requestedPayload, "is_featured")) basePayload.is_featured = cleanBoolean(requestedPayload.is_featured);

@@ -2,6 +2,7 @@
 
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Plus, Save, Trash2 } from "lucide-react";
+import { ACCESS_TYPE_OPTIONS, accessTypeMeta, normalizeAccessType, type AccessType } from "@/lib/access-type";
 import { slugify } from "@/lib/format";
 import { WATCHFINDER_LANGUAGES } from "@/lib/languages";
 import { storageBuckets, uploadPublicFile } from "@/lib/storage";
@@ -219,6 +220,7 @@ export default function AdminSeriesForm({
   const [bannerUrl, setBannerUrl] = useState(initialSeries?.banner_url ?? "");
   const [genre, setGenre] = useState(initialSeries?.genre ?? "");
   const [platformName, setPlatformName] = useState(initialSeries?.platform_name ?? "");
+  const [accessType, setAccessType] = useState<AccessType>(normalizeAccessType(initialSeries?.access_type));
   const [language, setLanguage] = useState(initialSeries?.language ?? "");
   const [releaseYear, setReleaseYear] = useState(initialSeries?.release_year ? String(initialSeries.release_year) : "");
   const [rating, setRating] = useState(initialSeries?.rating ?? "");
@@ -251,6 +253,7 @@ export default function AdminSeriesForm({
     setBannerUrl(initialSeries?.banner_url ?? "");
     setGenre(initialSeries?.genre ?? "");
     setPlatformName(initialSeries?.platform_name ?? "");
+    setAccessType(normalizeAccessType(initialSeries?.access_type));
     setLanguage(initialSeries?.language ?? "");
     setReleaseYear(initialSeries?.release_year ? String(initialSeries.release_year) : "");
     setRating(initialSeries?.rating ?? "");
@@ -295,6 +298,7 @@ export default function AdminSeriesForm({
     setBannerUrl(draft.bannerUrl || "");
     setGenre((draft.genres || []).join(", "));
     setPlatformName(draft.platform?.name || "");
+    setAccessType(normalizeAccessType(draft.accessType));
     setLanguage(draft.language || "");
     setReleaseYear(draft.releaseYear ? String(draft.releaseYear) : "");
     setRating(draft.rating ? String(Number(draft.rating).toFixed(1)) : "");
@@ -488,6 +492,7 @@ export default function AdminSeriesForm({
         banner_url: toNullableString(bannerUrl),
         genre: toNullableString(genre),
         platform_name: toNullableString(platformName),
+        access_type: accessType,
         language: toNullableString(language),
         release_year: toNullableNumber(releaseYear),
         rating: toNullableString(rating),
@@ -617,6 +622,13 @@ export default function AdminSeriesForm({
           <div className="field"><label>Banner Upload</label><input ref={bannerFileRef} type="file" accept="image/*" onChange={(event) => updatePreview(event, "banner")} /></div>
           <div className="field"><label>Genre</label><input list="series-genres" value={genre} onChange={(event) => setGenre(event.target.value)} placeholder="Drama, Action, Thriller" /><datalist id="series-genres">{genres.map((item) => <option key={item.id} value={item.name} />)}</datalist></div>
           <div className="field"><label>Platform</label><input value={platformName} onChange={(event) => setPlatformName(event.target.value)} placeholder="Netflix, Prime Video, YouTube" /></div>
+          <div className="field">
+            <label>Access Type</label>
+            <select value={accessType} onChange={(event) => setAccessType(normalizeAccessType(event.target.value))}>
+              {ACCESS_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            <small className="form-helper">Auto-filled by AI. Badge: {accessTypeMeta(accessType).label} - {accessTypeMeta(accessType).detail}.</small>
+          </div>
           <div className="field"><label>Language</label><select value={language} onChange={(event) => setLanguage(event.target.value)}><option value="">Select language</option>{WATCHFINDER_LANGUAGES.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
           <div className="field"><label>Release Year</label><input inputMode="numeric" value={releaseYear} onChange={(event) => setReleaseYear(event.target.value)} /></div>
           <div className="field"><label>Rating</label><input value={rating} onChange={(event) => setRating(event.target.value)} placeholder="8.4 or TV-14" /></div>

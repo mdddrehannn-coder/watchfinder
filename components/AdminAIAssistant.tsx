@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Image as ImageIcon, Loader2, Search, Sparkles } from "lucide-react";
+import { accessTypeMeta } from "@/lib/access-type";
 import type { AiImportCandidate, AiImportDraft, AiImportPlatform, AiImportResponse } from "@/lib/ai-import-types";
 
 type AiContentType = "movie" | "web_series" | "tv_show" | "cartoon";
@@ -441,6 +442,7 @@ export default function AdminAIAssistant({
             <div><strong>Genres</strong><p className="muted">{compactList(draft.genres)}</p></div>
             <div><strong>Platform</strong><p className="muted">{draft.platform?.name || "Not linked"}</p></div>
             <div><strong>Official link</strong><p className="muted">{draft.officialLinkValidation?.message || "Not checked"}</p></div>
+            <div><strong>Access Type</strong><p className="muted">{accessTypeMeta(draft.accessType).detail}</p></div>
             <div><strong>Suggested placement</strong><p className="muted">{draft.suggestedPlacement?.primarySection?.replace("_", " ") || "recently added"}</p></div>
           </div>
           {draft.suggestedPlacement?.reasons?.length ? (

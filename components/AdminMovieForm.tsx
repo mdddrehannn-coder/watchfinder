@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ChangeEvent, Dispatch, FormEvent, SetStateAction, useEffect, useRef, useState } from "react";
 import { Eye, Save } from "lucide-react";
+import { ACCESS_TYPE_OPTIONS, accessTypeMeta, normalizeAccessType, type AccessType } from "@/lib/access-type";
 import { getMovieSaveVisibilityMessage, getMovieVisibilityCheck } from "@/lib/admin-visibility";
 import { formatType, slugify } from "@/lib/format";
 import { actualAudioLanguages, joinLanguages, normalizeLanguageLabel, primaryLanguageForSelection, WATCHFINDER_LANGUAGES, withLanguageDisplayLabels } from "@/lib/languages";
@@ -55,6 +56,14 @@ const AVAILABILITY_OPTIONS = [
   { label: "Official", value: "official" },
   { label: "Unknown", value: "unknown" }
 ];
+
+function availabilityFromAccessType(value?: string | null) {
+  const accessType = normalizeAccessType(value);
+  if (accessType === "free") return "free";
+  if (accessType === "subscription") return "subscription";
+  if (accessType === "rent_buy") return "rent";
+  return "unknown";
+}
 
 const OPEN_MODE_OPTIONS = [
   { label: "Auto", value: "auto" },
@@ -571,6 +580,7 @@ export default function AdminMovieForm({
   const [platformHomeUrl, setPlatformHomeUrl] = useState(firstPlatformLink?.platform_home_url ?? "");
   const [platformSearchUrl, setPlatformSearchUrl] = useState(firstPlatformLink?.platform_search_url ?? "");
   const [availabilityType, setAvailabilityType] = useState(firstPlatformLink?.availability_type ?? "subscription");
+  const [accessType, setAccessType] = useState<AccessType>(normalizeAccessType(initialMovie?.access_type || firstPlatformLink?.availability_type));
   const [watchLinkType, setWatchLinkType] = useState(normalizeWatchLinkType(firstPlatformLink?.link_type));
   const [openMode, setOpenMode] = useState(firstPlatformLink?.open_mode ?? "auto");
   const [mobileWebSupported, setMobileWebSupported] = useState(mobilePlaybackValue(firstPlatformLink));
@@ -636,6 +646,7 @@ export default function AdminMovieForm({
     setPlatformHomeUrl(link?.platform_home_url ?? "");
     setPlatformSearchUrl(link?.platform_search_url ?? "");
     setAvailabilityType(link?.availability_type ?? "subscription");
+    setAccessType(normalizeAccessType(initialMovie?.access_type || link?.availability_type));
     setWatchLinkType(normalizeWatchLinkType(link?.link_type));
     setOpenMode(link?.open_mode ?? "auto");
     setMobileWebSupported(mobilePlaybackValue(link));
@@ -819,7 +830,8 @@ export default function AdminMovieForm({
     setMobileWebSupported("unknown");
     setDesktopWebSupported("unknown");
     setWatchLinkType(draft.officialWatchUrl ? "direct_title_page" : "platform_search");
-    setAvailabilityType("unknown");
+    setAccessType(normalizeAccessType(draft.accessType));
+    setAvailabilityType(availabilityFromAccessType(draft.accessType));
     setSelectedWatchLanguages(actualAudioLanguages(mergedLanguages));
     setSelectedQualities([]);
     setWatchLinkNotes("");
@@ -914,6 +926,7 @@ export default function AdminMovieForm({
     if (positioning === "free") {
       setHasLicensedVideo(true);
       setAvailabilityType("free");
+      setAccessType("free");
       setPrimarySection("free_legal");
       setHelperMessage("Free Legal Movie selected. Use only if full video is legally available.");
       return;
@@ -946,6 +959,7 @@ export default function AdminMovieForm({
       );
       if (youtube) setSelectedPlatformId(youtube.id);
       setAvailabilityType("official");
+      setAccessType("unknown");
       setPrimarySection("official_youtube");
       setHelperMessage(youtube ? "Official YouTube selected as the platform." : "Official YouTube selected. Add a YouTube platform to auto-select it.");
       return;
@@ -983,6 +997,7 @@ export default function AdminMovieForm({
     setPlatformHomeUrl("");
     setPlatformSearchUrl("");
     setAvailabilityType("subscription");
+    setAccessType("unknown");
     setWatchLinkType("direct_title_page");
     setOpenMode("auto");
     setMobileWebSupported("unknown");
@@ -1169,6 +1184,12 @@ export default function AdminMovieForm({
           mobileWebSupported,
           desktopWebSupported
         },
+        access: {
+          type: accessType,
+          label: accessTypeMeta(accessType).label,
+          detail: accessTypeMeta(accessType).detail,
+          reason: aiDraft?.accessTypeReason || null
+        },
         license: {
           hasLicensedVideo,
           videoProvider: normalizeVideoProvider(videoProvider),
@@ -1186,7 +1207,7 @@ export default function AdminMovieForm({
           isFeatured,
           isLatest,
           isHindiDubbed: selectedLanguages.includes("Hindi Dubbed"),
-          isFreeLegal: availabilityType === "free",
+          isFreeLegal: accessType === "free" || availabilityType === "free",
           isOfficial: Boolean(trailerUrl || watchUrl)
         }
       });
@@ -1237,11 +1258,12 @@ export default function AdminMovieForm({
         director: toNullableString(form.get("director")),
         trailer_url: trailerUrl,
         trailer_provider: toNullableString(form.get("trailer_provider")),
+        access_type: accessType,
         is_trending: isTrending,
         is_featured: isFeatured,
         is_latest: isLatest,
         is_hindi_dubbed: selectedLanguages.includes("Hindi Dubbed"),
-        is_free_legal: availabilityType === "free",
+        is_free_legal: accessType === "free" || availabilityType === "free",
         is_official: Boolean(trailerUrl || watchUrl),
         popularity_score: normalizePopularityScore(toNullableNumber(form.get("popularity_score")) ?? aiDraft?.popularityScore ?? 0),
         seo_title: toNullableString(form.get("seo_title")),
@@ -1853,6 +1875,24 @@ export default function AdminMovieForm({
             <select value={mobileWebSupported} onChange={(event) => updateMobilePlayback(event.target.value)}>
               {PLAYBACK_SUPPORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
+          </div>
+          <div className="field">
+            <label>Access Type</label>
+            <select
+              value={accessType}
+              onChange={(event) => {
+                const nextAccessType = normalizeAccessType(event.target.value);
+                setAccessType(nextAccessType);
+                setAvailabilityType(availabilityFromAccessType(nextAccessType));
+              }}
+            >
+              {ACCESS_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <small className="form-helper">
+              Auto-filled by AI. Current badge: {accessTypeMeta(accessType).label} - {accessTypeMeta(accessType).detail}.
+            </small>
           </div>
         </div>
 

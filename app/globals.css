@@ -907,7 +907,8 @@ html.theme-light .content-poster-art {
 }
 
 .content-poster-language,
-.content-poster-update {
+.content-poster-update,
+.content-poster-access {
   position: absolute;
   z-index: 1;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -934,6 +935,12 @@ html.theme-light .content-poster-art {
   right: 0.35rem;
   bottom: 0.35rem;
   background: rgba(244, 63, 94, 0.86);
+}
+
+.content-poster-access {
+  top: 0.35rem;
+  right: 0.35rem;
+  max-width: calc(100% - 2.4rem);
 }
 
 .content-poster-copy {
@@ -1070,7 +1077,8 @@ html.theme-light .poster-frame {
 
 .rating-badge,
 .legal-badge,
-.platform-badge {
+.platform-badge,
+.access-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
@@ -1083,9 +1091,41 @@ html.theme-light .poster-frame {
 }
 
 html.theme-light .rating-badge,
-html.theme-light .platform-badge {
+html.theme-light .platform-badge,
+html.theme-light .access-badge {
   background: rgba(15, 23, 42, 0.06);
   color: var(--text);
+}
+
+.access-badge {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  text-transform: uppercase;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.access-badge-free {
+  background: rgba(22, 163, 74, 0.9);
+  color: #ecfdf5;
+  border-color: rgba(134, 239, 172, 0.42);
+}
+
+.access-badge-subscription {
+  background: rgba(217, 119, 6, 0.92);
+  color: #fff7ed;
+  border-color: rgba(253, 186, 116, 0.45);
+}
+
+.access-badge-rent-buy {
+  background: rgba(234, 88, 12, 0.92);
+  color: #fff7ed;
+  border-color: rgba(251, 146, 60, 0.45);
+}
+
+.access-badge-unknown {
+  background: rgba(71, 85, 105, 0.88);
+  color: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.45);
 }
 
 .language-tags {
@@ -1441,6 +1481,7 @@ html.theme-light .channel-content-card {
 }
 
 .channel-content-poster {
+  position: relative;
   aspect-ratio: 2 / 3;
   border: 1px solid var(--line);
   border-radius: 0.75rem;
@@ -1613,6 +1654,15 @@ html.theme-light .ad-slot {
 
 .hero-play-banner {
   isolation: isolate;
+}
+
+.hero-access-badge {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  z-index: 3;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
 }
 
 .hero-play-button-trigger {

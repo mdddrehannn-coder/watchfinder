@@ -2,6 +2,7 @@
 
 import { ExternalLink } from "lucide-react";
 import PlatformLogo from "@/components/PlatformLogo";
+import { accessTypeFromAvailability, accessTypeMeta } from "@/lib/access-type";
 import { trackWatchLinkClick } from "@/lib/analytics";
 import { splitLanguages } from "@/lib/languages";
 import { recordWatchHistory } from "@/lib/user-library";
@@ -31,7 +32,7 @@ export default function WatchLinks({
   title
 }: {
   links?: MoviePlatformLink[];
-  movie?: { id: string; slug: string; title?: string | null; posterUrl?: string | null; contentType?: string | null };
+  movie?: { id: string; slug: string; title?: string | null; posterUrl?: string | null; contentType?: string | null; accessType?: string | null };
   title?: string;
 }) {
   const official = links.filter((link) => link.is_active !== false && link.is_official !== false);
@@ -50,6 +51,7 @@ export default function WatchLinks({
         {official.map((link) => {
           const target = resolveWatchLinkTarget(link, title || movie?.slug || "");
           const href = isBrowserHref(target.url) ? target.url : null;
+          const access = accessTypeMeta(movie?.accessType || accessTypeFromAvailability(link.availability_type));
           const content = (
             <>
               <span className="watch-link-head">
@@ -59,6 +61,7 @@ export default function WatchLinks({
                 </span>
               </span>
               <span className="watch-link-meta">
+                <span className={access.className}>{access.label}</span>
                 {link.availability_type ? (
                   <span className="platform-badge">{availabilityLabels[link.availability_type] || link.availability_type}</span>
                 ) : null}
@@ -69,6 +72,9 @@ export default function WatchLinks({
                 {splitLanguages(link.language).map((language) => (
                   <span className="language-tag" key={language}>{language}</span>
                 ))}
+              </span>
+              <span className="watch-link-note">
+                Watch on {target.platformName || link.platforms?.name || "official platform"} - {access.detail}.
               </span>
               <span className="watch-link-note">{target.note}</span>
               {target.externalOnly ? (

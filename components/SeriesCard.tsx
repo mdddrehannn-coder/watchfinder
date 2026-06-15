@@ -24,7 +24,8 @@ export default function SeriesCard({ series, sectionName }: { series: Series; se
         contentType: "web_series",
         languageLabel: languageBadge(series.language),
         platformLabel: null,
-        updateBadge: countLabel(series)
+        updateBadge: countLabel(series),
+        accessType: series.access_type
       }}
       compact={compact}
       sectionName={sectionName}

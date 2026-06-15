@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { accessTypeMeta } from "@/lib/access-type";
 import { trackEvent } from "@/lib/analytics";
 
 export type PosterCardItem = {
@@ -13,6 +14,7 @@ export type PosterCardItem = {
   languageLabel?: string | null;
   platformLabel?: string | null;
   updateBadge?: string | null;
+  accessType?: string | null;
 };
 
 function typeLabel(value?: string | null) {
@@ -31,6 +33,7 @@ export default function ContentPosterCard({
   compact?: boolean;
 }) {
   const image = item.posterUrl || item.bannerUrl;
+  const access = accessTypeMeta(item.accessType);
 
   return (
     <Link
@@ -50,6 +53,7 @@ export default function ContentPosterCard({
       <div className="content-poster-art">
         {image ? <img src={image} alt={`${item.title} poster`} /> : <span>{item.title.slice(0, 1)}</span>}
         {item.languageLabel ? <span className="content-poster-language">{item.languageLabel}</span> : null}
+        <span className={`${access.className} content-poster-access`}>{access.label}</span>
         {item.updateBadge ? <span className="content-poster-update">{item.updateBadge}</span> : null}
       </div>
       <div className="content-poster-copy">

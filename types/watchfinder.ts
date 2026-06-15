@@ -1,5 +1,6 @@
 export type MovieType = "movie" | "tv_show" | "anime" | "short_film" | "cartoon" | "trailer" | "episode" | "web_series";
 export type MovieStatus = "draft" | "published" | "archived" | "hidden";
+export type AccessType = "free" | "subscription" | "rent_buy" | "unknown";
 export type HomepageSection =
   | "none"
   | "hero"
@@ -140,6 +141,7 @@ export type Movie = {
   fallback_note?: string | null;
   quality?: string | null;
   availability_type?: string | null;
+  access_type?: AccessType | string | null;
   license_type?: string | null;
   license_owner_name?: string | null;
   license_start_date?: string | null;
@@ -173,6 +175,7 @@ export type Episode = {
   video_provider?: VideoProvider | string | null;
   platform_name?: string | null;
   availability_type?: string | null;
+  access_type?: AccessType | string | null;
   language?: string | null;
   quality?: string | null;
   duration_minutes?: number | null;
@@ -221,6 +224,7 @@ export type Series = {
   official_watch_url?: string | null;
   watch_url?: string | null;
   official_platform?: string | null;
+  access_type?: AccessType | string | null;
   open_mode?: string | null;
   is_featured?: boolean | null;
   is_latest?: boolean | null;
