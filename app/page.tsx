@@ -21,16 +21,85 @@ export const dynamic = "force-dynamic";
 function uniqueMovies(movies: Movie[]) {
   const seen = new Set<string>();
   return movies.filter((movie) => {
-    const key = [
-      movie.tmdb_id ? `tmdb:${movie.tmdb_id}` : "",
-      movie.official_watch_url ? `watch:${movie.official_watch_url}` : "",
-      movie.slug ? `slug:${movie.slug}` : "",
-      movie.id ? `id:${movie.id}` : ""
-    ].find(Boolean) || movie.title;
+    const key = movieIdentityKey(movie);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+function movieIdentityKey(movie: Movie) {
+  return [
+    movie.tmdb_id ? `tmdb:${movie.tmdb_id}` : "",
+    movie.official_watch_url ? `watch:${movie.official_watch_url}` : "",
+    movie.slug ? `slug:${movie.slug}` : "",
+    movie.id ? `id:${movie.id}` : ""
+  ].find(Boolean) || movie.title;
+}
+
+function stableHash(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function rotateMovies(movies: Movie[], offset: number) {
+  if (movies.length < 2) return movies;
+  const start = ((offset % movies.length) + movies.length) % movies.length;
+  return [...movies.slice(start), ...movies.slice(0, start)];
+}
+
+function orderSectionMovies(movies: Movie[], sectionKey: string, rowIndex: number, limit: number) {
+  const unique = uniqueMovies(movies);
+  if (sectionKey === "trending") return unique;
+
+  if (sectionKey === "recently_added") {
+    return unique.slice(0, Math.max(limit * 2, limit)).reverse();
+  }
+
+  if (sectionKey === "new_ott_releases" || sectionKey === "ott_release") {
+    const pool = unique.slice(0, Math.max(limit * 3, limit));
+    return rotateMovies(pool, Math.floor(pool.length / 2));
+  }
+
+  const shuffled = [...unique].sort((left, right) => {
+    const leftScore = stableHash(`${sectionKey}:${movieIdentityKey(left)}`);
+    const rightScore = stableHash(`${sectionKey}:${movieIdentityKey(right)}`);
+    return leftScore - rightScore;
+  });
+  return rotateMovies(shuffled, rowIndex * 3);
+}
+
+function getSectionDisplayItems(
+  items: Movie[],
+  sectionKey: string,
+  rowIndex: number,
+  fallbackItems: Movie[] = [],
+  limit = 12
+) {
+  const result: Movie[] = [];
+  const seen = new Set<string>();
+
+  const addMovies = (movies: Movie[]) => {
+    for (const movie of movies) {
+      const key = movieIdentityKey(movie);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(movie);
+      if (result.length >= limit) break;
+    }
+  };
+
+  addMovies(orderSectionMovies(items, sectionKey, rowIndex, limit));
+
+  if (result.length < limit && fallbackItems.length) {
+    addMovies(orderSectionMovies(fallbackItems, `${sectionKey}:fallback`, rowIndex + 7, limit));
+  }
+
+  return result.slice(0, limit);
 }
 
 function contentTypeMatches(movie: Movie, type: string) {
@@ -64,20 +133,22 @@ export default async function HomePage() {
     getPublishedSeries(12)
   ]);
 
-  const trending = uniqueMovies(trendingMovies.length ? trendingMovies : allMovies).slice(0, 12);
-  const recentlyAdded = uniqueMovies(allMovies).slice(0, 12);
-  const ottReleases = uniqueMovies(latestMovies.length ? latestMovies : allMovies).slice(0, 12);
-  const hindiDubbed = filterDiscoveryMovies(allMovies, { hindiDubbed: true }).slice(0, 12);
-  const freeLegal = filterDiscoveryMovies(allMovies, { freeLegal: true }).slice(0, 12);
-  const officialYouTube = filterDiscoveryMovies(allMovies, { officialYouTube: true }).slice(0, 12);
-  const popularCartoons = uniqueMovies([
+  const cartoonFallback = allMovies.filter((movie) => contentTypeMatches(movie, "cartoon"));
+  const tvShowFallback = allMovies.filter((movie) => contentTypeMatches(movie, "tv_show"));
+  const trending = getSectionDisplayItems(trendingMovies.length ? trendingMovies : allMovies, "trending", 0, allMovies, 12);
+  const recentlyAdded = getSectionDisplayItems(allMovies, "recently_added", 1, allMovies, 12);
+  const ottReleases = getSectionDisplayItems(latestMovies.length ? latestMovies : allMovies, "new_ott_releases", 2, allMovies, 12);
+  const hindiDubbed = getSectionDisplayItems(filterDiscoveryMovies(allMovies, { hindiDubbed: true }), "hindi_dubbed", 3, allMovies, 12);
+  const freeLegal = getSectionDisplayItems(filterDiscoveryMovies(allMovies, { freeLegal: true }), "free_legal", 4, allMovies, 12);
+  const officialYouTube = getSectionDisplayItems(filterDiscoveryMovies(allMovies, { officialYouTube: true }), "official_youtube", 5, allMovies, 12);
+  const popularCartoons = getSectionDisplayItems([
     ...channelCartoons,
-    ...allMovies.filter((movie) => contentTypeMatches(movie, "cartoon"))
-  ]).slice(0, 12);
-  const popularTvShows = uniqueMovies([
+    ...cartoonFallback
+  ], "cartoon", 6, cartoonFallback, 12);
+  const popularTvShows = getSectionDisplayItems([
     ...channelTvShows,
-    ...allMovies.filter((movie) => contentTypeMatches(movie, "tv_show"))
-  ]).slice(0, 12);
+    ...tvShowFallback
+  ], "tv_show", 7, tvShowFallback, 12);
 
   const homepageRows = {
     hero: heroMovies.length,
