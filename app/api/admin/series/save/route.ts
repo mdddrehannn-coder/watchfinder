@@ -67,6 +67,12 @@ function cleanStatus(value: unknown, fallback = "draft") {
   return ["draft", "published", "archived"].includes(status) ? status : fallback;
 }
 
+function databaseMovieTypeForContentType(contentType?: string | null) {
+  const value = cleanString(contentType) || "movie";
+  if (value === "web_series") return "tv_show";
+  return value;
+}
+
 function objectPayload(value: unknown) {
   return typeof value === "object" && value && !Array.isArray(value) ? value as Record<string, any> : {};
 }
@@ -264,7 +270,7 @@ export async function POST(request: NextRequest) {
     };
 
     const basePayload: Record<string, unknown> = {
-      type: "web_series",
+      type: databaseMovieTypeForContentType("web_series"),
       content_type: "web_series",
       homepage_placement: "web_series",
       primary_section: "web_series",

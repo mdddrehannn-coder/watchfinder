@@ -58,6 +58,12 @@ function cleanString(value: unknown) {
   return clean || null;
 }
 
+function cleanMovieType(value: unknown) {
+  const type = cleanString(value) || "movie";
+  if (type === "web_series") return "tv_show";
+  return type;
+}
+
 function cleanNumber(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
   const numeric = Number(value);
@@ -540,6 +546,19 @@ export async function POST(request: NextRequest) {
   const skippedColumns = new Set<string>();
   const basePayload = sanitizeMovieBasePayload(body.payload || {});
   const metadataPayload = sanitizeMovieMetadataPayload(body.metadataPayload || {});
+  if (basePayload.content_type === "web_series" || basePayload.type === "web_series") {
+    basePayload.content_type = "web_series";
+    basePayload.type = cleanMovieType("web_series");
+    const existingAiPayload = typeof metadataPayload.ai_import_payload === "object" && metadataPayload.ai_import_payload && !Array.isArray(metadataPayload.ai_import_payload)
+      ? metadataPayload.ai_import_payload as Record<string, unknown>
+      : {};
+    metadataPayload.ai_import_payload = {
+      ...existingAiPayload,
+      contentCategory: "web_series"
+    };
+  } else if (basePayload.type) {
+    basePayload.type = cleanMovieType(basePayload.type);
+  }
   const baseNumericCoercions = findMovieNumericCoercions(body.payload || {}, basePayload);
   const metadataNumericCoercions = findMovieNumericCoercions(body.metadataPayload || {}, metadataPayload);
   if (baseNumericCoercions.length || metadataNumericCoercions.length) {

@@ -112,6 +112,11 @@ function normalizePlaybackSupport(value?: string | null) {
   return support === "yes" || support === "no" ? support : "unknown";
 }
 
+function databaseMovieTypeForContentType(value?: string | null) {
+  const type = String(value || "movie").trim() || "movie";
+  return type === "web_series" ? "tv_show" : type;
+}
+
 function platformText(platform?: Platform | null) {
   return `${platform?.name || ""} ${platform?.slug || ""}`.toLowerCase();
 }
@@ -1188,7 +1193,7 @@ export default function AdminMovieForm({
       const rawPayload = {
         title: title.trim(),
         slug: slug.trim(),
-        type: selectedType,
+        type: databaseMovieTypeForContentType(selectedType),
         status: selectedStatus || "draft",
         content_type: selectedType || "movie",
         homepage_placement: primarySection || "recently_added",
