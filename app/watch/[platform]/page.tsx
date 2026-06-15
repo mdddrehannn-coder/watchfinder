@@ -13,10 +13,6 @@ export default async function WatchPlatformPage({
     title?: string;
     movie?: string;
     platformName?: string;
-    appRequired?: string;
-    appUrl?: string;
-    appStoreUrl?: string;
-    playStoreUrl?: string;
     fallbackNote?: string;
   }>;
 }) {
@@ -32,10 +28,6 @@ export default async function WatchPlatformPage({
       title={query.title || "Official platform"}
       url={url}
       movieSlug={query.movie || null}
-      appRequired={query.appRequired === "1"}
-      appUrl={query.appUrl || null}
-      appStoreUrl={query.appStoreUrl || null}
-      playStoreUrl={query.playStoreUrl || null}
       fallbackNote={query.fallbackNote || null}
     />
   );

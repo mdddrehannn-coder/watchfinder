@@ -1,5 +1,5 @@
 import { getYouTubeEmbedUrl } from "@/lib/format";
-import { buildInAppBrowserHref, platformKeyFromText } from "@/lib/platformBehavior";
+import { platformKeyFromText } from "@/lib/platformBehavior";
 import { isKnownExternalWatchPageUrl, resolveWatchLinkTarget } from "@/lib/watch-links";
 import type { Movie, MoviePlatformLink, Platform } from "@/types/watchfinder";
 
@@ -114,8 +114,7 @@ function movieRowWatchLink(movie: Movie): MoviePlatformLink | null {
   const hasAnyRowWatchTarget = Boolean(
     rowWatchUrl ||
       cleanUrl(movie.platform_home_url) ||
-      cleanUrl(movie.platform_search_url) ||
-      cleanUrl(movie.app_deeplink)
+      cleanUrl(movie.platform_search_url)
   );
 
   if (!hasAnyRowWatchTarget) return null;
@@ -127,20 +126,18 @@ function movieRowWatchLink(movie: Movie): MoviePlatformLink | null {
     watch_url: rowWatchUrl,
     platform_home_url: cleanUrl(movie.platform_home_url),
     platform_search_url: cleanUrl(movie.platform_search_url),
-    app_deeplink: cleanUrl(movie.app_deeplink),
-    app_store_url: cleanUrl(movie.app_store_url || movie.app_store_link),
-    play_store_url: cleanUrl(movie.play_store_url || movie.play_store_link),
+    app_deeplink: null,
+    app_store_url: null,
+    play_store_url: null,
     fallback_note: cleanUrl(movie.fallback_note),
     mobile_web_supported: movie.mobile_web_supported || "unknown",
     desktop_web_supported: movie.desktop_web_supported || "unknown",
-    app_required: Boolean(movie.app_required) || movie.mobile_web_supported === "no",
+    app_required: false,
     link_type: rowWatchUrl
       ? "direct_title_page"
       : cleanUrl(movie.platform_search_url)
         ? "platform_search"
-        : cleanUrl(movie.app_deeplink)
-          ? "app_deeplink"
-          : "platform_home",
+        : "platform_home",
     open_mode: movie.open_mode || "auto",
     availability_type: movie.availability_type || "unknown",
     language: movie.language || movie.primary_language || null,
@@ -152,30 +149,16 @@ function movieRowWatchLink(movie: Movie): MoviePlatformLink | null {
   };
 }
 
-function toPlatformPlayAction(link: MoviePlatformLink, movie: Movie, options: { forceExternal?: boolean } = {}): ResolvedPlayAction | null {
+function toPlatformPlayAction(link: MoviePlatformLink, movie: Movie): ResolvedPlayAction | null {
   const target = resolveWatchLinkTarget(link, movie.title);
   if (!target.url) return null;
-  const useExternal = options.forceExternal || target.openMode !== "in_app_browser";
 
   return {
     type: "platform",
-    href: !useExternal
-      ? buildInAppBrowserHref({
-        platform: link.platforms,
-        platformName: target.platformName,
-        title: movie.title,
-        url: target.url,
-        movieSlug: movie.slug,
-        appRequired: target.appRequired,
-        appUrl: target.appUrl,
-        appStoreUrl: target.appStoreUrl,
-        playStoreUrl: target.playStoreUrl,
-        fallbackNote: target.fallbackNote
-      })
-      : target.url,
-    label: target.appRequired ? `Open ${target.platformName} App` : "Watch on Official Platform",
+    href: target.url,
+    label: "Watch on Official Platform",
     platformName: target.platformName,
-    target: useExternal ? "_blank" : undefined,
+    target: "_blank",
     note: target.note
   };
 }
@@ -183,11 +166,11 @@ function toPlatformPlayAction(link: MoviePlatformLink, movie: Movie, options: { 
 export function resolveMoviePlayAction(movie: Movie): ResolvedPlayAction {
   const rowWatchLink = movieRowWatchLink(movie);
   const officialLinks = rowWatchLink
-    ? [...activeOfficialLinks(movie.movie_platform_links), rowWatchLink]
+    ? [rowWatchLink, ...activeOfficialLinks(movie.movie_platform_links)]
     : activeOfficialLinks(movie.movie_platform_links);
 
   for (const link of officialLinks) {
-    const action = toPlatformPlayAction(link, movie, { forceExternal: true });
+    const action = toPlatformPlayAction(link, movie);
     if (action) return action;
   }
 

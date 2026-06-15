@@ -63,10 +63,8 @@ export function platformBehaviorFor(platform?: Platform | string | null): Platfo
   };
 }
 
-export function shouldUseInAppBrowser(platform?: Platform | null, openMode?: string | null) {
-  if (openMode === "external" || openMode === "trailer_modal") return false;
-  if (openMode === "in_app_browser") return true;
-  return platformBehaviorFor(platform).internalMode === "in_app_browser_try";
+export function shouldUseInAppBrowser(_platform?: Platform | null, _openMode?: string | null) {
+  return false;
 }
 
 export function buildInAppBrowserHref({
@@ -75,10 +73,6 @@ export function buildInAppBrowserHref({
   title,
   url,
   movieSlug,
-  appRequired,
-  appUrl,
-  appStoreUrl,
-  playStoreUrl,
   fallbackNote
 }: {
   platform?: Platform | null;
@@ -86,10 +80,6 @@ export function buildInAppBrowserHref({
   title: string;
   url: string;
   movieSlug?: string | null;
-  appRequired?: boolean;
-  appUrl?: string | null;
-  appStoreUrl?: string | null;
-  playStoreUrl?: string | null;
   fallbackNote?: string | null;
 }) {
   const slug = platform?.slug || platformKeyFromText(platformName || "official-platform") || "official-platform";
@@ -99,10 +89,6 @@ export function buildInAppBrowserHref({
     platformName: platformName || platform?.name || "Official platform"
   });
   if (movieSlug) params.set("movie", movieSlug);
-  if (appRequired) params.set("appRequired", "1");
-  if (appUrl) params.set("appUrl", appUrl);
-  if (appStoreUrl) params.set("appStoreUrl", appStoreUrl);
-  if (playStoreUrl) params.set("playStoreUrl", playStoreUrl);
   if (fallbackNote) params.set("fallbackNote", fallbackNote);
   return `/watch/${encodeURIComponent(slug)}?${params.toString()}`;
 }

@@ -6,7 +6,7 @@ import EpisodeAnalyticsTracker from "@/components/EpisodeAnalyticsTracker";
 import WatchHistoryRecorder from "@/components/WatchHistoryRecorder";
 import { getSeriesEpisodeByNumbers } from "@/lib/data";
 import { getYouTubeEmbedUrl } from "@/lib/format";
-import { buildInAppBrowserHref, isSafeLauncherUrl } from "@/lib/platformBehavior";
+import { isSafeLauncherUrl } from "@/lib/platformBehavior";
 
 export const dynamic = "force-dynamic";
 
@@ -63,14 +63,7 @@ export default async function WebSeriesEpisodePage({
   const officialUrl = episode.watch_url || (!embedSource ? episode.trailer_url : "");
   const platformName = episode.platform_name || "Official platform";
   const safeOfficialUrl = isSafeLauncherUrl(officialUrl) ? officialUrl : "";
-  const officialHref = safeOfficialUrl
-    ? buildInAppBrowserHref({
-      platformName,
-      title: `${series.title} - ${episode.title}`,
-      url: safeOfficialUrl,
-      movieSlug: series.slug
-    })
-    : "";
+  const officialHref = safeOfficialUrl || "";
 
   return (
     <main className="series-player-page">
@@ -115,9 +108,9 @@ export default async function WebSeriesEpisodePage({
             <p className="rating-badge">Official platform</p>
             <h2>Open this episode legally</h2>
             <p className="muted">Playback is controlled by {platformName}. WatchFinder opens the official page and does not host protected OTT videos.</p>
-            <Link className="button primary" href={officialHref}>
+            <a className="button primary" href={officialHref} target="_blank" rel="noreferrer">
               Open {platformName} <ExternalLink size={16} />
-            </Link>
+            </a>
           </div>
         ) : (
           <div className="watch-guide-card series-player-fallback">

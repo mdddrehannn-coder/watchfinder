@@ -1,5 +1,4 @@
 import type { MoviePlatformLink, Platform } from "@/types/watchfinder";
-import { shouldUseInAppBrowser } from "@/lib/platformBehavior";
 
 export const WATCH_LINK_TYPES = [
   "direct_title_page",
@@ -156,55 +155,62 @@ export function isKnownExternalWatchPageUrl(url?: string | null) {
   }
 }
 
+function browserSafeUrl(url?: string | null) {
+  const value = (url || "").trim();
+  if (!value) return null;
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:") return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
   const platformName = link.platforms?.name || "Official platform";
   const linkType = normalizeWatchLinkType(link.link_type);
-  const exactUrl = (linkType === "app_deeplink" ? link.app_deeplink || link.watch_url : link.watch_url)?.trim();
+  const browserLinkType = linkType === "app_deeplink" ? "direct_title_page" : linkType;
+  const exactUrl = browserSafeUrl(link.watch_url);
   const externalOnly = isExternalOnlyPlatform(link.platforms);
-  const appRequired = Boolean(link.app_required);
-  const openMode = linkType === "app_deeplink"
-    ? "external"
-    : appRequired
-      ? "in_app_browser"
-    : shouldUseInAppBrowser(link.platforms, link.open_mode) ? "in_app_browser" : "external";
+  const openMode = "external";
 
   if (exactUrl) {
     return {
       url: exactUrl,
-      label: appRequired ? `Open ${platformName} App` : openMode === "in_app_browser" ? "Open in WatchFinder" : linkType === "app_deeplink" ? `Open in ${platformName}` : `Watch on ${platformName}`,
-      note: link.fallback_note || link.notes || (appRequired
-        ? `This title is not supported on mobile web playback. Continue in the official ${platformName} app.`
-        : externalOnly
-        ? `${platformName} playback opens on the official app/site. WatchFinder does not host or embed OTT videos.`
-        : "Opens the official title page or app link."),
-      type: linkType,
+      label: `Watch on ${platformName}`,
+      note: link.fallback_note || link.notes || (externalOnly
+        ? `${platformName} opens in your browser. Login may be required. WatchFinder does not host or embed OTT videos.`
+        : "Opens the official title page in your browser."),
+      type: browserLinkType,
       platformName,
       externalOnly,
       openMode,
-      appRequired,
-      appUrl: link.app_deeplink || exactUrl,
-      appStoreUrl: link.app_store_url,
-      playStoreUrl: link.play_store_url,
+      appRequired: false,
+      appUrl: null,
+      appStoreUrl: null,
+      playStoreUrl: null,
       fallbackNote: link.fallback_note
     };
   }
 
-  const searchUrl = link.platform_search_url || getPlatformSearchUrl(link.platforms, title);
-  const homeUrl = link.platform_home_url || getPlatformHomeUrl(link.platforms);
+  const searchUrl = browserSafeUrl(link.platform_search_url) || browserSafeUrl(getPlatformSearchUrl(link.platforms, title));
+  const homeUrl = browserSafeUrl(link.platform_home_url) || browserSafeUrl(getPlatformHomeUrl(link.platforms));
 
-  if (linkType === "platform_search" && searchUrl) {
+  if (browserLinkType === "platform_search" && searchUrl) {
     return {
       url: searchUrl,
-      label: openMode === "in_app_browser" ? "Open in WatchFinder" : externalOnly ? `Open ${platformName}` : `Search on ${platformName}`,
+      label: externalOnly ? `Open ${platformName}` : `Search on ${platformName}`,
       note: link.notes || `Search this title on ${platformName}. Exact title link is not available.`,
-      type: linkType,
+      type: browserLinkType,
       platformName,
       externalOnly,
       openMode,
-      appRequired,
-      appUrl: link.app_deeplink || searchUrl,
-      appStoreUrl: link.app_store_url,
-      playStoreUrl: link.play_store_url,
+      appRequired: false,
+      appUrl: null,
+      appStoreUrl: null,
+      playStoreUrl: null,
       fallbackNote: link.fallback_note
     };
   }
@@ -212,16 +218,16 @@ export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
   if (homeUrl) {
     return {
       url: homeUrl,
-      label: openMode === "in_app_browser" ? "Open in WatchFinder" : `Open ${platformName}`,
+      label: `Open ${platformName}`,
       note: link.notes || `Search this title on ${platformName}. Exact title link is not available.`,
       type: "platform_home" as WatchLinkType,
       platformName,
       externalOnly,
       openMode,
-      appRequired,
-      appUrl: link.app_deeplink || homeUrl,
-      appStoreUrl: link.app_store_url,
-      playStoreUrl: link.play_store_url,
+      appRequired: false,
+      appUrl: null,
+      appStoreUrl: null,
+      playStoreUrl: null,
       fallbackNote: link.fallback_note
     };
   }
@@ -230,14 +236,14 @@ export function resolveWatchLinkTarget(link: MoviePlatformLink, title: string) {
     url: null,
     label: `Open ${platformName}`,
     note: link.notes || `Exact title link is not available. Search this title on ${platformName}.`,
-    type: linkType,
+    type: browserLinkType,
     platformName,
     externalOnly,
     openMode,
-    appRequired,
-    appUrl: link.app_deeplink,
-    appStoreUrl: link.app_store_url,
-    playStoreUrl: link.play_store_url,
+    appRequired: false,
+    appUrl: null,
+    appStoreUrl: null,
+    playStoreUrl: null,
     fallbackNote: link.fallback_note
   };
 }

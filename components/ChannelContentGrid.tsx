@@ -6,7 +6,6 @@ import { trackWatchLinkClick } from "@/lib/analytics";
 import { movieQualities, readableAvailability } from "@/lib/discovery";
 import { formatType } from "@/lib/format";
 import { splitLanguages } from "@/lib/languages";
-import { buildInAppBrowserHref } from "@/lib/platformBehavior";
 import { resolveWatchLinkTarget } from "@/lib/watch-links";
 import type { ContentChannelItem } from "@/types/watchfinder";
 
@@ -22,7 +21,17 @@ function episodeLabel(item: ContentChannelItem) {
 }
 
 function isDangerousHref(value?: string | null) {
-  return /^(javascript|data|vbscript):/i.test((value || "").trim());
+  return /^(javascript|data|vbscript|intent|market):/i.test((value || "").trim());
+}
+
+function isBrowserHref(value?: string | null) {
+  const href = (value || "").trim();
+  if (!href || isDangerousHref(href)) return false;
+  try {
+    return new URL(href).protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 export default function ChannelContentGrid({
@@ -74,15 +83,7 @@ function ChannelContentCard({ item }: { item: ContentChannelItem }) {
   if (!movie) return null;
   const watchLink = firstWatchLink(item);
   const watchTarget = watchLink ? resolveWatchLinkTarget(watchLink, movie.title) : null;
-  const watchHref = watchTarget?.url && !isDangerousHref(watchTarget.url) && watchTarget.openMode === "in_app_browser"
-    ? buildInAppBrowserHref({
-      platform: watchLink?.platforms,
-      platformName: watchTarget.platformName,
-      title: movie.title,
-      url: watchTarget.url,
-      movieSlug: movie.slug
-    })
-    : watchTarget?.url && !isDangerousHref(watchTarget.url) ? watchTarget.url : null;
+  const watchHref = isBrowserHref(watchTarget?.url) ? watchTarget?.url || null : null;
   const qualities = movieQualities(movie).slice(0, 2);
   const languages = splitLanguages(movie.language).slice(0, 2);
   const episode = episodeLabel(item);
@@ -111,8 +112,8 @@ function ChannelContentCard({ item }: { item: ContentChannelItem }) {
             <a
               className="button"
               href={watchHref}
-              target={watchTarget?.openMode === "in_app_browser" ? undefined : "_blank"}
-              rel={watchTarget?.openMode === "in_app_browser" ? undefined : "noreferrer"}
+              target="_blank"
+              rel="noreferrer"
               onClick={() => trackWatchLinkClick({ id: movie.id, slug: movie.slug }, watchTarget.platformName)}
             >
               <ExternalLink size={16} /> {watchTarget.label}
