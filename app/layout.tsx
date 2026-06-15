@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
+import Script from "next/script";
 import { Suspense } from "react";
 import "@/app/globals.css";
 import AnalyticsTracker from "@/components/AnalyticsTracker";
@@ -81,6 +82,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="theme-dark" suppressHydrationWarning>
       <body>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <Script
+          id="google-adsense"
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9362870068339106"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
+        />
         <ThemeManager />
         <SimpleSplashScreen />
         <ServiceWorkerRegister />
