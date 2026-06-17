@@ -43,6 +43,9 @@ export const metadata: Metadata = {
     siteName: "WatchFinder",
     images: ["/brand/watchfinder-wordmark.png"],
     type: "website"
+  },
+  other: {
+    "google-adsense-account": "ca-pub-9362870068339106"
   }
 };
 
