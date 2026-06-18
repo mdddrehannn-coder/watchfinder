@@ -61,7 +61,7 @@ export default function WatchLinks({
                 </span>
               </span>
               <span className="watch-link-meta">
-                <span className={access.className}>{access.label}</span>
+                {access.visible ? <span className={access.className}>{access.label}</span> : null}
                 {link.availability_type ? (
                   <span className="platform-badge">{availabilityLabels[link.availability_type] || link.availability_type}</span>
                 ) : null}

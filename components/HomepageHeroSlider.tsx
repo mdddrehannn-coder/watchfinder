@@ -156,7 +156,7 @@ export default function HomepageHeroSlider({ movies }: { movies: Movie[] }) {
                   {badges.map((badge) => (
                     <span className="smart-badge" key={badge}>{badge}</span>
                   ))}
-                  <span className={access.className}>{access.label}</span>
+                  {access.visible ? <span className={access.className}>{access.label}</span> : null}
                 </div>
                 <div className="hero-actions">
                   <Link className="button primary" href={`/movie/${movie.slug}`}>

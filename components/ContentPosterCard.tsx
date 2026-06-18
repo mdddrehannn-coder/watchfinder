@@ -53,7 +53,7 @@ export default function ContentPosterCard({
       <div className="content-poster-art">
         {image ? <img src={image} alt={`${item.title} poster`} /> : <span>{item.title.slice(0, 1)}</span>}
         {item.languageLabel ? <span className="content-poster-language">{item.languageLabel}</span> : null}
-        <span className={`${access.className} content-poster-access`}>{access.label}</span>
+        {access.visible ? <span className={`${access.className} content-poster-access`}>{access.label}</span> : null}
         {item.updateBadge ? <span className="content-poster-update">{item.updateBadge}</span> : null}
       </div>
       <div className="content-poster-copy">

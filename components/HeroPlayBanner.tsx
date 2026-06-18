@@ -41,7 +41,7 @@ export default function HeroPlayBanner({
   return (
     <div className={cx(className, "hero-play-banner")} aria-label={`${title} banner`}>
       {imageUrl ? <img src={imageUrl} alt={title} /> : null}
-      <span className={`${access.className} hero-access-badge`}>{access.label}</span>
+      {access.visible ? <span className={`${access.className} hero-access-badge`}>{access.label}</span> : null}
       {action.type === "modal" && movie ? (
         <TrailerModalTrigger
           className="hero-play-button-trigger"

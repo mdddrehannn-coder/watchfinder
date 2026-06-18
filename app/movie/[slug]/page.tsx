@@ -157,7 +157,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
               {allBadges.map((badge) => (
                 <span className="smart-badge" key={badge}>{badge}</span>
               ))}
-              <span className={access.className}>{access.label}</span>
+              {access.visible ? <span className={access.className}>{access.label}</span> : null}
             </div>
             {qualities.length || availabilityTypes.length ? (
               <div className="language-tags">
@@ -233,7 +233,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
           { label: "Category / Genre", value: genreSummary },
           { label: "Season / Episode", value: movieEpisodeSummary(movie) },
           { label: "Platform / Source", value: platformNames },
-          { label: "Access Type", value: access.detail },
+          { label: "Access Type", value: access.visible ? access.detail : null },
           { label: "Availability", value: availabilityTypes.map((availability) => readableAvailability(availability)) },
           { label: "Release year", value: movie.release_year },
           { label: "Duration", value: formatDuration(movie.duration_minutes) },
@@ -263,7 +263,7 @@ export default async function MovieDetailPage({ params }: { params: Promise<{ sl
             <strong>Watch Legally</strong>
             <p>{hasOfficialWatchAction ? `Available on: ${platformSummary}${platformNames.length > 3 ? " and more" : ""}.` : "Official platform links have not been added yet."}</p>
             <span className="platform-badge">{availabilitySummary}</span>
-            <span className={access.className}>{access.detail}</span>
+            {access.visible ? <span className={access.className}>{access.detail}</span> : null}
           </article>
           <article className="watch-guide-card">
             <strong>Hindi dubbed info</strong>

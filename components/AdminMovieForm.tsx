@@ -60,8 +60,8 @@ const AVAILABILITY_OPTIONS = [
 function availabilityFromAccessType(value?: string | null) {
   const accessType = normalizeAccessType(value);
   if (accessType === "free") return "free";
-  if (accessType === "subscription") return "subscription";
-  if (accessType === "rent_buy") return "rent";
+  if (accessType === "premium") return "subscription";
+  if (accessType === "rent") return "rent";
   return "unknown";
 }
 
