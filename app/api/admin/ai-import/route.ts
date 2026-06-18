@@ -21,20 +21,34 @@ const MAX_BULK_ITEMS = 50;
 
 const languageNames: Record<string, string> = {
   hi: "Hindi",
+  hin: "Hindi",
   en: "English",
+  eng: "English",
   ta: "Tamil",
+  tam: "Tamil",
   te: "Telugu",
+  tel: "Telugu",
   ml: "Malayalam",
+  mal: "Malayalam",
   kn: "Kannada",
+  kan: "Kannada",
   mr: "Marathi",
+  mar: "Marathi",
   bn: "Bengali",
+  ben: "Bengali",
   pa: "Punjabi",
+  pan: "Punjabi",
   gu: "Gujarati",
+  guj: "Gujarati",
   ur: "Urdu",
+  urd: "Urdu",
   or: "Odia",
+  ori: "Odia",
   as: "Assamese",
+  asm: "Assamese",
   bho: "Bhojpuri",
-  ne: "Nepali"
+  ne: "Nepali",
+  nep: "Nepali"
 };
 
 type ImportRequest = {
@@ -58,6 +72,8 @@ type ImportRequest = {
 
 type PageMetadata = {
   titleCandidates: string[];
+  descriptionCandidates: string[];
+  imageCandidates: string[];
   availableLanguages: string[];
   accessType: AccessType;
   accessTypeReason?: string | null;
@@ -65,13 +81,37 @@ type PageMetadata = {
   fetchedFrom?: "direct" | "proxy" | null;
 };
 
-const platformRules: Array<AiImportPlatform & { hosts: string[]; searchPattern?: string }> = [
+type ImportContext = {
+  extractedTitle?: string | null;
+  officialWatchUrl?: string | null;
+  platform?: AiImportPlatform | null;
+  availableLanguages?: string[];
+  accessType?: AccessType;
+  accessTypeReason?: string | null;
+  pageMetadata?: PageMetadata | null;
+};
+
+type PlatformRule = AiImportPlatform & {
+  hosts: string[];
+  searchPattern?: string;
+  pathIncludes?: string[];
+};
+
+const platformRules: PlatformRule[] = [
   {
     key: "jiohotstar",
     name: "JioHotstar",
-    hosts: ["hotstar.com", "jiohotstar.com"],
+    hosts: ["hotstar.com", "jiohotstar.com", "disneyplus.com"],
     homeUrl: "https://www.hotstar.com/",
     searchPattern: "https://www.hotstar.com/in/search?q={query}"
+  },
+  {
+    key: "amazon-minitv",
+    name: "Amazon miniTV",
+    hosts: ["amazon.in", "mini.tv"],
+    pathIncludes: ["/minitv"],
+    homeUrl: "https://www.amazon.in/minitv",
+    searchPattern: "https://www.amazon.in/minitv/search?query={query}"
   },
   {
     key: "netflix",
@@ -83,7 +123,8 @@ const platformRules: Array<AiImportPlatform & { hosts: string[]; searchPattern?:
   {
     key: "prime-video",
     name: "Prime Video",
-    hosts: ["primevideo.com", "amazon.com", "amazon.in"],
+    hosts: ["primevideo.com", "primevideo.in", "amazon.com", "amazon.in", "amazon.co.uk"],
+    pathIncludes: ["/detail", "/gp/video", "/video", "/prime-video"],
     homeUrl: "https://www.primevideo.com/",
     searchPattern: "https://www.primevideo.com/search/ref=atv_nb_sr?phrase={query}"
   },
@@ -135,6 +176,76 @@ const platformRules: Array<AiImportPlatform & { hosts: string[]; searchPattern?:
     hosts: ["tv.apple.com"],
     homeUrl: "https://tv.apple.com/",
     searchPattern: "https://tv.apple.com/search?term={query}"
+  },
+  {
+    key: "sunnxt",
+    name: "SunNXT",
+    hosts: ["sunnxt.com"],
+    homeUrl: "https://www.sunnxt.com/",
+    searchPattern: "https://www.sunnxt.com/search?q={query}"
+  },
+  {
+    key: "hoichoi",
+    name: "Hoichoi",
+    hosts: ["hoichoi.tv"],
+    homeUrl: "https://www.hoichoi.tv/",
+    searchPattern: "https://www.hoichoi.tv/search?q={query}"
+  },
+  {
+    key: "lionsgate-play",
+    name: "Lionsgate Play",
+    hosts: ["lionsgateplay.com"],
+    homeUrl: "https://www.lionsgateplay.com/",
+    searchPattern: "https://www.lionsgateplay.com/search?q={query}"
+  },
+  {
+    key: "discovery-plus",
+    name: "Discovery+",
+    hosts: ["discoveryplus.com", "discoveryplus.in"],
+    homeUrl: "https://www.discoveryplus.com/",
+    searchPattern: "https://www.discoveryplus.com/search?q={query}"
+  },
+  {
+    key: "crunchyroll",
+    name: "Crunchyroll",
+    hosts: ["crunchyroll.com"],
+    homeUrl: "https://www.crunchyroll.com/",
+    searchPattern: "https://www.crunchyroll.com/search?q={query}"
+  },
+  {
+    key: "manoramamax",
+    name: "ManoramaMAX",
+    hosts: ["manoramamax.com"],
+    homeUrl: "https://www.manoramamax.com/",
+    searchPattern: "https://www.manoramamax.com/search?q={query}"
+  },
+  {
+    key: "etv-win",
+    name: "ETV Win",
+    hosts: ["etvwin.com"],
+    homeUrl: "https://www.etvwin.com/",
+    searchPattern: "https://www.etvwin.com/search?q={query}"
+  },
+  {
+    key: "shemaroome",
+    name: "ShemarooMe",
+    hosts: ["shemaroome.com"],
+    homeUrl: "https://www.shemaroome.com/",
+    searchPattern: "https://www.shemaroome.com/search?q={query}"
+  },
+  {
+    key: "chaupal",
+    name: "Chaupal",
+    hosts: ["chaupal.tv"],
+    homeUrl: "https://www.chaupal.tv/",
+    searchPattern: "https://www.chaupal.tv/search?q={query}"
+  },
+  {
+    key: "stage",
+    name: "Stage",
+    hosts: ["stage.in"],
+    homeUrl: "https://www.stage.in/",
+    searchPattern: "https://www.stage.in/search?q={query}"
   }
 ];
 
@@ -157,10 +268,12 @@ const noisyUrlWords = new Set([
   "www",
   "hotstar",
   "jiohotstar",
+  "disneyplus",
   "netflix",
   "primevideo",
   "prime",
   "amazon",
+  "minitv",
   "zee5",
   "sonyliv",
   "youtube",
@@ -169,13 +282,34 @@ const noisyUrlWords = new Set([
   "mx",
   "aha",
   "apple",
+  "sunnxt",
+  "hoichoi",
+  "lionsgate",
+  "lionsgateplay",
+  "discovery",
+  "discoveryplus",
+  "crunchyroll",
+  "manoramamax",
+  "manorama",
+  "etv",
+  "etvwin",
+  "shemaroo",
+  "shemaroome",
+  "chaupal",
+  "stage",
   "browse",
   "search",
   "official",
   "stream",
   "streaming",
   "ref",
-  "dp"
+  "dp",
+  "detail",
+  "details",
+  "title",
+  "titles",
+  "content",
+  "watchnow"
 ]);
 
 const platformTitleNoise = [
@@ -192,6 +326,17 @@ const platformTitleNoise = [
   "YouTube",
   "Aha",
   "Apple TV",
+  "Amazon miniTV",
+  "SunNXT",
+  "Hoichoi",
+  "Lionsgate Play",
+  "Discovery+",
+  "Crunchyroll",
+  "ManoramaMAX",
+  "ETV Win",
+  "ShemarooMe",
+  "Chaupal",
+  "Stage",
   "WatchFinder"
 ];
 
@@ -334,10 +479,16 @@ function detectPlatformFromUrl(input?: string | null): AiImportPlatform | null {
   if (!input || !isHttpUrl(input)) return null;
 
   try {
-    const host = new URL(input).hostname.replace(/^www\./, "").toLowerCase();
-    const rule = platformRules.find((platform) =>
-      platform.hosts.some((domain) => host === domain || host.endsWith(`.${domain}`))
-    );
+    const url = new URL(input);
+    const host = url.hostname.replace(/^www\./, "").toLowerCase();
+    const path = url.pathname.toLowerCase();
+    const rule = platformRules.find((platform) => {
+      const matchedHost = platform.hosts.find((domain) => host === domain || host.endsWith(`.${domain}`));
+      if (!matchedHost) return false;
+      if (!platform.pathIncludes?.length) return true;
+      const needsPathMarker = /^amazon\./i.test(host);
+      return !needsPathMarker || platform.pathIncludes.some((marker) => path.includes(marker));
+    });
     if (!rule) return null;
     return {
       key: rule.key,
@@ -357,8 +508,8 @@ function detectContentTypeFromUrl(input?: string | null): "movie" | "tv" | null 
       .split("/")
       .map((segment) => segment.trim().toLowerCase())
       .filter(Boolean);
-    if (segments.some((segment) => ["movie", "movies", "film", "films"].includes(segment))) return "movie";
-    if (segments.some((segment) => ["tv", "show", "shows", "series", "web-series"].includes(segment))) return "tv";
+    if (segments.some((segment) => ["movie", "movies", "film", "films", "cinema"].includes(segment))) return "movie";
+    if (segments.some((segment) => ["tv", "show", "shows", "series", "web-series", "anime", "episodes"].includes(segment))) return "tv";
   } catch {
     return null;
   }
@@ -402,7 +553,7 @@ function isLikelyJunkTitle(value: string) {
   if (/^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|in|net|org|video|tv)$/i.test(domainish)) return true;
   const wordKey = clean.replace(/[^a-z0-9]+/g, " ").trim();
   if (/^(www\s+)?[a-z0-9-]+\s+(com|in|net|org|video|tv)$/i.test(wordKey)) return true;
-  if (/^(www\s+)?(hotstar|jiohotstar|netflix|primevideo|youtube|zee5|sonyliv|jiocinema|mxplayer|aha)\s*(com|in|video|tv)?$/i.test(wordKey)) return true;
+  if (/^(www\s+)?(hotstar|jiohotstar|netflix|primevideo|youtube|zee5|sonyliv|jiocinema|mxplayer|aha|sunnxt|hoichoi|lionsgateplay|discoveryplus|crunchyroll|manoramamax|etvwin|shemaroome|chaupal|stage)\s*(com|in|video|tv)?$/i.test(wordKey)) return true;
   if (/^https?:\/\//i.test(clean)) return true;
   if (noisyUrlWords.has(clean)) return true;
   if (/^\d+$/.test(clean)) return true;
@@ -488,7 +639,25 @@ function extractSlugFromUrl(input: string) {
     .map((segment) => segment.split("?")[0])
     .map((segment) => segment.replace(/\.(html?|aspx?)$/i, ""));
 
-  const contentMarkers = ["movie", "movies", "film", "films", "show", "shows", "series", "tv", "web-series"];
+  const contentMarkers = [
+    "movie",
+    "movies",
+    "film",
+    "films",
+    "show",
+    "shows",
+    "series",
+    "tv",
+    "web-series",
+    "anime",
+    "watch",
+    "title",
+    "titles",
+    "detail",
+    "details",
+    "content",
+    "video"
+  ];
   for (const marker of contentMarkers) {
     const markerIndex = rawSegments.findIndex((segment) => segment.toLowerCase() === marker);
     if (markerIndex >= 0) {
@@ -549,6 +718,30 @@ function collectJsonLdTitles(value: any, output: string[] = []) {
   return output;
 }
 
+function collectJsonLdStrings(value: any, keys: string[], output: string[] = []) {
+  if (!value) return output;
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectJsonLdStrings(item, keys, output));
+    return output;
+  }
+  if (typeof value !== "object") return output;
+
+  Object.entries(value).forEach(([key, entry]) => {
+    if (keys.includes(key)) {
+      if (typeof entry === "string") output.push(entry);
+      if (Array.isArray(entry)) {
+        entry.forEach((item) => {
+          if (typeof item === "string") output.push(item);
+          if (item?.url && typeof item.url === "string") output.push(item.url);
+        });
+      }
+      if (entry && typeof entry === "object" && "url" in entry && typeof entry.url === "string") output.push(entry.url);
+    }
+    collectJsonLdStrings(entry, keys, output);
+  });
+  return output;
+}
+
 function extractLanguageNamesFromText(value?: string | null) {
   if (!value) return [] as string[];
   const normalized = decodeHtmlEntities(String(value))
@@ -561,6 +754,12 @@ function extractLanguageNamesFromText(value?: string | null) {
     const escaped = language.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return new RegExp(`\\b${escaped}\\b`, "i").test(normalized);
   });
+  const codeMatches = normalized.match(/(?:^|[^a-z])(?:hi|hin|en|eng|ta|tam|te|tel|ml|mal|kn|kan|mr|mar|bn|ben|pa|pan|gu|guj|ur|urd|or|ori|as|asm|bho|ne|nep)(?=[^a-z]|$)/gi) || [];
+  codeMatches
+    .map((match) => match.replace(/[^a-z]/gi, "").toLowerCase())
+    .map((code) => languageNames[code])
+    .filter(Boolean)
+    .forEach((language) => detected.push(language));
   return actualAudioLanguages(detected);
 }
 
@@ -650,7 +849,7 @@ async function fetchHtml(url: string) {
 
 async function fetchPageMetadata(input: string): Promise<PageMetadata> {
   if (!isHttpUrl(input)) {
-    return { titleCandidates: [], availableLanguages: [], accessType: "unknown", accessTypeReason: null, canonicalUrl: null, fetchedFrom: null };
+    return { titleCandidates: [], descriptionCandidates: [], imageCandidates: [], availableLanguages: [], accessType: "unknown", accessTypeReason: null, canonicalUrl: null, fetchedFrom: null };
   }
 
   let html = await fetchHtml(input);
@@ -666,6 +865,8 @@ async function fetchPageMetadata(input: string): Promise<PageMetadata> {
     const platformDefault = detectAccessTypeFromText("", detectPlatformFromUrl(input));
     return {
       titleCandidates: [],
+      descriptionCandidates: [],
+      imageCandidates: [],
       availableLanguages: [],
       accessType: platformDefault.accessType,
       accessTypeReason: platformDefault.reason,
@@ -675,6 +876,8 @@ async function fetchPageMetadata(input: string): Promise<PageMetadata> {
   }
 
   const titleCandidates: string[] = [];
+  const descriptionCandidates: string[] = [];
+  const imageCandidates: string[] = [];
   const availableLanguages = extractAvailableLanguagesFromHtml(html);
   const accessDetection = detectAccessTypeFromText(decodeHtmlEntities(html).replace(/<[^>]+>/g, " "), detectPlatformFromUrl(input));
   const metaTags = html.match(/<meta\s+[^>]*>/gi) || [];
@@ -683,6 +886,8 @@ async function fetchPageMetadata(input: string): Promise<PageMetadata> {
     const name = getTagAttribute(tag, "name")?.toLowerCase();
     const content = getTagAttribute(tag, "content");
     if (content && ["og:title", "twitter:title", "title"].includes(property || name || "")) titleCandidates.push(content);
+    if (content && ["og:description", "twitter:description", "description"].includes(property || name || "")) descriptionCandidates.push(content);
+    if (content && ["og:image", "twitter:image", "image"].includes(property || name || "")) imageCandidates.push(content);
   });
 
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
@@ -694,7 +899,11 @@ async function fetchPageMetadata(input: string): Promise<PageMetadata> {
   const scripts = html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
   for (const script of scripts) {
     try {
-      collectJsonLdTitles(JSON.parse(decodeHtmlEntities(script[1]))).forEach((title) => titleCandidates.push(title));
+      const json = JSON.parse(decodeHtmlEntities(script[1]));
+      collectJsonLdTitles(json).forEach((title) => titleCandidates.push(title));
+      collectJsonLdStrings(json, ["description", "abstract"]).forEach((description) => descriptionCandidates.push(description));
+      collectJsonLdStrings(json, ["image", "thumbnailUrl", "contentUrl"]).forEach((image) => imageCandidates.push(image));
+      collectJsonLanguages(json).forEach((language) => availableLanguages.push(language));
     } catch {
       // Ignore malformed page metadata. The URL slug fallback still runs.
     }
@@ -702,7 +911,9 @@ async function fetchPageMetadata(input: string): Promise<PageMetadata> {
 
   return {
     titleCandidates: Array.from(new Set(titleCandidates.map((title) => title.trim()).filter(Boolean))).slice(0, 12),
-    availableLanguages,
+    descriptionCandidates: Array.from(new Set(descriptionCandidates.map((description) => decodeHtmlEntities(description).trim()).filter(Boolean))).slice(0, 6),
+    imageCandidates: Array.from(new Set(imageCandidates.map((image) => image.trim()).filter((image) => isHttpUrl(image)))).slice(0, 8),
+    availableLanguages: actualAudioLanguages(availableLanguages),
     accessType: accessDetection.accessType,
     accessTypeReason: accessDetection.reason,
     canonicalUrl,
@@ -1212,7 +1423,7 @@ function baseDraft(
   item: any,
   mediaType: "movie" | "tv",
   sourceInput: string,
-  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[]; accessType?: AccessType; accessTypeReason?: string | null } = {}
+  context: ImportContext = {}
 ): AiImportDraft {
   const title = item.title || item.name || item.original_title || item.original_name || context.extractedTitle || sourceInput;
   const originalTitle = item.original_title || item.original_name || title;
@@ -1225,11 +1436,24 @@ function baseDraft(
   const platform = context.platform || detectPlatformFromUrl(context.officialWatchUrl);
   const platformAccess = detectAccessTypeFromText("", platform);
   const accessType = normalizeAccessType(context.accessType || platformAccess.accessType);
+  const pageDescription = context.pageMetadata?.descriptionCandidates?.[0] || null;
+  const pageImage = context.pageMetadata?.imageCandidates?.[0] || null;
   const languageState = languageStateFromSources({
     originalLanguage: item.original_language,
     platformLanguages: context.availableLanguages,
     platform
   });
+  const posterUrl = imageUrl(item.poster_path, "w500") || pageImage;
+  const bannerUrl = imageUrl(item.backdrop_path, "w1280") || context.pageMetadata?.imageCandidates?.[1] || pageImage;
+  const thumbnailUrl = imageUrl(item.poster_path, "w342") || imageUrl(item.backdrop_path, "w780") || pageImage;
+  const images = [
+    ...tmdbImages(item),
+    ...((context.pageMetadata?.imageCandidates || []).map((url, index) => ({
+      kind: index === 0 ? "poster" as const : "thumbnail" as const,
+      label: index === 0 ? "Platform image" : "Platform thumbnail",
+      url
+    })))
+  ];
 
   return {
     source: "tmdb",
@@ -1248,9 +1472,9 @@ function baseDraft(
     alternativeTitles: [],
     slug: slugify(title),
     tagline: item.tagline || null,
-    shortDescription: compactText(item.overview, 150),
-    description: item.overview || null,
-    storyOverview: item.overview || null,
+    shortDescription: compactText(item.overview || pageDescription, 150),
+    description: item.overview || pageDescription,
+    storyOverview: item.overview || pageDescription,
     releaseDate,
     releaseYear,
     lastAirDate: item.last_air_date || null,
@@ -1280,11 +1504,11 @@ function baseDraft(
     popularityScore: item.popularity ?? null,
     tmdbId: item.id ?? null,
     imdbId: item.imdb_id || item.external_ids?.imdb_id || null,
-    posterUrl: imageUrl(item.poster_path, "w500"),
-    bannerUrl: imageUrl(item.backdrop_path, "w1280"),
-    thumbnailUrl: imageUrl(item.poster_path, "w342") || imageUrl(item.backdrop_path, "w780"),
+    posterUrl,
+    bannerUrl,
+    thumbnailUrl,
     logoUrl: null,
-    images: tmdbImages(item),
+    images,
     trailerUrl: trailer.url,
     trailerName: trailer.name,
     seoTitle: `${title} (${releaseYear || "Watch"}) - Trailer, Cast & Legal Watch Guide`,
@@ -1298,7 +1522,7 @@ function baseDraft(
   };
 }
 
-async function importMovie(id: number, input: string, context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[]; accessType?: AccessType; accessTypeReason?: string | null } = {}) {
+async function importMovie(id: number, input: string, context: ImportContext = {}) {
   const item = await fetchFullMovieDetails(id);
   const draft = baseDraft(item, "movie", input, context);
   if (!draft.trailerUrl) {
@@ -1315,7 +1539,7 @@ async function importSeries(
   id: number,
   input: string,
   includeSeasons = true,
-  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[]; accessType?: AccessType; accessTypeReason?: string | null } = {}
+  context: ImportContext = {}
 ) {
   const item = await fetchFullTvDetails(id);
   const draft = baseDraft(item, "tv", input, context);
@@ -1391,7 +1615,7 @@ async function fetchFullTMDbDetails(
   type: "movie" | "tv",
   input: string,
   includeSeasons: boolean,
-  context: { extractedTitle?: string | null; officialWatchUrl?: string | null; platform?: AiImportPlatform | null; availableLanguages?: string[]; accessType?: AccessType; accessTypeReason?: string | null } = {}
+  context: ImportContext = {}
 ) {
   const draft = type === "tv" ? await importSeries(id, input, includeSeasons, context) : await importMovie(id, input, context);
   return mapTMDbToAdminForm(draft, context.officialWatchUrl, context.platform);
@@ -1424,7 +1648,8 @@ async function detailsFromSelection(body: ImportRequest) {
     platform: body.platform || detectPlatformFromUrl(body.officialWatchUrl),
     availableLanguages: metadataLanguages,
     accessType: body.accessType || metadata?.accessType,
-    accessTypeReason: body.accessTypeReason || metadata?.accessTypeReason || null
+    accessTypeReason: body.accessTypeReason || metadata?.accessTypeReason || null,
+    pageMetadata: metadata
   };
   const draft = await fetchFullTMDbDetails(
     id,
@@ -1464,6 +1689,9 @@ async function searchFromInput(
     ? explicitOfficialWatchUrl
     : isHttpUrl(input) ? input : null;
   const platform = detectPlatformFromUrl(officialWatchUrl || input);
+  if (officialWatchUrl && !platform) {
+    throw new Error("Platform currently not supported.");
+  }
   const inferredType = detectContentTypeFromUrl(officialWatchUrl || input);
   const requestedMediaType = mediaTypeFromRequested(requestedContentType, mediaType);
   const effectiveMediaType = requestedMediaType === "auto" && inferredType ? inferredType : requestedMediaType;
@@ -1495,7 +1723,8 @@ async function searchFromInput(
       platform,
       availableLanguages: detected?.metadata.availableLanguages || [],
       accessType: detected?.metadata.accessType,
-      accessTypeReason: detected?.metadata.accessTypeReason || null
+      accessTypeReason: detected?.metadata.accessTypeReason || null,
+      pageMetadata: detected?.metadata || null
     });
     return { ok: true, draft: applyRequestedContentType(draft, requestedContentType), extractedTitle, platform };
   }
@@ -1522,6 +1751,9 @@ async function importBestCandidate(
     ? explicitOfficialWatchUrl
     : isHttpUrl(input) ? input : null;
   const platform = detectPlatformFromUrl(officialWatchUrl || input);
+  if (officialWatchUrl && !platform) {
+    throw new Error("Platform currently not supported.");
+  }
   const inferredType = detectContentTypeFromUrl(officialWatchUrl || input);
   const requestedMediaType = mediaTypeFromRequested(requestedContentType, mediaType);
   const effectiveMediaType = requestedMediaType === "auto" && inferredType ? inferredType : requestedMediaType;
@@ -1549,7 +1781,8 @@ async function importBestCandidate(
     platform,
     availableLanguages: detected?.metadata.availableLanguages || [],
     accessType: detected?.metadata.accessType,
-    accessTypeReason: detected?.metadata.accessTypeReason || null
+    accessTypeReason: detected?.metadata.accessTypeReason || null,
+    pageMetadata: detected?.metadata || null
   };
   const draft = await fetchFullTMDbDetails(first.tmdbId, first.mediaType, input, includeSeasons, context);
   return applyRequestedContentType(draft, requestedContentType);
