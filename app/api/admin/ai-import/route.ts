@@ -1596,6 +1596,123 @@ async function fetchTrailer(id: number, type: "movie" | "tv") {
   return youtubeTrailer(videos);
 }
 
+function extractYearFromText(value?: string | null) {
+  const match = String(value || "").match(/\b(19|20)\d{2}\b/);
+  return match ? Number(match[0]) : null;
+}
+
+function requestedContentTypeOrMedia(
+  requestedContentType: ImportRequest["requestedContentType"],
+  mediaType: "auto" | "movie" | "tv"
+) {
+  if (requestedContentType) return requestedContentType;
+  if (mediaType === "tv") return "web_series";
+  return "movie";
+}
+
+async function importPlatformMetadataFallback({
+  input,
+  extractedTitle,
+  officialWatchUrl,
+  platform,
+  metadata,
+  mediaType,
+  requestedContentType
+}: {
+  input: string;
+  extractedTitle: string;
+  officialWatchUrl: string | null;
+  platform: AiImportPlatform | null;
+  metadata?: PageMetadata | null;
+  mediaType: "auto" | "movie" | "tv";
+  requestedContentType?: ImportRequest["requestedContentType"];
+}) {
+  const title = cleanTitle(extractedTitle, platform);
+  if (!officialWatchUrl || !platform || !title || isLikelyJunkTitle(title)) return null;
+
+  const description = metadata?.descriptionCandidates?.[0] || null;
+  const releaseYear = extractYearFromText(`${title} ${description || ""}`);
+  const languageState = languageStateFromSources({
+    originalLanguage: null,
+    platformLanguages: metadata?.availableLanguages || [],
+    platform
+  });
+  const images = (metadata?.imageCandidates || []).map((url, index) => ({
+    kind: index === 0 ? "poster" as const : index === 1 ? "banner" as const : "thumbnail" as const,
+    label: index === 0 ? "Platform poster" : index === 1 ? "Platform banner" : "Platform image",
+    url
+  }));
+  const accessDetection = detectAccessTypeFromText(description || "", platform);
+  const contentType = requestedContentTypeOrMedia(requestedContentType, mediaType);
+  const draft: AiImportDraft = {
+    source: "fallback",
+    sourceLabel: metadata?.fetchedFrom ? "Platform metadata" : "Official URL metadata",
+    input,
+    extractedTitle: title,
+    officialWatchUrl,
+    platform,
+    linkType: "direct_title_page",
+    openMode: "external",
+    accessType: normalizeAccessType(metadata?.accessType || accessDetection.accessType),
+    accessTypeReason: metadata?.accessTypeReason || accessDetection.reason,
+    contentType,
+    title,
+    originalTitle: title,
+    alternativeTitles: [],
+    slug: slugify(title),
+    tagline: null,
+    shortDescription: compactText(description, 150),
+    description,
+    storyOverview: description,
+    releaseDate: null,
+    releaseYear,
+    lastAirDate: null,
+    seasonCount: null,
+    episodeCount: null,
+    runtimeMinutes: null,
+    status: "Draft",
+    genres: [],
+    subGenres: [],
+    language: languageState.language,
+    originalLanguage: languageState.originalLanguage,
+    availableLanguages: languageState.availableLanguages,
+    languageDetectionWarning: languageState.warning || "TMDb match not found. Review platform metadata before publishing.",
+    country: null,
+    budget: null,
+    revenue: null,
+    productionCompanies: [],
+    director: null,
+    writers: [],
+    producers: [],
+    cast: [],
+    crew: [],
+    awards: [],
+    rating: null,
+    voteCount: null,
+    ageRating: null,
+    popularityScore: null,
+    tmdbId: null,
+    imdbId: null,
+    posterUrl: metadata?.imageCandidates?.[0] || null,
+    bannerUrl: metadata?.imageCandidates?.[1] || metadata?.imageCandidates?.[0] || null,
+    thumbnailUrl: metadata?.imageCandidates?.[0] || null,
+    logoUrl: null,
+    images,
+    trailerUrl: null,
+    trailerName: null,
+    seoTitle: `${title}${releaseYear ? ` (${releaseYear})` : ""} - Official Watch Link`,
+    seoDescription: seoDescription(title, description),
+    keywords: [title, platform.name, releaseYear, ...(languageState.availableLanguages || [])].filter(Boolean).map(String),
+    tags: [contentType, platform.name, releaseYear ? String(releaseYear) : "", ...(languageState.availableLanguages || [])].filter(Boolean),
+    seasons: [],
+    duplicateWarnings: [],
+    qualityWarnings: [],
+    missingFields: []
+  };
+  draft.duplicateWarnings = await duplicateWarnings(draft);
+  return enrichDraft(draft);
+}
+
 function mapToAdminForm(draft: AiImportDraft, officialUrl?: string | null, platform?: AiImportPlatform | null) {
   return {
     ...draft,
@@ -1712,6 +1829,24 @@ async function searchFromInput(
     if (candidates.length) break;
   }
   if (!candidates.length) {
+    const fallbackDraft = await importPlatformMetadataFallback({
+      input,
+      extractedTitle,
+      officialWatchUrl,
+      platform,
+      metadata: detected?.metadata || null,
+      mediaType: effectiveMediaType,
+      requestedContentType
+    });
+    if (fallbackDraft) {
+      return {
+        ok: true,
+        draft: fallbackDraft,
+        extractedTitle,
+        platform,
+        warnings: [`No TMDb result found for "${extractedTitle}". Filled only verified official-platform metadata for review.`]
+      };
+    }
     throw new Error(`No TMDb result found for "${extractedTitle}". AI Auto Fill did not create a fallback draft.`);
   }
   const ranked = rankCandidatesForTitle(candidates, extractedTitle, effectiveMediaType);
@@ -1773,6 +1908,16 @@ async function importBestCandidate(
   candidates = rankCandidatesForTitle(candidates, extractedTitle, effectiveMediaType);
   const first = candidates[0];
   if (!first) {
+    const fallbackDraft = await importPlatformMetadataFallback({
+      input,
+      extractedTitle,
+      officialWatchUrl,
+      platform,
+      metadata: detected?.metadata || null,
+      mediaType: effectiveMediaType,
+      requestedContentType
+    });
+    if (fallbackDraft) return fallbackDraft;
     throw new Error(`No TMDb result found for "${extractedTitle}". AI Auto Fill did not create a fallback draft.`);
   }
   const context = {
