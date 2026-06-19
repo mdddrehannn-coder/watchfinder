@@ -17,17 +17,24 @@ const platformBehaviors: Record<string, PlatformBehavior> = {
     allowIframe: true,
     allowedHosts: ["youtube.com", "youtu.be", "youtube-nocookie.com"]
   },
-  hotstar: ottBehavior(["hotstar.com", "jiohotstar.com"]),
-  jiohotstar: ottBehavior(["hotstar.com", "jiohotstar.com"]),
-  "jio-hotstar": ottBehavior(["hotstar.com", "jiohotstar.com"]),
-  "disney-hotstar": ottBehavior(["hotstar.com", "jiohotstar.com"]),
-  "disney-plus-hotstar": ottBehavior(["hotstar.com", "jiohotstar.com"]),
+  hotstar: ottBehavior(["hotstar.com", "jiohotstar.com", "jiocinema.com"]),
+  jiohotstar: ottBehavior(["hotstar.com", "jiohotstar.com", "jiocinema.com"]),
+  jiocinema: ottBehavior(["hotstar.com", "jiohotstar.com", "jiocinema.com"]),
+  "jio-hotstar": ottBehavior(["hotstar.com", "jiohotstar.com", "jiocinema.com"]),
+  "disney-hotstar": ottBehavior(["hotstar.com", "jiohotstar.com", "jiocinema.com"]),
+  "disney-plus-hotstar": ottBehavior(["hotstar.com", "jiohotstar.com", "jiocinema.com"]),
   netflix: ottBehavior(["netflix.com"]),
   "prime-video": ottBehavior(["primevideo.com", "amazon.com"]),
   primevideo: ottBehavior(["primevideo.com", "amazon.com"]),
+  "amazon-minitv": ottBehavior(["amazon.in", "mini.tv"]),
+  minitv: ottBehavior(["amazon.in", "mini.tv"]),
+  "mx-player": ottBehavior(["mxplayer.in", "mxplayer.com"]),
+  mxplayer: ottBehavior(["mxplayer.in", "mxplayer.com"]),
   zee5: ottBehavior(["zee5.com"]),
   sonyliv: ottBehavior(["sonyliv.com"]),
-  "sony-liv": ottBehavior(["sonyliv.com"])
+  "sony-liv": ottBehavior(["sonyliv.com"]),
+  "apple-tv": ottBehavior(["tv.apple.com"]),
+  aha: ottBehavior(["aha.video"])
 };
 
 function ottBehavior(hosts: string[]): PlatformBehavior {

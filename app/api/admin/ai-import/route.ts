@@ -101,7 +101,7 @@ const platformRules: PlatformRule[] = [
   {
     key: "jiohotstar",
     name: "JioHotstar",
-    hosts: ["hotstar.com", "jiohotstar.com", "disneyplus.com"],
+    hosts: ["hotstar.com", "jiohotstar.com", "jiocinema.com", "disneyplus.com"],
     homeUrl: "https://www.hotstar.com/",
     searchPattern: "https://www.hotstar.com/in/search?q={query}"
   },
@@ -148,13 +148,6 @@ const platformRules: PlatformRule[] = [
     hosts: ["sonyliv.com"],
     homeUrl: "https://www.sonyliv.com/",
     searchPattern: "https://www.sonyliv.com/search?q={query}"
-  },
-  {
-    key: "jiocinema",
-    name: "JioCinema",
-    hosts: ["jiocinema.com"],
-    homeUrl: "https://www.jiocinema.com/",
-    searchPattern: "https://www.jiocinema.com/search/{query}"
   },
   {
     key: "mx-player",
@@ -1277,7 +1270,7 @@ async function duplicateWarnings(draft: Pick<AiImportDraft, "title" | "releaseYe
     const seriesMatch = await supabase
       .from("movies")
       .select("title, slug, status, release_year")
-      .or("content_type.eq.web_series,type.eq.web_series")
+      .eq("content_type", "web_series")
       .ilike("title", title)
       .limit(5);
     if (!seriesMatch.error && seriesMatch.data?.length) {

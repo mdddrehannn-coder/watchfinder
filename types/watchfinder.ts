@@ -1,6 +1,6 @@
 export type MovieType = "movie" | "tv_show" | "anime" | "short_film" | "cartoon" | "trailer" | "episode" | "web_series";
 export type MovieStatus = "draft" | "published" | "archived" | "hidden";
-export type AccessType = "free" | "subscription" | "rent_buy" | "unknown";
+export type AccessType = "free" | "premium" | "rent" | "unknown";
 export type HomepageSection =
   | "none"
   | "hero"

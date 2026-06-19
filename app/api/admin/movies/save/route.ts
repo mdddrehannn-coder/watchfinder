@@ -100,6 +100,145 @@ function relationColumnFromError(error: unknown) {
   return null;
 }
 
+function titleFromSlug(value: string) {
+  return value
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function platformNameFromUrl(value?: unknown) {
+  const urlValue = cleanString(value);
+  if (!urlValue) return null;
+  try {
+    const url = new URL(urlValue);
+    const host = url.hostname.replace(/^www\./, "").toLowerCase();
+    if (host.includes("hotstar") || host.includes("jiohotstar") || host.includes("jiocinema")) return "JioHotstar";
+    if (host.includes("netflix")) return "Netflix";
+    if (host.includes("primevideo")) return "Prime Video";
+    if (host.includes("amazon.") && url.pathname.toLowerCase().includes("minitv")) return "Amazon miniTV";
+    if (host.includes("amazon.")) return "Prime Video";
+    if (host.includes("mxplayer")) return "MX Player";
+    if (host.includes("zee5")) return "Zee5";
+    if (host.includes("sonyliv")) return "SonyLIV";
+    if (host.includes("youtube") || host.includes("youtu.be")) return "YouTube";
+    if (host.includes("tv.apple")) return "Apple TV";
+    if (host.includes("aha.video")) return "Aha";
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function originFromUrl(value?: unknown) {
+  const urlValue = cleanString(value);
+  if (!urlValue) return null;
+  try {
+    const url = new URL(urlValue);
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function platformSlugCandidates(slug: string) {
+  const normalized = slugify(slug);
+  const candidates = new Set([normalized]);
+  if (["jiohotstar", "jio-hotstar", "hotstar", "jiocinema"].includes(normalized)) {
+    candidates.add("jiohotstar");
+    candidates.add("jio-hotstar");
+    candidates.add("hotstar");
+    candidates.add("jiocinema");
+  }
+  if (["prime-video", "primevideo", "amazon-prime-video"].includes(normalized)) {
+    candidates.add("prime-video");
+    candidates.add("primevideo");
+    candidates.add("amazon-prime-video");
+  }
+  if (["amazon-minitv", "minitv", "mini-tv"].includes(normalized)) {
+    candidates.add("amazon-minitv");
+    candidates.add("minitv");
+    candidates.add("mini-tv");
+  }
+  if (["mx-player", "mxplayer"].includes(normalized)) {
+    candidates.add("mx-player");
+    candidates.add("mxplayer");
+  }
+  if (["sony-liv", "sonyliv"].includes(normalized)) {
+    candidates.add("sony-liv");
+    candidates.add("sonyliv");
+  }
+  if (["apple-tv", "appletv", "apple"].includes(normalized)) {
+    candidates.add("apple-tv");
+    candidates.add("appletv");
+    candidates.add("apple");
+  }
+  return Array.from(candidates).filter(Boolean);
+}
+
+async function findPlatformId(admin: any, name: string | null, slug: string | null) {
+  const candidates = platformSlugCandidates(slug || name || "");
+  for (const candidate of candidates) {
+    const { data, error } = await admin
+      .from("platforms")
+      .select("id")
+      .eq("slug", candidate)
+      .limit(1)
+      .maybeSingle();
+    if (!error && data?.id) return data.id as string;
+  }
+
+  if (name) {
+    const { data, error } = await admin
+      .from("platforms")
+      .select("id")
+      .ilike("name", name)
+      .limit(1)
+      .maybeSingle();
+    if (!error && data?.id) return data.id as string;
+  }
+
+  return null;
+}
+
+async function resolvePlatformId(admin: any, platformLink: Record<string, unknown>) {
+  const explicitId = cleanString(platformLink.platform_id);
+  if (explicitId) return explicitId;
+
+  const detectedName =
+    cleanString(platformLink.platform_name) ||
+    cleanString(platformLink.official_platform) ||
+    platformNameFromUrl(platformLink.watch_url) ||
+    platformNameFromUrl(platformLink.platform_home_url) ||
+    platformNameFromUrl(platformLink.platform_search_url);
+  const detectedSlug = cleanString(platformLink.platform_slug) || slugify(detectedName || "");
+  const slug = slugify(detectedSlug || detectedName || "");
+  if (!slug) return null;
+
+  const existingId = await findPlatformId(admin, detectedName, slug);
+  if (existingId) return existingId;
+
+  const row = {
+    name: detectedName || titleFromSlug(slug),
+    slug,
+    website_url: cleanString(platformLink.platform_home_url) || originFromUrl(platformLink.watch_url),
+    is_active: true
+  };
+  const { data, error } = await admin
+    .from("platforms")
+    .insert(row)
+    .select("id")
+    .single();
+
+  if (!error && data?.id) return data.id as string;
+
+  const retryId = await findPlatformId(admin, detectedName, slug);
+  if (retryId) return retryId;
+
+  throw relationError("platforms", error || "platform could not be created");
+}
+
 function toDuplicateMovie(movie: any, reason: DuplicateMovie["reason"]): DuplicateMovie | null {
   if (!movie?.id) return null;
   return {
@@ -410,11 +549,14 @@ async function replaceMovieCast(admin: any, movieId: string, castMemberIds: unkn
 async function replaceMoviePlatformLink(admin: any, movieId: string, platformLink?: Record<string, unknown> | null) {
   const { error: deleteError } = await admin.from("movie_platform_links").delete().eq("movie_id", movieId);
   if (deleteError) throw relationError("movie_platform_links", deleteError);
-  if (!platformLink?.platform_id) return;
+  if (!platformLink) return;
+
+  const platformId = await resolvePlatformId(admin, platformLink);
+  if (!platformId) return;
 
   const row = {
     movie_id: movieId,
-    platform_id: cleanString(platformLink.platform_id),
+    platform_id: platformId,
     watch_url: cleanString(platformLink.watch_url),
     platform_home_url: cleanString(platformLink.platform_home_url),
     platform_search_url: cleanString(platformLink.platform_search_url),

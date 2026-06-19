@@ -1602,8 +1602,58 @@ html.theme-light .platform-logo {
   min-width: 0;
 }
 
+.platform-detail-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.platform-detail-head.panel {
+  align-items: center;
+  padding: clamp(1rem, 3vw, 1.35rem);
+}
+
 .platform-detail-head h1 {
   margin: 0;
+}
+
+.platform-logo-fallback {
+  display: inline-grid;
+  place-items: center;
+}
+
+.platform-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.stat-card {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  padding: 0.85rem;
+  background: var(--panel);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
+}
+
+.stat-card strong {
+  font-size: clamp(1.35rem, 5vw, 2rem);
+  line-height: 1;
+}
+
+.stat-card span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.platform-content-section {
+  min-width: 0;
 }
 
 .banner {
@@ -5973,6 +6023,10 @@ html.theme-light .first-load-splash {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
+  .platform-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .channel-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -6198,6 +6252,20 @@ html.theme-light .first-load-splash {
     width: min(9.5rem, 44vw);
   }
 
+  .platform-detail-head {
+    align-items: flex-start;
+  }
+
+  .platform-detail-head .platform-logo {
+    width: 3.25rem;
+    height: 3.25rem;
+    flex: 0 0 3.25rem;
+  }
+
+  .platform-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .episode-card {
     grid-template-columns: 1fr;
   }
@@ -6223,6 +6291,11 @@ html.theme-light .first-load-splash {
     width: min(100%, 12.5rem);
     max-width: min(100%, 12.5rem);
     border-radius: 0.85rem;
+  }
+
+  .detail-poster-static img,
+  .series-detail-poster img {
+    object-fit: contain;
   }
 
   .detail-play-button {

@@ -2,6 +2,7 @@ import { createSupabaseAdminClient, createSupabaseAnonServerClient, createSupaba
 import { isAdminEmail } from "@/lib/admin-access";
 import { isActiveWindow } from "@/lib/format";
 import { isOptionalMovieRelationError, movieSelect, movieSelectWithoutChannels } from "@/lib/movie-select";
+import { platformKeyFromText } from "@/lib/platformBehavior";
 import type {
   AdSlot,
   BlogPost,
@@ -83,6 +84,81 @@ function uniqueMoviesByContent(movies: Movie[]) {
     seen.add(key);
     return true;
   });
+}
+
+function platformMatchTokens(value?: string | null) {
+  const key = platformKeyFromText(value || "");
+  const tokens = new Set([key]);
+  if (key.includes("jiohotstar") || key.includes("hotstar") || key.includes("jiocinema")) {
+    tokens.add("jiohotstar");
+    tokens.add("hotstar");
+    tokens.add("jio-hotstar");
+    tokens.add("jiocinema");
+  }
+  if (key.includes("prime-video") || key.includes("primevideo") || key.includes("amazon-prime")) {
+    tokens.add("prime-video");
+    tokens.add("primevideo");
+    tokens.add("amazon-prime-video");
+  }
+  if (key.includes("amazon-minitv") || key.includes("mini-tv") || key.includes("minitv")) {
+    tokens.add("amazon-minitv");
+    tokens.add("minitv");
+  }
+  if (key.includes("mx-player") || key.includes("mxplayer")) {
+    tokens.add("mx-player");
+    tokens.add("mxplayer");
+  }
+  if (key.includes("sony-liv") || key.includes("sonyliv")) {
+    tokens.add("sony-liv");
+    tokens.add("sonyliv");
+  }
+  if (key.includes("apple-tv")) {
+    tokens.add("apple-tv");
+    tokens.add("apple");
+  }
+  return Array.from(tokens).filter(Boolean);
+}
+
+function platformTokenFromUrl(value?: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/^www\./, "").toLowerCase();
+    const path = url.pathname.toLowerCase();
+    if (host.includes("hotstar") || host.includes("jiohotstar") || host.includes("jiocinema")) return "jiohotstar";
+    if (host.includes("netflix")) return "netflix";
+    if (host.includes("primevideo")) return "prime-video";
+    if (host.includes("amazon.") && path.includes("minitv")) return "amazon-minitv";
+    if (host.includes("amazon.")) return "prime-video";
+    if (host.includes("mxplayer")) return "mx-player";
+    if (host.includes("zee5")) return "zee5";
+    if (host.includes("sonyliv")) return "sonyliv";
+    if (host.includes("youtube") || host.includes("youtu.be")) return "youtube";
+    if (host.includes("tv.apple")) return "apple-tv";
+    if (host.includes("aha.video")) return "aha";
+    return platformKeyFromText(host);
+  } catch {
+    return null;
+  }
+}
+
+function movieMatchesPlatform(movie: Movie, platformSlug: string) {
+  const accepted = new Set(platformMatchTokens(platformSlug));
+  const values = [
+    movie.official_platform,
+    movie.platform_name,
+    platformTokenFromUrl(movie.official_watch_url),
+    platformTokenFromUrl(movie.watch_url),
+    ...(movie.movie_platform_links || []).flatMap((link) => [
+      link.platforms?.slug,
+      link.platforms?.name,
+      platformTokenFromUrl(link.watch_url),
+      platformTokenFromUrl(link.platform_home_url),
+      platformTokenFromUrl(link.platform_search_url)
+    ])
+  ];
+
+  return values.some((value) => platformMatchTokens(value || "").some((token) => accepted.has(token)));
 }
 
 function matchesMovieHomepageOptions(movie: Movie, options: {
@@ -236,6 +312,13 @@ export async function getMovies(options: {
     options.latest ||
     options.featured
   );
+  const hasPostQueryFilter = Boolean(
+    hasHomepageFilter ||
+    options.genreSlug ||
+    options.platformSlug ||
+    options.availability ||
+    options.quality
+  );
 
   const orderColumns = options.createdDesc
     ? ["published_at", "created_at", "id"]
@@ -250,7 +333,7 @@ export async function getMovies(options: {
         .from("movies")
         .select(select)
         .eq("status", "published")
-        .limit(hasHomepageFilter ? Math.max(requestedLimit * 4, 120) : requestedLimit)
+        .limit(hasPostQueryFilter ? Math.max(requestedLimit * 4, 160) : requestedLimit)
         .order(orderColumn, { ascending: false, nullsFirst: false });
 
       if (options.type) query = query.eq("type", options.type);
@@ -286,9 +369,7 @@ export async function getMovies(options: {
   }
 
   if (options.platformSlug) {
-    movies = movies.filter((movie) =>
-      movie.movie_platform_links?.some((link) => link.platforms?.slug === options.platformSlug)
-    );
+    movies = movies.filter((movie) => movieMatchesPlatform(movie, options.platformSlug || ""));
   }
 
   if (options.availability) {
@@ -402,7 +483,7 @@ export async function getPublishedSeries(limit = 12) {
     supabase
       .from("movies")
       .select(select)
-      .or("content_type.eq.web_series,type.eq.web_series")
+      .eq("content_type", "web_series")
     .eq("status", "published")
     .order("created_at", { ascending: false })
       .limit(limit)
@@ -425,7 +506,7 @@ export async function getSeriesBySlug(slug: string, admin = false) {
       .from("movies")
       .select(select)
       .eq("slug", slug)
-      .or("content_type.eq.web_series,type.eq.web_series");
+      .eq("content_type", "web_series");
 
     if (!admin) query = query.eq("status", "published");
     return query;
@@ -510,7 +591,7 @@ export async function getAllAdminSeries() {
     supabase
       .from("movies")
       .select(select)
-      .or("content_type.eq.web_series,type.eq.web_series")
+      .eq("content_type", "web_series")
       .order("created_at", { ascending: false })
   );
 

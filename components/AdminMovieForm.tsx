@@ -880,7 +880,8 @@ export default function AdminMovieForm({
     const watchUrl = toNullableString(form.get("watch_url"));
     const trailerUrl = toNullableString(form.get("trailer_url"));
     const platformId = selectedPlatformId;
-    if (watchUrl && !platformId) return "Select an official platform before adding a watch link.";
+    const detectedPlatformName = selectedPlatform?.name || aiDraft?.platform?.name;
+    if (watchUrl && !platformId && !detectedPlatformName) return "Select an official platform before adding a watch link.";
     if (selectedStatus === "published" && !watchUrl && !trailerUrl) {
       return "Publish needs an official watch link or trailer URL. Save as Draft if links are not ready yet.";
     }
@@ -1234,7 +1235,7 @@ export default function AdminMovieForm({
         backdrop_url: aiBackdropUrl,
         banner_url: bannerUrl,
         thumbnail_url: posterUrl || bannerUrl || aiDraft?.thumbnailUrl || null,
-        platform_name: selectedPlatform?.name || null,
+        platform_name: selectedPlatform?.name || aiDraft?.platform?.name || null,
         description: toNullableString(form.get("description")),
         short_description: toNullableString(form.get("description"))?.slice(0, 180) || null,
         release_date: toNullableString(form.get("release_date")),
@@ -1276,7 +1277,7 @@ export default function AdminMovieForm({
         metadata_source: aiDraft?.sourceLabel || aiDraft?.source || null,
         metadata_confidence: aiDraft ? aiDraft.qualityScore?.score ?? null : null,
         quality_score: aiDraft?.qualityScore?.score ?? null,
-        official_platform: selectedPlatform?.name || null,
+        official_platform: selectedPlatform?.name || aiDraft?.platform?.name || null,
         official_watch_url: watchUrl,
         watch_url: watchUrl,
         platform_home_url: toNullableString(platformHomeUrl),
@@ -1316,6 +1317,8 @@ export default function AdminMovieForm({
         hasAiImportPayload: Object.prototype.hasOwnProperty.call(metadataPayload, "ai_import_payload")
       });
       const platformId = selectedPlatformId;
+      const detectedPlatformName = selectedPlatform?.name || aiDraft?.platform?.name || null;
+      const detectedPlatformSlug = selectedPlatform?.slug || aiDraft?.platform?.key || null;
       const savedWatchLinkType = watchUrl ? watchLinkType : watchLinkType === "direct_title_page" ? "platform_search" : watchLinkType;
       const channelMeta = {
         season_number: channelSeasonNumber ? Number(channelSeasonNumber) : null,
@@ -1327,8 +1330,10 @@ export default function AdminMovieForm({
       const relatedData = {
         genreIds: selectedGenres,
         castMemberIds: selectedCast,
-        platformLink: platformId ? {
-          platform_id: platformId,
+        platformLink: platformId || detectedPlatformName || watchUrl ? {
+          platform_id: platformId || null,
+          platform_name: detectedPlatformName,
+          platform_slug: detectedPlatformSlug,
           watch_url: watchUrl,
           platform_home_url: toNullableString(platformHomeUrl),
           platform_search_url: toNullableString(platformSearchUrl),
