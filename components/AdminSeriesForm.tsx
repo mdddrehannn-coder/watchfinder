@@ -336,11 +336,11 @@ export default function AdminSeriesForm({
         banner_url: episode.stillUrl || draft.bannerUrl || "",
         trailer_url: episode.trailerUrl || "",
         video_embed_url: "",
-        watch_url: draft.officialWatchUrl || "",
+        watch_url: episode.watchUrl || draft.officialWatchUrl || "",
         video_provider: episode.trailerUrl ? "youtube" : "direct",
-        platform_name: draft.platform?.name || "",
-        availability_type: "unknown",
-        language: draft.language || "",
+        platform_name: episode.platformName || draft.platform?.name || "",
+        availability_type: episode.accessType === "premium" ? "subscription" : episode.accessType === "rent" ? "rent" : episode.accessType || "unknown",
+        language: episode.language || draft.language || "",
         quality: "",
         duration_minutes: episode.runtimeMinutes ? String(episode.runtimeMinutes) : "",
         release_date: episode.airDate || "",
@@ -511,7 +511,10 @@ export default function AdminSeriesForm({
         is_free_legal: isFreeLegal,
         is_official: isOfficial,
         seo_title: toNullableString(seoTitle),
-        seo_description: toNullableString(seoDescription)
+        seo_description: toNullableString(seoDescription),
+        metadata_confidence: aiDraft ? aiDraft.metadataConfidence ?? aiDraft.qualityScore?.score ?? null : null,
+        quality_score: aiDraft?.qualityScore?.score ?? null,
+        metadata_source: aiDraft?.sourceLabel || aiDraft?.source || null
       };
 
       const seasonsPayload = seasons.map((season) => ({

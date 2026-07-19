@@ -11,6 +11,7 @@ import type {
   AiImportPlatform,
   AiImportResult,
   AiImportedCredit,
+  AiImportedEpisode,
   AiImportedImage,
   AiImportedSeason
 } from "@/lib/ai-import-types";
@@ -89,6 +90,20 @@ type ImportContext = {
   accessType?: AccessType;
   accessTypeReason?: string | null;
   pageMetadata?: PageMetadata | null;
+  episodeContext?: EpisodeUrlContext | null;
+  matchConfidence?: number | null;
+};
+
+type EpisodeUrlContext = {
+  isEpisodeUrl: boolean;
+  seriesTitle?: string | null;
+  seasonNumber?: number | null;
+  episodeNumber?: number | null;
+  episodeTitle?: string | null;
+  language?: string | null;
+  runtimeMinutes?: number | null;
+  accessType?: AccessType | null;
+  accessTypeReason?: string | null;
 };
 
 type PlatformRule = AiImportPlatform & {
@@ -107,7 +122,7 @@ const platformRules: PlatformRule[] = [
   },
   {
     key: "amazon-minitv",
-    name: "Amazon miniTV",
+    name: "Amazon MX Player",
     hosts: ["amazon.in", "mini.tv"],
     pathIncludes: ["/minitv"],
     homeUrl: "https://www.amazon.in/minitv",
@@ -312,6 +327,7 @@ const platformTitleNoise = [
   "Netflix",
   "Prime Video",
   "Amazon Prime Video",
+  "Amazon MX Player",
   "Zee5",
   "SonyLIV",
   "JioCinema",
@@ -497,16 +513,183 @@ function detectPlatformFromUrl(input?: string | null): AiImportPlatform | null {
 function detectContentTypeFromUrl(input?: string | null): "movie" | "tv" | null {
   if (!input || !isHttpUrl(input)) return null;
   try {
-    const segments = new URL(input).pathname
+    const url = new URL(input);
+    const segments = url.pathname
       .split("/")
       .map((segment) => segment.trim().toLowerCase())
       .filter(Boolean);
+    const watchParam = String(url.searchParams.get("watch") || "").toLowerCase();
+    const hasEpisodeMarkers = watchParam === "true" || segments.some((segment) =>
+      ["show", "shows", "season", "seasons", "episode", "episodes", "tv", "series", "web-series", "anime"].includes(segment) ||
+      /^(season|episode|ep|s|e)[-_]?\d{1,3}$/i.test(segment)
+    );
+    if (hasEpisodeMarkers) return "tv";
     if (segments.some((segment) => ["movie", "movies", "film", "films", "cinema"].includes(segment))) return "movie";
-    if (segments.some((segment) => ["tv", "show", "shows", "series", "web-series", "anime", "episodes"].includes(segment))) return "tv";
   } catch {
     return null;
   }
   return null;
+}
+
+function numberFromLooseValue(value?: string | null) {
+  const match = String(value || "").match(/\b(?:season|episode|ep|s|e)?[-_\s]*(\d{1,3})\b/i);
+  return match ? Number(match[1]) : null;
+}
+
+function isIdLikeSegment(value: string) {
+  const clean = value.toLowerCase();
+  return (
+    !clean ||
+    clean === "watch" ||
+    clean === "play" ||
+    noisyUrlWords.has(clean) ||
+    /^\d+$/.test(clean) ||
+    /^tt\d{6,12}$/i.test(clean) ||
+    /^[a-z0-9]{16,}$/i.test(clean) ||
+    /^[a-z]*\d{5,}[a-z0-9]*$/i.test(clean) ||
+    /^[a-z]{2}(-[a-z]{2})?$/i.test(clean)
+  );
+}
+
+function titleCandidateFromSegment(value?: string | null, platform?: AiImportPlatform | null) {
+  if (!value || isIdLikeSegment(value)) return "";
+  return cleanTitle(value, platform);
+}
+
+function cleanEpisodeTitle(
+  rawTitle?: string | null,
+  platform?: AiImportPlatform | null,
+  seriesTitle?: string | null,
+  seasonNumber?: number | null
+) {
+  let title = cleanTitle(rawTitle, platform);
+  if (!title) return "";
+  if (seriesTitle) {
+    title = title.replace(new RegExp(`\\b${seriesTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "ig"), " ");
+  }
+  if (seasonNumber) {
+    title = title
+      .replace(new RegExp(`\\bseason\\s*${seasonNumber}\\b`, "ig"), " ")
+      .replace(new RegExp(`\\bs\\s*${seasonNumber}\\b`, "ig"), " ")
+      .replace(new RegExp(`\\b${seasonNumber}\\b`, "g"), " ");
+  }
+  return smartTitleCase(title.replace(/\s+/g, " ").trim());
+}
+
+function queryNumber(url: URL, keys: string[]) {
+  for (const key of keys) {
+    const value = url.searchParams.get(key);
+    const number = numberFromLooseValue(value);
+    if (number) return number;
+  }
+  return null;
+}
+
+function queryTitle(url: URL, keys: string[], platform?: AiImportPlatform | null) {
+  for (const key of keys) {
+    const value = url.searchParams.get(key);
+    if (!value || /^\d+$/.test(value)) continue;
+    const title = cleanTitle(value, platform);
+    if (title) return title;
+  }
+  return "";
+}
+
+function detectEpisodeUrlContext(
+  input?: string | null,
+  platform?: AiImportPlatform | null,
+  metadata?: PageMetadata | null
+): EpisodeUrlContext | null {
+  if (!input || !isHttpUrl(input)) return null;
+
+  try {
+    const url = new URL(input);
+    const rawSegments = url.pathname
+      .split("/")
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .map((segment) => segment.split("?")[0])
+      .map((segment) => segment.replace(/\.(html?|aspx?)$/i, ""));
+    const lowerSegments = rawSegments.map((segment) => segment.toLowerCase());
+    const watchParam = String(url.searchParams.get("watch") || "").toLowerCase();
+    const isEpisodeUrl = watchParam === "true" || lowerSegments.some((segment) =>
+      ["show", "shows", "season", "seasons", "episode", "episodes"].includes(segment) ||
+      /^(season|episode|ep|s|e)[-_]?\d{1,3}$/i.test(segment)
+    );
+    if (!isEpisodeUrl) return null;
+
+    const markerIndex = lowerSegments.findIndex((segment) => ["show", "shows", "series", "tv"].includes(segment));
+    const seasonMarkerIndex = lowerSegments.findIndex((segment) => segment === "season" || segment === "seasons" || /^season[-_]?\d{1,3}$/i.test(segment) || /^s\d{1,3}$/i.test(segment));
+    const episodeMarkerIndex = lowerSegments.findIndex((segment) => segment === "episode" || segment === "episodes" || /^episode[-_]?\d{1,3}$/i.test(segment) || /^ep[-_]?\d{1,3}$/i.test(segment) || /^e\d{1,3}$/i.test(segment));
+
+    let seriesTitle = "";
+    if (markerIndex >= 0) {
+      for (const segment of rawSegments.slice(markerIndex + 1)) {
+        if (isIdLikeSegment(segment) || /^(season|episode|ep|s|e)[-_]?\d{1,3}$/i.test(segment)) continue;
+        const title = titleCandidateFromSegment(segment, platform);
+        if (title) {
+          seriesTitle = title;
+          break;
+        }
+      }
+    }
+    if (!seriesTitle && seasonMarkerIndex > 0) {
+      for (const segment of rawSegments.slice(0, seasonMarkerIndex).reverse()) {
+        const title = titleCandidateFromSegment(segment, platform);
+        if (title) {
+          seriesTitle = title;
+          break;
+        }
+      }
+    }
+
+    const seasonNumber =
+      queryNumber(url, ["season", "seasonNumber", "seasonNo", "season_number", "s"]) ||
+      (seasonMarkerIndex >= 0
+        ? numberFromLooseValue(rawSegments[seasonMarkerIndex]) || numberFromLooseValue(rawSegments[seasonMarkerIndex + 1])
+        : null);
+    const episodeNumber =
+      queryNumber(url, ["episode", "episodeNumber", "episodeNo", "episode_number", "ep", "e"]) ||
+      (episodeMarkerIndex >= 0
+        ? numberFromLooseValue(rawSegments[episodeMarkerIndex]) || numberFromLooseValue(rawSegments[episodeMarkerIndex + 1])
+        : null);
+
+    const metadataTitle = metadata?.titleCandidates?.map((title) => cleanEpisodeTitle(title, platform, seriesTitle, seasonNumber)).find(Boolean) || "";
+    let episodeTitle =
+      queryTitle(url, ["episodeTitle", "episode_title", "name"], platform) ||
+      "";
+    const afterEpisodeMarker = episodeMarkerIndex >= 0 ? rawSegments.slice(episodeMarkerIndex + 1) : [];
+    const afterSeasonMarker = seasonMarkerIndex >= 0 ? rawSegments.slice(seasonMarkerIndex + 1) : [];
+    for (const segment of [...afterEpisodeMarker, ...afterSeasonMarker].reverse()) {
+      const title = cleanEpisodeTitle(segment, platform, seriesTitle, seasonNumber);
+      if (title && title !== seriesTitle) {
+        episodeTitle = title;
+        break;
+      }
+    }
+    if (!episodeTitle && metadataTitle && metadataTitle !== seriesTitle) episodeTitle = metadataTitle;
+
+    const languages = metadata?.availableLanguages || [];
+    const language = actualAudioLanguages(languages)[0] ||
+      (/campus\s+beats/i.test(seriesTitle) && (platform?.key === "amazon-minitv" || platform?.key === "mx-player") ? "Hindi" : null);
+    const access = detectAccessTypeFromText(
+      `${metadata?.descriptionCandidates?.join(" ") || ""} ${metadata?.titleCandidates?.join(" ") || ""}`,
+      platform
+    );
+
+    return {
+      isEpisodeUrl,
+      seriesTitle: seriesTitle || null,
+      seasonNumber,
+      episodeNumber,
+      episodeTitle: episodeTitle || null,
+      language,
+      accessType: access.accessType,
+      accessTypeReason: access.reason || (access.accessType === "free" && (platform?.key === "amazon-minitv" || platform?.key === "mx-player") ? "Defaulted from Amazon MX Player free-with-ads platform rule." : null)
+    };
+  } catch {
+    return null;
+  }
 }
 
 function decodeHtmlEntities(value: string) {
@@ -1182,6 +1365,9 @@ function assistantNotes(draft: AiImportDraft) {
     notes.push(`${access.label} access: ${access.detail}${draft.accessTypeReason ? ` (${draft.accessTypeReason})` : ""}.`);
   }
   if (draft.languageDetectionWarning) notes.push(draft.languageDetectionWarning);
+  if (draft.episodeImport?.seasonNumber || draft.episodeImport?.episodeTitle) {
+    notes.push(`Episode URL detected: Season ${draft.episodeImport.seasonNumber || "?"} - ${draft.episodeImport.episodeTitle || "episode title needs review"}.`);
+  }
   if (draft.qualityScore) notes.push(`Quality score is ${draft.qualityScore.score}%. ${draft.qualityScore.score >= 80 ? "Looks safe to review for publishing." : "Keep as draft until missing items are fixed."}`);
   return notes.slice(0, 5);
 }
@@ -1315,6 +1501,61 @@ function normalizeForMatch(value?: string | null) {
     .trim();
 }
 
+const genericSingleWordTitles = new Set([
+  "home",
+  "love",
+  "hero",
+  "family",
+  "life",
+  "story",
+  "episode",
+  "season",
+  "show",
+  "movie",
+  "watch",
+  "video"
+]);
+
+function isWeakTmdbSearchTitle(value?: string | null) {
+  const normalized = normalizeForMatch(value);
+  const words = normalized.split(" ").filter(Boolean);
+  return words.length === 1 && genericSingleWordTitles.has(words[0]);
+}
+
+function levenshteinDistance(a: string, b: string) {
+  if (a === b) return 0;
+  if (!a) return b.length;
+  if (!b) return a.length;
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const current = Array.from({ length: b.length + 1 }, () => 0);
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[b.length];
+}
+
+function titleSimilarity(a?: string | null, b?: string | null) {
+  const left = normalizeForMatch(a);
+  const right = normalizeForMatch(b);
+  if (!left || !right) return 0;
+  if (left === right) return 100;
+  if (left.replace(/\s+/g, "") === right.replace(/\s+/g, "")) return 98;
+  const editScore = Math.round((1 - levenshteinDistance(left, right) / Math.max(left.length, right.length, 1)) * 100);
+  const leftTokens = new Set(left.split(" ").filter((token) => token.length > 1));
+  const rightTokens = new Set(right.split(" ").filter((token) => token.length > 1));
+  const shared = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  const tokenScore = Math.round((shared / Math.max(leftTokens.size, rightTokens.size, 1)) * 100);
+  return Math.max(editScore, tokenScore);
+}
+
 function candidateConfidence(candidate: AiImportCandidate, detectedTitle: string) {
   const detected = normalizeForMatch(detectedTitle);
   const title = normalizeForMatch(candidate.title);
@@ -1323,7 +1564,7 @@ function candidateConfidence(candidate: AiImportCandidate, detectedTitle: string
   const titleOptions = [title, original].filter(Boolean);
   if (titleOptions.some((option) => option === detected)) return 100;
   if (titleOptions.some((option) => option.replace(/\s+/g, "") === detected.replace(/\s+/g, ""))) return 96;
-  if (titleOptions.some((option) => option.startsWith(detected) || detected.startsWith(option))) return 82;
+  if (titleOptions.some((option) => option.startsWith(detected) || detected.startsWith(option))) return 84;
 
   const detectedTokens = new Set(detected.split(" ").filter((token) => token.length > 1));
   if (!detectedTokens.size) return 0;
@@ -1334,7 +1575,8 @@ function candidateConfidence(candidate: AiImportCandidate, detectedTitle: string
       return Math.round((shared / Math.max(detectedTokens.size, tokens.size || 1)) * 100);
     })
   );
-  return bestOverlap;
+  const bestSimilarity = Math.max(...titleOptions.map((option) => titleSimilarity(detected, option)));
+  return Math.max(bestOverlap, bestSimilarity);
 }
 
 function scoreCandidate(candidate: AiImportCandidate, preferredType: "auto" | "movie" | "tv") {
@@ -1371,16 +1613,45 @@ function autoSelectBestMatch(results: AiImportCandidate[], detectedTitle: string
   const nextScore = second?.confidence ?? (second ? candidateConfidence(second, detectedTitle) : 0);
   if (bestScore >= 96) return best;
   if (bestScore >= 86 && bestScore - nextScore >= 12) return best;
-  if (results.length === 1 && bestScore >= 72) return best;
   return null;
+}
+
+const MIN_TMDB_IMPORT_CONFIDENCE = 85;
+
+function logAiImportMatch(stage: string, details: Record<string, unknown>) {
+  console.info("WatchFinder AI import metadata match", {
+    stage,
+    ...details
+  });
+}
+
+function ensureHighConfidenceMatch(candidate: AiImportCandidate | null | undefined, extractedTitle: string, extractedType: "auto" | "movie" | "tv") {
+  if (!candidate) return null;
+  const confidence = candidate.confidence ?? candidateConfidence(candidate, extractedTitle);
+  const match = { ...candidate, confidence };
+  logAiImportMatch("candidate_validation", {
+    extractedTitle,
+    extractedType,
+    tmdbTitle: candidate.title,
+    tmdbType: candidate.mediaType,
+    confidence
+  });
+  if (confidence < MIN_TMDB_IMPORT_CONFIDENCE) {
+    throw new Error(`Low confidence match detected. Please verify manually. Extracted "${extractedTitle}" but TMDb matched "${candidate.title}" at ${confidence}%.`);
+  }
+  return match;
 }
 
 async function searchTmdbCandidates(query: string, preferredType: "auto" | "movie" | "tv" = "auto") {
   const cleanQuery = query.trim();
   if (!cleanQuery) throw new Error("Metadata not found. Try searching by movie name.");
-  const data = await tmdbFetch<any>("/search/multi", { query: cleanQuery, include_adult: false, page: 1 });
+  if (isWeakTmdbSearchTitle(cleanQuery)) {
+    throw new Error(`Detected title "${cleanQuery}" is too generic for safe TMDb import. Low confidence match detected. Please verify manually.`);
+  }
+  const endpoint = preferredType === "tv" ? "/search/tv" : preferredType === "movie" ? "/search/movie" : "/search/multi";
+  const data = await tmdbFetch<any>(endpoint, { query: cleanQuery, include_adult: false, page: 1 });
   const candidates = (data.results ?? [])
-    .map(candidateFromTmdb)
+    .map((item: any) => candidateFromTmdb(preferredType === "tv" ? { ...item, media_type: "tv" } : preferredType === "movie" ? { ...item, media_type: "movie" } : item))
     .filter(Boolean) as AiImportCandidate[];
   return candidates
     .filter((item) => preferredType === "auto" || item.mediaType === preferredType)
@@ -1497,6 +1768,7 @@ function baseDraft(
     popularityScore: item.popularity ?? null,
     tmdbId: item.id ?? null,
     imdbId: item.imdb_id || item.external_ids?.imdb_id || null,
+    metadataConfidence: context.matchConfidence ?? null,
     posterUrl,
     bannerUrl,
     thumbnailUrl,
@@ -1584,6 +1856,80 @@ async function importSeries(
   return enrichDraft(draft);
 }
 
+function sameTitle(a?: string | null, b?: string | null) {
+  return normalizeForMatch(a) === normalizeForMatch(b);
+}
+
+function applyEpisodeUrlContextToDraft(draft: AiImportDraft, episodeContext?: EpisodeUrlContext | null) {
+  if (!episodeContext?.isEpisodeUrl) return draft;
+
+  const seasonNumber = episodeContext.seasonNumber || 1;
+  const fallbackEpisodeNumber = episodeContext.episodeNumber || 1;
+  const platformName = draft.platform?.name || null;
+  const language = episodeContext.language || draft.language || null;
+  const accessType = episodeContext.accessType || draft.accessType || null;
+  const existingSeason = (draft.seasons || []).find((season) => season.seasonNumber === seasonNumber);
+  const existingEpisode = existingSeason?.episodes.find((episode) =>
+    (episodeContext.episodeNumber && episode.episodeNumber === episodeContext.episodeNumber) ||
+    (episodeContext.episodeTitle && sameTitle(episode.title, episodeContext.episodeTitle))
+  );
+  const episodeTitle = existingEpisode?.title || episodeContext.episodeTitle || `Episode ${fallbackEpisodeNumber}`;
+  const episode: AiImportedEpisode = {
+    episodeNumber: existingEpisode?.episodeNumber || fallbackEpisodeNumber,
+    title: episodeTitle,
+    description: existingEpisode?.description || null,
+    runtimeMinutes: existingEpisode?.runtimeMinutes ?? episodeContext.runtimeMinutes ?? draft.runtimeMinutes ?? null,
+    airDate: existingEpisode?.airDate || null,
+    posterUrl: existingEpisode?.posterUrl || existingEpisode?.stillUrl || draft.posterUrl || null,
+    stillUrl: existingEpisode?.stillUrl || null,
+    trailerUrl: existingEpisode?.trailerUrl || null,
+    watchUrl: draft.officialWatchUrl || null,
+    platformName,
+    accessType,
+    language
+  };
+  const season: AiImportedSeason = {
+    seasonNumber,
+    title: existingSeason?.title || `Season ${seasonNumber}`,
+    description: existingSeason?.description || null,
+    airDate: existingSeason?.airDate || null,
+    posterUrl: existingSeason?.posterUrl || draft.posterUrl || null,
+    episodes: [episode]
+  };
+  const nextAvailableLanguages = language
+    ? withLanguageDisplayLabels(actualAudioLanguages([language]), draft.originalLanguage || language)
+    : draft.availableLanguages || [];
+
+  return {
+    ...draft,
+    contentType: "web_series",
+    title: episodeContext.seriesTitle || draft.title,
+    slug: slugify(episodeContext.seriesTitle || draft.title),
+    seasonCount: seasonNumber,
+    episodeCount: 1,
+    runtimeMinutes: episode.runtimeMinutes ?? draft.runtimeMinutes ?? null,
+    language: language || draft.language,
+    availableLanguages: nextAvailableLanguages.length ? nextAvailableLanguages : draft.availableLanguages,
+    accessType: accessType || draft.accessType,
+    accessTypeReason: episodeContext.accessTypeReason || draft.accessTypeReason,
+    seasons: [season],
+    tags: Array.from(new Set(["web_series", "episode", ...(draft.tags || [])])),
+    episodeImport: {
+      seriesTitle: episodeContext.seriesTitle || draft.title,
+      seasonNumber,
+      episodeNumber: episode.episodeNumber,
+      episodeTitle: episode.title,
+      platformName,
+      language,
+      accessType
+    },
+    assistantNotes: [
+      `Episode URL detected: ${episodeContext.seriesTitle || draft.title} - Season ${seasonNumber} - ${episode.title}.`,
+      ...(draft.assistantNotes || [])
+    ]
+  } satisfies AiImportDraft;
+}
+
 async function fetchTrailer(id: number, type: "movie" | "tv") {
   const videos = await tmdbFetch<any>(`/${type}/${id}/videos`, {});
   return youtubeTrailer(videos);
@@ -1610,7 +1956,8 @@ async function importPlatformMetadataFallback({
   platform,
   metadata,
   mediaType,
-  requestedContentType
+  requestedContentType,
+  episodeContext
 }: {
   input: string;
   extractedTitle: string;
@@ -1619,6 +1966,7 @@ async function importPlatformMetadataFallback({
   metadata?: PageMetadata | null;
   mediaType: "auto" | "movie" | "tv";
   requestedContentType?: ImportRequest["requestedContentType"];
+  episodeContext?: EpisodeUrlContext | null;
 }) {
   const title = cleanTitle(extractedTitle, platform);
   if (!officialWatchUrl || !platform || !title || isLikelyJunkTitle(title)) return null;
@@ -1702,8 +2050,9 @@ async function importPlatformMetadataFallback({
     qualityWarnings: [],
     missingFields: []
   };
-  draft.duplicateWarnings = await duplicateWarnings(draft);
-  return enrichDraft(draft);
+  const finalDraft = applyEpisodeUrlContextToDraft(draft, episodeContext);
+  finalDraft.duplicateWarnings = await duplicateWarnings(finalDraft);
+  return enrichDraft(finalDraft);
 }
 
 function mapToAdminForm(draft: AiImportDraft, officialUrl?: string | null, platform?: AiImportPlatform | null) {
@@ -1728,7 +2077,8 @@ async function fetchFullTMDbDetails(
   context: ImportContext = {}
 ) {
   const draft = type === "tv" ? await importSeries(id, input, includeSeasons, context) : await importMovie(id, input, context);
-  return mapTMDbToAdminForm(draft, context.officialWatchUrl, context.platform);
+  const episodeAwareDraft = applyEpisodeUrlContextToDraft(draft, context.episodeContext);
+  return mapTMDbToAdminForm(enrichDraft(episodeAwareDraft), context.officialWatchUrl, context.platform);
 }
 
 async function findByImdb(imdbId: string, input: string) {
@@ -1752,14 +2102,18 @@ async function detailsFromSelection(body: ImportRequest) {
   const metadataLanguages = body.availableLanguages?.length
     ? body.availableLanguages
     : metadata?.availableLanguages || [];
+  const platform = body.platform || detectPlatformFromUrl(body.officialWatchUrl);
+  const episodeContext = detectEpisodeUrlContext(body.officialWatchUrl || body.input, platform, metadata);
+  const forcedRequestedContentType = episodeContext?.isEpisodeUrl ? "web_series" : body.requestedContentType;
   const context = {
     extractedTitle: body.extractedTitle || null,
     officialWatchUrl: body.officialWatchUrl || null,
-    platform: body.platform || detectPlatformFromUrl(body.officialWatchUrl),
+    platform,
     availableLanguages: metadataLanguages,
     accessType: body.accessType || metadata?.accessType,
     accessTypeReason: body.accessTypeReason || metadata?.accessTypeReason || null,
-    pageMetadata: metadata
+    pageMetadata: metadata,
+    episodeContext
   };
   const draft = await fetchFullTMDbDetails(
     id,
@@ -1768,7 +2122,23 @@ async function detailsFromSelection(body: ImportRequest) {
     body.includeSeasons !== false,
     context
   );
-  return applyRequestedContentType(draft, body.requestedContentType);
+  const expectedTitle = episodeContext?.seriesTitle || context.extractedTitle;
+  if (expectedTitle) {
+    const confidence = titleSimilarity(expectedTitle, draft.title);
+    logAiImportMatch("manual_selection_validation", {
+      extractedTitle: expectedTitle,
+      extractedType: mediaType,
+      tmdbTitle: draft.title,
+      tmdbType: mediaType,
+      confidence,
+      finalTmdbId: id
+    });
+    if (confidence < MIN_TMDB_IMPORT_CONFIDENCE) {
+      throw new Error(`Low confidence match detected. Please verify manually. Extracted "${expectedTitle}" but TMDb matched "${draft.title}" at ${confidence}%.`);
+    }
+    draft.metadataConfidence = confidence;
+  }
+  return applyRequestedContentType(draft, forcedRequestedContentType);
 }
 
 async function detectTitleCandidates(input: string, platform: AiImportPlatform | null) {
@@ -1776,9 +2146,9 @@ async function detectTitleCandidates(input: string, platform: AiImportPlatform |
   const slugTitle = extractTitleFromUrl(input);
   const canonicalTitle = metadata.canonicalUrl ? extractTitleFromUrl(metadata.canonicalUrl) : "";
   const titles = uniqueTitles([
-    cleanTitle(slugTitle, platform),
+    ...metadata.titleCandidates.map((title) => cleanTitle(title, platform)),
     cleanTitle(canonicalTitle, platform),
-    ...metadata.titleCandidates.map((title) => cleanTitle(title, platform))
+    cleanTitle(slugTitle, platform)
   ]).filter((title) => !isLikelyJunkTitle(title));
   return { titles, metadata };
 }
@@ -1802,15 +2172,21 @@ async function searchFromInput(
   if (officialWatchUrl && !platform) {
     throw new Error("Platform currently not supported.");
   }
-  const inferredType = detectContentTypeFromUrl(officialWatchUrl || input);
-  const requestedMediaType = mediaTypeFromRequested(requestedContentType, mediaType);
+  const episodeUrlHint = detectEpisodeUrlContext(officialWatchUrl || input, platform, null);
+  const inferredType = episodeUrlHint?.isEpisodeUrl ? "tv" : detectContentTypeFromUrl(officialWatchUrl || input);
+  const forcedRequestedContentType = episodeUrlHint?.isEpisodeUrl ? "web_series" : requestedContentType;
+  const requestedMediaType = episodeUrlHint?.isEpisodeUrl ? "tv" : mediaTypeFromRequested(requestedContentType, mediaType);
   const effectiveMediaType = requestedMediaType === "auto" && inferredType ? inferredType : requestedMediaType;
   const detected = isHttpUrl(input)
     ? await detectTitleCandidates(input, platform)
     : officialWatchUrl
       ? { titles: [cleanTitle(input, platform)], metadata: await fetchPageMetadata(officialWatchUrl) }
       : null;
-  const titleCandidates = detected ? detected.titles : [cleanTitle(input, platform)];
+  const episodeContext = detectEpisodeUrlContext(officialWatchUrl || input, platform, detected?.metadata || null) || episodeUrlHint;
+  const titleCandidates = uniqueTitles([
+    episodeContext?.seriesTitle,
+    ...(detected ? detected.titles : [cleanTitle(input, platform)])
+  ]).filter((title) => !isWeakTmdbSearchTitle(title));
   const extractedTitle = titleCandidates[0] || "";
   if (!extractedTitle) {
     throw new Error("Could not detect metadata from this link. Try another official link or check TMDb API key.");
@@ -1822,6 +2198,13 @@ async function searchFromInput(
     if (candidates.length) break;
   }
   if (!candidates.length) {
+    logAiImportMatch("tmdb_no_result", {
+      extractedTitle,
+      extractedType: effectiveMediaType,
+      tmdbMatch: null,
+      confidence: 0,
+      finalSelectedRecord: null
+    });
     const fallbackDraft = await importPlatformMetadataFallback({
       input,
       extractedTitle,
@@ -1829,7 +2212,8 @@ async function searchFromInput(
       platform,
       metadata: detected?.metadata || null,
       mediaType: effectiveMediaType,
-      requestedContentType
+      requestedContentType: forcedRequestedContentType,
+      episodeContext
     });
     if (fallbackDraft) {
       return {
@@ -1845,17 +2229,37 @@ async function searchFromInput(
   const ranked = rankCandidatesForTitle(candidates, extractedTitle, effectiveMediaType);
   const best = officialWatchUrl ? autoSelectBestMatch(ranked, extractedTitle) : null;
   if (best) {
-    const draft = await fetchFullTMDbDetails(best.tmdbId, best.mediaType, input, includeSeasons, {
+    const safeBest = ensureHighConfidenceMatch(best, extractedTitle, effectiveMediaType);
+    if (!safeBest) throw new Error("Low confidence match detected. Please verify manually.");
+    const draft = await fetchFullTMDbDetails(safeBest.tmdbId, safeBest.mediaType, input, includeSeasons, {
       extractedTitle,
       officialWatchUrl,
       platform,
       availableLanguages: detected?.metadata.availableLanguages || [],
       accessType: detected?.metadata.accessType,
       accessTypeReason: detected?.metadata.accessTypeReason || null,
-      pageMetadata: detected?.metadata || null
+      pageMetadata: detected?.metadata || null,
+      episodeContext,
+      matchConfidence: safeBest.confidence
     });
-    return { ok: true, draft: applyRequestedContentType(draft, requestedContentType), extractedTitle, platform };
+    logAiImportMatch("auto_selected", {
+      extractedTitle,
+      extractedType: effectiveMediaType,
+      tmdbTitle: safeBest.title,
+      tmdbType: safeBest.mediaType,
+      confidence: safeBest.confidence,
+      finalTmdbId: safeBest.tmdbId
+    });
+    return { ok: true, draft: applyRequestedContentType(draft, forcedRequestedContentType), extractedTitle, platform };
   }
+
+  logAiImportMatch("manual_selection_required", {
+    extractedTitle,
+    extractedType: effectiveMediaType,
+    tmdbMatch: ranked[0]?.title || null,
+    confidence: ranked[0]?.confidence || 0,
+    finalSelectedRecord: null
+  });
 
   return {
     ok: true,
@@ -1864,7 +2268,10 @@ async function searchFromInput(
     extractedTitle,
     platform,
     availableLanguages: detected?.metadata.availableLanguages || [],
-    warnings: officialWatchUrl && !platform ? ["Official URL kept, but platform was not recognized. Review platform before publishing."] : []
+    warnings: [
+      "Low confidence match detected. Please verify manually.",
+      ...(officialWatchUrl && !platform ? ["Official URL kept, but platform was not recognized. Review platform before publishing."] : [])
+    ]
   };
 }
 
@@ -1882,15 +2289,21 @@ async function importBestCandidate(
   if (officialWatchUrl && !platform) {
     throw new Error("Platform currently not supported.");
   }
-  const inferredType = detectContentTypeFromUrl(officialWatchUrl || input);
-  const requestedMediaType = mediaTypeFromRequested(requestedContentType, mediaType);
+  const episodeUrlHint = detectEpisodeUrlContext(officialWatchUrl || input, platform, null);
+  const inferredType = episodeUrlHint?.isEpisodeUrl ? "tv" : detectContentTypeFromUrl(officialWatchUrl || input);
+  const forcedRequestedContentType = episodeUrlHint?.isEpisodeUrl ? "web_series" : requestedContentType;
+  const requestedMediaType = episodeUrlHint?.isEpisodeUrl ? "tv" : mediaTypeFromRequested(requestedContentType, mediaType);
   const effectiveMediaType = requestedMediaType === "auto" && inferredType ? inferredType : requestedMediaType;
   const detected = isHttpUrl(input)
     ? await detectTitleCandidates(input, platform)
     : officialWatchUrl
       ? { titles: [cleanTitle(input, platform)], metadata: await fetchPageMetadata(officialWatchUrl) }
       : null;
-  const titleCandidates = detected ? detected.titles : [cleanTitle(input, platform)];
+  const episodeContext = detectEpisodeUrlContext(officialWatchUrl || input, platform, detected?.metadata || null) || episodeUrlHint;
+  const titleCandidates = uniqueTitles([
+    episodeContext?.seriesTitle,
+    ...(detected ? detected.titles : [cleanTitle(input, platform)])
+  ]).filter((title) => !isWeakTmdbSearchTitle(title));
   const extractedTitle = titleCandidates[0] || "";
   if (!extractedTitle) throw new Error("Could not detect metadata from this link. Try another official link or check TMDb API key.");
   let candidates: AiImportCandidate[] = [];
@@ -1901,6 +2314,13 @@ async function importBestCandidate(
   candidates = rankCandidatesForTitle(candidates, extractedTitle, effectiveMediaType);
   const first = candidates[0];
   if (!first) {
+    logAiImportMatch("tmdb_no_result", {
+      extractedTitle,
+      extractedType: effectiveMediaType,
+      tmdbMatch: null,
+      confidence: 0,
+      finalSelectedRecord: null
+    });
     const fallbackDraft = await importPlatformMetadataFallback({
       input,
       extractedTitle,
@@ -1908,11 +2328,14 @@ async function importBestCandidate(
       platform,
       metadata: detected?.metadata || null,
       mediaType: effectiveMediaType,
-      requestedContentType
+      requestedContentType: forcedRequestedContentType,
+      episodeContext
     });
     if (fallbackDraft) return fallbackDraft;
     throw new Error(`No TMDb result found for "${extractedTitle}". AI Auto Fill did not create a fallback draft.`);
   }
+  const safeFirst = ensureHighConfidenceMatch(first, extractedTitle, effectiveMediaType);
+  if (!safeFirst) throw new Error("Low confidence match detected. Please verify manually.");
   const context = {
     extractedTitle,
     officialWatchUrl,
@@ -1920,10 +2343,20 @@ async function importBestCandidate(
     availableLanguages: detected?.metadata.availableLanguages || [],
     accessType: detected?.metadata.accessType,
     accessTypeReason: detected?.metadata.accessTypeReason || null,
-    pageMetadata: detected?.metadata || null
+    pageMetadata: detected?.metadata || null,
+    episodeContext,
+    matchConfidence: safeFirst.confidence
   };
-  const draft = await fetchFullTMDbDetails(first.tmdbId, first.mediaType, input, includeSeasons, context);
-  return applyRequestedContentType(draft, requestedContentType);
+  logAiImportMatch("direct_selected", {
+    extractedTitle,
+    extractedType: effectiveMediaType,
+    tmdbTitle: safeFirst.title,
+    tmdbType: safeFirst.mediaType,
+    confidence: safeFirst.confidence,
+    finalTmdbId: safeFirst.tmdbId
+  });
+  const draft = await fetchFullTMDbDetails(safeFirst.tmdbId, safeFirst.mediaType, input, includeSeasons, context);
+  return applyRequestedContentType(draft, forcedRequestedContentType);
 }
 
 async function importDirect(

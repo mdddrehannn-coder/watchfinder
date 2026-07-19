@@ -1275,7 +1275,7 @@ export default function AdminMovieForm({
         ai_import_source: aiDraft?.source || null,
         ai_import_payload: aiImportPayload,
         metadata_source: aiDraft?.sourceLabel || aiDraft?.source || null,
-        metadata_confidence: aiDraft ? aiDraft.qualityScore?.score ?? null : null,
+        metadata_confidence: aiDraft ? aiDraft.metadataConfidence ?? aiDraft.qualityScore?.score ?? null : null,
         quality_score: aiDraft?.qualityScore?.score ?? null,
         official_platform: selectedPlatform?.name || aiDraft?.platform?.name || null,
         official_watch_url: watchUrl,

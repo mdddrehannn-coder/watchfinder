@@ -72,7 +72,7 @@ export function defaultAccessTypeForPlatform(platform?: { key?: string | null; n
   const key = platformKey(platform);
   if (!key) return null;
   if (key.includes("netflix")) return "premium";
-  if (key.includes("amazon minitv")) return "free";
+  if (key.includes("amazon minitv") || key.includes("amazon mx player") || key.includes("mx player") || key.includes("mxplayer")) return "free";
   return null;
 }
 

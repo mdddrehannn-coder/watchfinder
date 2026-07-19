@@ -316,6 +316,9 @@ export async function POST(request: NextRequest) {
     if (!seriesId || hasOwn(requestedPayload, "is_official") || hasOwn(requestedPayload, "official_watch_url") || hasOwn(requestedPayload, "watch_url") || hasOwn(requestedPayload, "trailer_url")) {
       basePayload.is_official = cleanBoolean(requestedPayload.is_official) || Boolean(officialWatchUrl || requestedPayload.trailer_url);
     }
+    setWhenPresent(basePayload, requestedPayload, "metadata_confidence", "metadata_confidence", cleanNumber);
+    setWhenPresent(basePayload, requestedPayload, "quality_score", "quality_score", cleanNumber);
+    setWhenPresent(basePayload, requestedPayload, "metadata_source", "metadata_source", cleanString);
     setWhenPresent(basePayload, requestedPayload, "seo_title", "seo_title", cleanString, !seriesId);
     setWhenPresent(basePayload, requestedPayload, "seo_description", "seo_description", cleanString, !seriesId);
 

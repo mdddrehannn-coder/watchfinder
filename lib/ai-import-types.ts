@@ -25,6 +25,10 @@ export type AiImportedEpisode = {
   posterUrl?: string | null;
   stillUrl?: string | null;
   trailerUrl?: string | null;
+  watchUrl?: string | null;
+  platformName?: string | null;
+  accessType?: AccessType | null;
+  language?: string | null;
 };
 
 export type AiImportedSeason = {
@@ -126,6 +130,7 @@ export type AiImportDraft = {
   popularityScore?: number | null;
   tmdbId?: number | null;
   imdbId?: string | null;
+  metadataConfidence?: number | null;
   posterUrl?: string | null;
   bannerUrl?: string | null;
   thumbnailUrl?: string | null;
@@ -138,6 +143,15 @@ export type AiImportDraft = {
   keywords: string[];
   tags: string[];
   seasons: AiImportedSeason[];
+  episodeImport?: {
+    seriesTitle?: string | null;
+    seasonNumber?: number | null;
+    episodeNumber?: number | null;
+    episodeTitle?: string | null;
+    platformName?: string | null;
+    language?: string | null;
+    accessType?: AccessType | null;
+  } | null;
   duplicateWarnings: string[];
   qualityWarnings: string[];
   missingFields: string[];
